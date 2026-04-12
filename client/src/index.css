@@ -1,0 +1,277 @@
+/* ─── Reset & base ─────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html { font-size: 16px; }
+
+body {
+  font-family: system-ui, -apple-system, sans-serif;
+  background: #f5f5f5;
+  color: #1a1a1a;
+  line-height: 1.5;
+}
+
+a { color: #2563eb; text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+/* ─── Layout ────────────────────────────────────────────── */
+.app-header {
+  background: #1e3a5f;
+  padding: 0 1.5rem;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  box-shadow: 0 1px 3px rgba(0,0,0,.2);
+}
+
+.app-title {
+  color: #fff;
+  font-size: 1.2rem;
+  font-weight: 600;
+  text-decoration: none;
+  letter-spacing: .02em;
+}
+
+.app-main { padding: 2rem 1rem; }
+
+.page {
+  max-width: 680px;
+  margin: 0 auto;
+}
+
+.page h1 {
+  font-size: 1.6rem;
+  margin-bottom: 1.5rem;
+  color: #1e3a5f;
+}
+
+/* ─── Buttons ───────────────────────────────────────────── */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: .5rem 1.25rem;
+  border-radius: 6px;
+  border: none;
+  font-size: .95rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background .15s, opacity .15s;
+  text-decoration: none;
+}
+.btn:disabled { opacity: .6; cursor: not-allowed; }
+
+.btn--primary   { background: #2563eb; color: #fff; }
+.btn--primary:hover:not(:disabled)   { background: #1d4ed8; }
+
+.btn--secondary { background: #e2e8f0; color: #1a1a1a; }
+.btn--secondary:hover:not(:disabled) { background: #cbd5e1; }
+
+.btn--danger    { background: #dc2626; color: #fff; }
+.btn--danger:hover:not(:disabled)    { background: #b91c1c; }
+
+/* ─── Forms ─────────────────────────────────────────────── */
+.person-form {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 1.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: .35rem;
+}
+
+.form-group label {
+  font-size: .875rem;
+  font-weight: 500;
+  color: #374151;
+}
+
+.required { color: #dc2626; }
+
+.form-group input,
+.form-group select,
+.form-group textarea {
+  padding: .5rem .75rem;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: .95rem;
+  font-family: inherit;
+  background: #fff;
+  transition: border-color .15s, box-shadow .15s;
+}
+
+.form-group input:focus,
+.form-group select:focus,
+.form-group textarea:focus {
+  outline: none;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37,99,235,.15);
+}
+
+.input-error {
+  border-color: #dc2626 !important;
+}
+
+.field-error {
+  font-size: .8rem;
+  color: #dc2626;
+}
+
+.form-error {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 6px;
+  padding: .75rem 1rem;
+  color: #dc2626;
+  font-size: .9rem;
+}
+
+.char-count {
+  font-size: .75rem;
+  color: #6b7280;
+  text-align: right;
+}
+.char-count--warn { color: #d97706; font-weight: 600; }
+
+.form-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* ─── Profile ───────────────────────────────────────────── */
+.profile-header {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  margin-bottom: 1.5rem;
+}
+
+.profile-avatar {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  background: #1e3a5f;
+  color: #fff;
+  font-size: 1.5rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  text-transform: uppercase;
+}
+
+.profile-title { display: flex; align-items: center; gap: .75rem; flex-wrap: wrap; }
+.profile-title h1 { margin: 0; }
+
+.badge {
+  display: inline-block;
+  padding: .2rem .6rem;
+  border-radius: 99px;
+  font-size: .75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+.badge--deceased { background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }
+
+.profile-details {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 1.25rem 1.5rem;
+  display: grid;
+  grid-template-columns: 9rem 1fr;
+  gap: .6rem 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.profile-details dt {
+  font-size: .875rem;
+  font-weight: 600;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  padding-top: .1rem;
+}
+
+.profile-details dd { color: #1a1a1a; }
+
+.profile-notes { white-space: pre-wrap; line-height: 1.6; }
+
+.age-note { color: #6b7280; font-size: .9rem; }
+
+.profile-actions { display: flex; gap: .75rem; }
+
+/* ─── Modal ─────────────────────────────────────────────── */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  padding: 1rem;
+}
+
+.modal {
+  background: #fff;
+  border-radius: 10px;
+  padding: 2rem;
+  max-width: 480px;
+  width: 100%;
+  box-shadow: 0 20px 60px rgba(0,0,0,.2);
+}
+
+.modal h2 { margin-bottom: .75rem; font-size: 1.2rem; }
+.modal p  { margin-bottom: .75rem; color: #374151; }
+
+.modal-warning {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 6px;
+  padding: .75rem 1rem;
+  margin-bottom: .75rem;
+  color: #991b1b;
+  font-size: .9rem;
+}
+.modal-warning ul { padding-left: 1.25rem; margin-top: .25rem; }
+
+.modal-note { font-size: .9rem; color: #6b7280; }
+
+.modal-actions { display: flex; justify-content: flex-end; gap: .75rem; margin-top: 1.25rem; }
+
+/* ─── Duplicate warning card ────────────────────────────── */
+.warning-card {
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  border-radius: 8px;
+  padding: 1.75rem;
+}
+.warning-card h2 { margin-bottom: .75rem; color: #92400e; }
+.warning-card p  { margin-bottom: 1.25rem; color: #78350f; }
+.warning-actions { display: flex; gap: .75rem; flex-wrap: wrap; }
+
+/* ─── States ────────────────────────────────────────────── */
+.loading   { color: #6b7280; }
+.error-text { color: #dc2626; }
+
+/* ─── Responsive ────────────────────────────────────────── */
+@media (max-width: 540px) {
+  .form-row { grid-template-columns: 1fr; }
+  .profile-details { grid-template-columns: 1fr; }
+  .profile-details dt { margin-top: .5rem; }
+}
