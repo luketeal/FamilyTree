@@ -14,7 +14,7 @@
 **So that** I can begin building or expanding the family tree
 
 **Acceptance Criteria:**
-- [ ] A "Add Person" form accepts: first name, last name, birth date, death date (optional), gender, profile photo (optional), and free-text notes (optional)
+- [ ] A "Add Person" form accepts: first name, last name, birth surname / maiden name (optional), birth date, birth place (optional, free-text e.g. "Springfield, IL"), death date (optional), death place (optional, free-text), gender, profile photo (optional), and free-text notes (optional)
 - [ ] First name and last name are required fields; all others are optional
 - [ ] Birth date must be a valid calendar date and, if a death date is also provided, must be earlier than the death date
 - [ ] Gender options include at minimum: Male, Female, Non-binary, Unknown
@@ -31,7 +31,7 @@
 **So that** I can see all stored information and their family connections at a glance
 
 **Acceptance Criteria:**
-- [ ] The profile page displays: full name, birth date, death date (if applicable), age, gender, photo, and notes
+- [ ] The profile page displays: full name (with birth surname shown as "(née [Birth Surname])" if recorded), birth date, birth place (if recorded), death date (if applicable), death place (if applicable), age, gender, photo, and notes
 - [ ] The page lists all known relationships: biological parents, biological children, adoptive parents, adoptive children, and spouses/marriages
 - [ ] Each listed relationship is a clickable link to that person's profile
 - [ ] A "Deceased" badge is shown when a death date is present
@@ -47,7 +47,7 @@
 
 **Acceptance Criteria:**
 - [ ] An "Edit" button on the profile page opens an editable form pre-populated with existing data
-- [ ] All fields editable in US-001 are editable here
+- [ ] All fields editable in US-001 are editable here, including birth surname / maiden name
 - [ ] Saving validates the same rules as creation (date ordering, required fields)
 - [ ] Unsaved changes trigger a confirmation prompt if the user attempts to navigate away
 - [ ] A success notification confirms the save; validation errors are shown inline
@@ -63,8 +63,9 @@
 
 **Acceptance Criteria:**
 - [ ] A "Delete" action requires explicit confirmation (two-step modal)
-- [ ] Deleting a person removes all relationship links that reference them
-- [ ] A warning lists all relationships that will be severed before the user confirms
+- [ ] Deleting a person removes all parent-child relationship links (biological and adoptive) that reference them
+- [ ] Deleting a person fully deletes any marriage records they are a party to — the marriage disappears from the other spouse's profile as well
+- [ ] The warning modal lists both severed relationship links AND marriages that will be deleted before the user confirms
 - [ ] Deletion is permanent; a success message confirms removal
 
 **Priority:** High
@@ -115,6 +116,7 @@
 - [ ] Adding a biological parent automatically creates the reciprocal biological child relationship
 - [ ] The system prevents adding a person as their own parent (circular reference check)
 - [ ] Warning shown if prospective parent's birth date is after the child's birth date
+- [ ] If the selected person is already recorded as a biological parent of this person, an error prevents saving a duplicate
 
 **Priority:** High
 
@@ -206,6 +208,23 @@
 
 ---
 
+### US-051: View Siblings on a Person's Profile
+**As a** family tree user
+**I want to** see a siblings section on a person's profile
+**So that** I can quickly see who shares one or both biological parents with them
+
+**Acceptance Criteria:**
+- [ ] A "Siblings" section lists all people who share at least one biological parent with this person
+- [ ] Full siblings (both biological parents in common) are shown first, labeled "(Full)"
+- [ ] Half-siblings (exactly one biological parent in common) are shown next, labeled "(Half)"
+- [ ] Each entry shows: name, shared parent(s), birth year, and a link to their profile
+- [ ] List is sorted by birth date (ascending) within each group
+- [ ] If no siblings exist, the section shows "No known siblings"
+
+**Priority:** High
+
+---
+
 ## Epic 3: Adoptive Parent-Child Relationships
 
 ### US-014: Add an Adoptive Parent to a Person
@@ -219,6 +238,7 @@
 - [ ] Relationship is labeled "(Adoptive)" everywhere it appears
 - [ ] Adding the link creates the reciprocal adoptive child entry on the parent's record
 - [ ] Circular reference check enforced
+- [ ] If the selected person is already recorded as an adoptive parent of this person, an error prevents saving a duplicate
 
 **Priority:** High
 
@@ -316,11 +336,12 @@
 **So that** spousal relationships and family units are captured in the tree
 
 **Acceptance Criteria:**
-- [ ] "Add Marriage" form includes: spouse (search-and-select), marriage start date (required), end date (optional), end reason (optional: Divorce, Death of spouse, Annulment, Separation, Unknown)
+- [ ] "Add Marriage" form includes: spouse (search-and-select), marriage start date (required), marriage location (optional, free-text), end date (optional), end reason (optional: Divorce, Death of spouse, Annulment, Separation, Unknown)
 - [ ] Marriage appears on both spouses' profiles
 - [ ] A person may have multiple marriages
 - [ ] If end reason is "Death of spouse," the system suggests auto-populating end date from spouse's death date
 - [ ] Cannot marry themselves (self-reference check)
+- [ ] If an active (non-ended) marriage between the same two people already exists, an error prevents saving a duplicate
 
 **Priority:** High
 
@@ -555,6 +576,21 @@
 
 ---
 
+### US-052: Empty State — First-Time Use
+**As a** new user
+**I want to** see a helpful prompt when the tree has no people yet
+**So that** I know how to get started without confusion
+
+**Acceptance Criteria:**
+- [ ] When no people exist, the tree view shows a centered "Get started" prompt with an "Add your first person" button
+- [ ] The people list (US-036) shows the same prompt instead of an empty table or grid
+- [ ] Search (US-034) returns a "No people in the tree yet — Add someone?" prompt when the tree is empty
+- [ ] Clicking any of these prompts opens the Add Person form (US-001)
+
+**Priority:** High
+
+---
+
 ## Epic 7: Edge Cases and Complex Relationships
 
 ### US-037: Represent Half-Siblings via a Shared Biological Parent
@@ -577,10 +613,12 @@
 **So that** blended family structures are clearly represented
 
 **Acceptance Criteria:**
-- [ ] A parent's spouse can optionally be labeled "Stepparent" on the child's profile
+- [ ] On a child's profile, a "Label as Stepparent" action is available next to any of the child's biological/adoptive parent's current spouses
+- [ ] The stepparent label is applied manually by the user — it is not inferred automatically
 - [ ] Stepparent is distinct from biological and adoptive — does not appear in those sections
 - [ ] "Stepchildren" section shown on the stepparent's profile
 - [ ] Stepparent connection shown in tree with a distinct edge type
+- [ ] Removing the underlying marriage record also removes the stepparent label
 
 **Priority:** Medium
 
@@ -820,3 +858,5 @@
 | US-048 | Export Family Tree Data | Data Integrity | Medium |
 | US-049 | Import Family Tree Data | Data Integrity | Medium |
 | US-050 | Print or Generate a PDF | Data Integrity | Low |
+| US-051 | View Siblings on a Profile | Biological Relationships | High |
+| US-052 | Empty State — First-Time Use | Search and Navigation | High |
