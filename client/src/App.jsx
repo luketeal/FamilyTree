@@ -1,22 +1,33 @@
-import { Routes, Route, Navigate, Link } from 'react-router-dom';
+import { createBrowserRouter, RouterProvider, Navigate, Outlet, Link } from 'react-router-dom';
 import AddPersonPage from './pages/AddPersonPage';
 import PersonProfilePage from './pages/PersonProfilePage';
 import EditPersonPage from './pages/EditPersonPage';
 
-export default function App() {
+function Layout() {
   return (
     <>
       <header className="app-header">
         <Link to="/persons/new" className="app-title">Family Tree</Link>
       </header>
       <main className="app-main">
-        <Routes>
-          <Route path="/" element={<Navigate to="/persons/new" replace />} />
-          <Route path="/persons/new" element={<AddPersonPage />} />
-          <Route path="/persons/:id" element={<PersonProfilePage />} />
-          <Route path="/persons/:id/edit" element={<EditPersonPage />} />
-        </Routes>
+        <Outlet />
       </main>
     </>
   );
+}
+
+const router = createBrowserRouter([
+  {
+    element: <Layout />,
+    children: [
+      { path: '/',                  element: <Navigate to="/persons/new" replace /> },
+      { path: '/persons/new',       element: <AddPersonPage /> },
+      { path: '/persons/:id',       element: <PersonProfilePage /> },
+      { path: '/persons/:id/edit',  element: <EditPersonPage /> },
+    ],
+  },
+]);
+
+export default function App() {
+  return <RouterProvider router={router} />;
 }
