@@ -14,6 +14,24 @@ Example: `claude/add-person-form-k9xQ`
 - Good: `Add birth date validation to person form`
 - Bad: `feat(form): add birth date validation`
 
+## Testing
+
+Always write unit tests alongside any code change. Tests are not optional.
+
+### Coverage requirements
+- **Business logic:** Every function with conditional branches, calculations, or data transformations must have tests covering the happy path and all meaningful edge cases
+- **API endpoints:** Test success responses, validation errors, and not-found cases
+- **UI validation:** Test that invalid input (empty required fields, wrong formats, out-of-range values) is caught and that valid input is accepted — test the validation logic, not just that a component renders
+
+### Conventions
+- Place tests in a `__tests__/` directory adjacent to the file under test, or use `.test.ts` / `.test.tsx` / `.spec.ts` suffixes
+- Use descriptive test names that read as sentences: `it('rejects a person with no first name', ...)`
+- One assertion per test where practical; avoid mega-tests that cover multiple behaviors
+- Mock external dependencies (database, API calls) at the boundary — don't hit real infrastructure in unit tests
+
+### When code is modified
+If you change existing code, update or add tests to cover the modified behavior. Never delete tests to make a PR pass.
+
 ## Pull Requests
 
 ### When to create vs update
