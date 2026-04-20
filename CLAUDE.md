@@ -67,9 +67,17 @@ Bullet list of concrete changes (not file names).
 - Guard against duplicate biological parent relationships (US-007)
 
 ## Test Plan
-Checklist of manual steps to verify the change works.
-- [ ] Create a new person with birth place filled in — confirm it saves
-- [ ] Attempt to add a second biological father — confirm error appears
+Specific actions a reviewer must take to verify the change. Each item must
+describe a concrete step and the expected outcome — not a generic todo.
+
+Items fully covered by unit tests (including UI validation tests) are
+pre-checked and marked as validated by Claude. Only behaviors that cannot
+be verified by unit tests (visual layout, real browser interaction,
+multi-system flows) are left unchecked for manual review.
+
+- [x] Submitting the form with no first name shows an inline error — validated by unit tests
+- [x] A valid person saves and appears in the list — validated by unit tests
+- [ ] Open the app in a browser, create a person, and confirm the name renders correctly in the tree view
 
 ## User Stories
 List any user story IDs touched (omit section if none).
