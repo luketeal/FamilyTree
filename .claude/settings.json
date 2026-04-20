@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "mcp__github__create_pull_request",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "body=$(echo \"$CLAUDE_TOOL_RESULT\" | python3 -c \"import sys,json; r=json.load(sys.stdin); print(r.get('body',''))\" 2>/dev/null || true); missing=''; for section in '## Summary' '## Changes' '## Test Plan'; do echo \"$body\" | grep -qF \"$section\" || missing=\"$missing $section\"; done; [ -z \"$missing\" ] || echo \"WARNING: PR body is missing required sections:$missing\""
+          }
+        ]
+      }
+    ]
+  }
+}

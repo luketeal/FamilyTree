@@ -1,0 +1,91 @@
+# FamilyTree — Claude Instructions
+
+## Project
+React + Node.js/Express family tree app. Tech stack: React (frontend), Node.js/Express (API), SQLite (dev), PostgreSQL (prod).
+
+## Branch Naming
+Always use: `claude/<short-kebab-description>-<4-char-random-suffix>`
+Example: `claude/add-person-form-k9xQ`
+
+## Commit Messages
+- Imperative mood, sentence case, no trailing period
+- No conventional-commit prefixes (no `feat:`, `fix:`, etc.)
+- Single line for simple changes; add a blank line + body for context if needed
+- Good: `Add birth date validation to person form`
+- Bad: `feat(form): add birth date validation`
+
+## Testing
+
+Always write unit tests alongside any code change. Tests are not optional.
+
+### Coverage requirements
+- **Business logic:** Every function with conditional branches, calculations, or data transformations must have tests covering the happy path and all meaningful edge cases
+- **API endpoints:** Test success responses, validation errors, and not-found cases
+- **UI validation:** Test that invalid input (empty required fields, wrong formats, out-of-range values) is caught and that valid input is accepted — test the validation logic, not just that a component renders
+
+### Conventions
+- Place tests in a `__tests__/` directory adjacent to the file under test, or use `.test.ts` / `.test.tsx` / `.spec.ts` suffixes
+- Use descriptive test names that read as sentences: `it('rejects a person with no first name', ...)`
+- One assertion per test where practical; avoid mega-tests that cover multiple behaviors
+- Mock external dependencies (database, API calls) at the boundary — don't hit real infrastructure in unit tests
+
+### When code is modified
+If you change existing code, update or add tests to cover the modified behavior. Never delete tests to make a PR pass.
+
+## Pull Requests
+
+### When to create vs update
+- Create a new PR when starting work on a new branch
+- Update an existing PR (via `mcp__github__update_pull_request`) when:
+  - New commits are pushed to the same branch
+  - The scope of the work changes
+  - Reviewer feedback is addressed
+- Never close and re-open a PR to make edits — always update it
+
+### Updating PRs
+- When updating a PR body, preserve all already-checked Test Plan items (`- [x]`) — never uncheck them
+- Only add or revise unchecked items or new sections
+
+### Title format
+- Imperative mood, sentence case, no trailing period
+- No ticket numbers or prefixes
+- Describe the change, not the files touched
+- 72 characters max
+- Good: `Add sibling display to person profile page`
+- Bad: `feat(profile): US-051 sibling view changes`
+
+### Required body sections
+Every PR body must contain these sections in this order:
+
+```
+## Summary
+One sentence describing what this PR does and why.
+
+## Changes
+Bullet list of concrete changes (not file names).
+- Add birth place field to person creation form (US-001)
+- Guard against duplicate biological parent relationships (US-007)
+
+## Test Plan
+Specific actions a reviewer must take to verify the change. Each item must
+describe a concrete step and the expected outcome — not a generic todo.
+
+Items fully covered by unit tests (including UI validation tests) are
+pre-checked and marked as validated by Claude. Only behaviors that cannot
+be verified by unit tests (visual layout, real browser interaction,
+multi-system flows) are left unchecked for manual review.
+
+- [x] Submitting the form with no first name shows an inline error — validated by unit tests
+- [x] A valid person saves and appears in the list — validated by unit tests
+- [ ] Open the app in a browser, create a person, and confirm the name renders correctly in the tree view
+
+## User Stories
+List any user story IDs touched (omit section if none).
+- US-001, US-007
+```
+
+### Session URL
+Always append the Claude session URL as the last line of the PR body, on its own line with no label. Claude Code appends this automatically.
+
+### Draft PRs
+Open as draft when the branch is not yet ready for review. Convert to ready with `mcp__github__update_pull_request` when complete.
