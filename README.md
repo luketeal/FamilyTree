@@ -1,3 +1,3 @@
 # FamilyTree
 
-A family tree web application built with React + Node.js/Express.
+A family tree web application built with Blazor Server + ASP.NET Core.

@@ -1,7 +1,7 @@
 # FamilyTree — Claude Instructions
 
 ## Project
-React + Node.js/Express family tree app. Tech stack: React (frontend), Node.js/Express (API), SQLite (dev), PostgreSQL (prod).
+Blazor Server family tree app. Tech stack: Blazor Server (UI + real-time), ASP.NET Core (backend), Entity Framework Core (ORM), SQLite (dev), PostgreSQL (prod).
 
 ## Branch Naming
 Always use: `claude/<short-kebab-description>-<4-char-random-suffix>`
@@ -24,10 +24,10 @@ Always write unit tests alongside any code change. Tests are not optional.
 - **UI validation:** Test that invalid input (empty required fields, wrong formats, out-of-range values) is caught and that valid input is accepted — test the validation logic, not just that a component renders
 
 ### Conventions
-- Place tests in a `__tests__/` directory adjacent to the file under test, or use `.test.ts` / `.test.tsx` / `.spec.ts` suffixes
-- Use descriptive test names that read as sentences: `it('rejects a person with no first name', ...)`
+- Place tests in a separate `*.Tests` xUnit project mirroring the source project structure
+- Use descriptive method names that read as sentences: `RejectsPerson_WhenFirstNameIsEmpty`
 - One assertion per test where practical; avoid mega-tests that cover multiple behaviors
-- Mock external dependencies (database, API calls) at the boundary — don't hit real infrastructure in unit tests
+- Mock external dependencies (DbContext, services) at the boundary using Moq — don't hit real infrastructure in unit tests
 
 ### When code is modified
 If you change existing code, update or add tests to cover the modified behavior. Never delete tests to make a PR pass.
