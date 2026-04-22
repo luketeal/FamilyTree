@@ -1,6 +1,6 @@
 # Family Tree App — User Stories
 
-**Tech Stack:** React + Node.js/Express + SQLite (dev) / PostgreSQL (prod)
+**Tech Stack:** Blazor Server + ASP.NET Core + Entity Framework Core + SQLite (dev) / PostgreSQL (prod)
 **Scope:** Single-user, single tree, no authentication required
 **Relationship types:** Biological, Adoptive, Marriage, Stepparent
 
