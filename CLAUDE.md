@@ -1,7 +1,7 @@
 # FamilyTree — Claude Instructions
 
 ## Project
-Blazor Server family tree app. Tech stack: Blazor Server (UI + real-time), ASP.NET Core (backend), Entity Framework Core (ORM), SQLite (dev), PostgreSQL (prod).
+Blazor Server family tree app. Tech stack: Blazor Server (UI + real-time), ASP.NET Core (backend), Entity Framework Core (ORM), SQLite.
 
 ## Branch Naming
 Always use: `claude/<short-kebab-description>-<4-char-random-suffix>`

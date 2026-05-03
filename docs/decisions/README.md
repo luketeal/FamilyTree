@@ -38,4 +38,4 @@ What does this decision make easier? What does it make harder or foreclose?
 
 | ADR | Title | Status |
 |-----|-------|--------|
-| — | *(none yet)* | — |
+| [ADR-001](ADR-001-storage-agnostic-design.md) | Storage-agnostic domain design | Decided |
