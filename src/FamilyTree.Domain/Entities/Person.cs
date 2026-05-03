@@ -16,6 +16,7 @@ public sealed class Person
     public Gender Gender { get; private set; }
     public string? PhotoPath { get; private set; }
     public string? Notes { get; private set; }
+    public bool IsPhantom { get; private set; }
 
     private readonly List<BiologicalParentChild> _biologicalParentLinks = [];
     private readonly List<BiologicalParentChild> _biologicalChildLinks = [];
@@ -35,7 +36,6 @@ public sealed class Person
     public IReadOnlyList<StepparentRelationship> StepparentLinks => _stepparentLinks;
     public IReadOnlyList<StepparentRelationship> StepchildLinks => _stepchildLinks;
 
-    // EF Core requires a parameterless constructor
     private Person() { }
 
     public Person(string firstName, string lastName, Gender gender)
@@ -48,6 +48,13 @@ public sealed class Person
         FirstName = firstName.Trim();
         LastName = lastName.Trim();
         Gender = gender;
+    }
+
+    public static Person CreatePhantom()
+    {
+        var phantom = new Person();
+        phantom.IsPhantom = true;
+        return phantom;
     }
 
     public void UpdateName(string firstName, string lastName, string? birthSurname)

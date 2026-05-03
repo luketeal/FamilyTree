@@ -14,12 +14,13 @@
 **So that** I can begin building or expanding the family tree
 
 **Acceptance Criteria:**
-- [ ] A "Add Person" form accepts: first name, last name, birth surname / maiden name (optional), birth date, birth place (optional, free-text e.g. "Springfield, IL"), death date (optional), death place (optional, free-text), gender, profile photo (optional), and free-text notes (optional)
+- [ ] A quick-add popover accepts: full name, birth year, death year (optional), and gender — enough to create a person in seconds; an "Open full form" link opens the full form
+- [ ] The full form accepts: first name, last name, birth surname / maiden name (optional), birth date, birth place (optional, free-text e.g. "Springfield, IL"), death date (optional), death place (optional, free-text), gender, profile photo (optional), and free-text notes (optional)
 - [ ] First name and last name are required fields; all others are optional
 - [ ] Birth date must be a valid calendar date and, if a death date is also provided, must be earlier than the death date
 - [ ] Gender options include at minimum: Male, Female, Non-binary, Unknown
-- [ ] Submitting the form saves the person and redirects to their profile page
-- [ ] A duplicate-warning is shown if a person with the same full name and birth date already exists
+- [ ] Submitting either form saves the person and opens their profile
+- [ ] A duplicate-warning is shown if a person with the same full name and birth date already exists — the user may proceed anyway
 
 **Priority:** High
 
@@ -659,8 +660,9 @@
 
 **Acceptance Criteria:**
 - [ ] Creating a person with no parents is valid and saves without warnings
-- [ ] Missing parent slots show "Unknown" — not treated as errors
+- [ ] Missing parent slots on a profile show "Unknown" with an "Add" prompt — not treated as errors
 - [ ] The person appears as a root node in the tree view
+- [ ] An unknown parent slot in the tree can optionally be shown as a phantom node (see US-054) to visually represent an inferred but unidentified ancestor
 
 **Priority:** High
 
@@ -774,6 +776,54 @@
 
 ---
 
+### US-053: Quick-Add a Person via Popover
+**As a** family tree user
+**I want to** add a new person using a lightweight popover without leaving my current view
+**So that** I can quickly add people while linking relationships without context-switching to a full form
+
+**Acceptance Criteria:**
+- [ ] An "Add person" button accessible from the top bar and from any "Add relationship" flow opens a compact popover
+- [ ] The popover accepts: full name (required), birth year (optional), death year (optional), gender (required)
+- [ ] A duplicate-warning is shown inline if a matching person already exists
+- [ ] Submitting the popover saves the person and opens their profile (or returns the new ID to the calling flow)
+- [ ] An "Open full form" link in the popover navigates to the full add person form (US-001) pre-populated with the entered data
+
+**Priority:** High
+
+---
+
+### US-054: Phantom Nodes for Unknown Ancestors in the Tree
+**As a** family tree user
+**I want to** see placeholder nodes for unknown parents in the tree view
+**So that** the generational structure is visually clear even when ancestors are not yet identified
+
+**Acceptance Criteria:**
+- [ ] A person with fewer than two biological parents can have phantom parent nodes displayed in the tree (user-initiated, not automatic)
+- [ ] Phantom nodes are visually distinct: dashed border, hatched background, "?" avatar — never shown with a name
+- [ ] Clicking a phantom node opens an "Identify" dialog that lets the user search for an existing person or create a new one to replace the phantom
+- [ ] Identifying a phantom links the real person as the parent and removes the phantom node
+- [ ] Phantom nodes are stored as proper Person records with `IsPhantom = true` and no name, so relationships to them can be persisted
+- [ ] Phantom nodes do not appear in search results, people lists, or any non-tree UI
+
+**Priority:** Medium
+
+---
+
+### US-055: Record Relationship Certainty
+**As a** family tree user
+**I want to** mark how certain I am about a recorded relationship
+**So that** speculative or likely-but-unconfirmed connections are clearly distinguished from established facts
+
+**Acceptance Criteria:**
+- [ ] When adding or editing any relationship (biological, adoptive, or marriage), a certainty field accepts: Confirmed, Likely, or Speculative
+- [ ] Certainty defaults to Confirmed
+- [ ] Relationships marked Likely or Speculative are visually indicated in the tree (e.g., lighter edge style or a badge) and on the profile page
+- [ ] Certainty can be updated independently from other relationship details
+
+**Priority:** Medium
+
+---
+
 ## Summary Table
 
 | Story ID | Title | Epic | Priority |
@@ -828,3 +878,6 @@
 | US-050 | Print or Generate a PDF | Data Integrity | Low |
 | US-051 | View Siblings on a Profile | Biological Relationships | High |
 | US-052 | Empty State — First-Time Use | Search and Navigation | High |
+| US-053 | Quick-Add a Person via Popover | Person Management | High |
+| US-054 | Phantom Nodes for Unknown Ancestors | Visualization | Medium |
+| US-055 | Record Relationship Certainty | Edge Cases | Medium |
