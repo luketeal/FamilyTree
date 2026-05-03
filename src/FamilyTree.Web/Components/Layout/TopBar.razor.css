@@ -1,0 +1,52 @@
+.topbar {
+    height: var(--topbar-height);
+    display: grid;
+    grid-template-columns: minmax(220px, 1fr) minmax(280px, 480px) minmax(220px, 1fr);
+    align-items: center;
+    gap: 16px;
+    padding: 0 16px;
+    background: var(--paper);
+    border-bottom: 1px solid var(--line);
+}
+
+.topbar__brand {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    min-width: 0;
+}
+
+.topbar__brand-name {
+    font-family: var(--font-serif);
+    font-size: 17px;
+    font-weight: 600;
+    color: var(--ink);
+    letter-spacing: -0.01em;
+}
+
+.topbar__stats {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--ink3);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.topbar__search {
+    display: flex;
+    justify-content: center;
+}
+
+.topbar__search-input {
+    width: 100%;
+    max-width: 420px;
+    opacity: 0.7;
+}
+
+.topbar__actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+}
