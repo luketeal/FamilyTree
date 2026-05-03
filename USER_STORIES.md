@@ -49,7 +49,7 @@
 - [ ] An "Edit" button on the profile page opens an editable form pre-populated with existing data
 - [ ] All fields editable in US-001 are editable here, including birth surname / maiden name
 - [ ] Saving validates the same rules as creation (date ordering, required fields)
-- [ ] Unsaved changes trigger a confirmation prompt if the user attempts to navigate away
+- [ ] A visual "unsaved changes" indicator is shown on the form while edits are pending
 - [ ] A success notification confirms the save; validation errors are shown inline
 
 **Priority:** High
@@ -681,20 +681,6 @@
 
 ---
 
-### US-043: Add Children to a Specific Marriage/Couple
-**As a** family tree user
-**I want to** associate a biological child with a specific parental couple
-**So that** children from different marriages are correctly attributed
-
-**Acceptance Criteria:**
-- [ ] When adding a biological child to a person with multiple marriages, an optional "Associated couple" field is offered
-- [ ] Association displayed as "Child of [Parent A] and [Parent B]" on the child's profile
-- [ ] Couple association is optional
-
-**Priority:** Medium
-
----
-
 ### US-044: Represent Same-Sex Partnerships and Marriages
 **As a** family tree user
 **I want to** record marriages and partnerships between any two people regardless of gender
@@ -729,31 +715,15 @@
 ### US-046: Undo the Last Relationship Change
 **As a** family tree user
 **I want to** undo the most recent relationship addition or removal
-**So that** accidental changes can be reversed without manually recreating the link
+**So that** an accidental change can be reversed without manually recreating the link
 
 **Acceptance Criteria:**
-- [ ] Globally accessible "Undo" button (or Ctrl+Z) reverses the last relationship change
-- [ ] Undo stack supports at least the last 10 actions
-- [ ] Undoable actions: adding/removing parent, child, adoptive link, or marriage
-- [ ] Person creation, edits, and deletion are also undoable within the same session
-- [ ] After an undo, a "Redo" option is available
+- [ ] Globally accessible "Undo" button reverses the most recent relationship change
+- [ ] Undoable actions: adding or removing a parent, child, adoptive link, or marriage
+- [ ] Only the single most recent action is undoable — there is no multi-step history or redo
+- [ ] Person creation, edits, and deletion are out of scope for undo
 
 **Priority:** Medium
-
----
-
-### US-047: View a Relationship Path Between Two People
-**As a** family tree user
-**I want to** find out how two people are related
-**So that** I can understand complex family connections quickly
-
-**Acceptance Criteria:**
-- [ ] "How are they related?" tool accepts two names and computes the shortest relationship path
-- [ ] Result expressed in plain language (e.g., "John is the great-grandfather of Sarah")
-- [ ] Path also shown as a visual chain of nodes in the tree
-- [ ] Both biological and adoptive paths considered; adoptive paths noted as such
-
-**Priority:** Low
 
 ---
 
@@ -850,11 +820,9 @@
 | US-040 | Prevent Circular Relationships | Edge Cases | High |
 | US-041 | Person with Unknown Parents | Edge Cases | High |
 | US-042 | Multiple Sequential Marriages | Edge Cases | High |
-| US-043 | Associate Children with a Specific Couple | Edge Cases | Medium |
 | US-044 | Same-Sex Partnerships and Marriages | Edge Cases | High |
 | US-045 | Approximate or Partial Dates | Edge Cases | Medium |
 | US-046 | Undo Last Relationship Change | Data Integrity | Medium |
-| US-047 | Relationship Path Between Two People | Data Integrity | Low |
 | US-048 | Export Family Tree Data | Data Integrity | Medium |
 | US-049 | Import Family Tree Data | Data Integrity | Medium |
 | US-050 | Print or Generate a PDF | Data Integrity | Low |
