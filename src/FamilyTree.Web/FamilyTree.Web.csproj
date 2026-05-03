@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>FamilyTree.Web</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\FamilyTree.Domain\FamilyTree.Domain.csproj" />
+    <ProjectReference Include="..\FamilyTree.Infrastructure\FamilyTree.Infrastructure.csproj" />
+  </ItemGroup>
+
+</Project>
