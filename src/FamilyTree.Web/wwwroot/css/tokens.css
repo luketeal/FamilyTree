@@ -1,0 +1,57 @@
+/* Design tokens — mirror of .design/Family Tree Application.zip → mid-tokens.jsx. */
+
+:root {
+    /* Paper / ink scale */
+    --paper: #fbfaf7;
+    --paper2: #f3f0e9;
+    --paper3: #ece8de;
+    --ink: #1c1a17;
+    --ink2: #3a362f;
+    --ink3: #6f6a5e;
+    --ink4: #9a9387;
+    --ink5: #c4beb1;
+    --line: #e3ddce;
+    --line2: #d8d2c4;
+    --hairline: #eee9dc;
+
+    /* Coral primary */
+    --coral: #c96442;
+    --coral-bg: #fbeee7;
+    --coral-hov: #b25232;
+    --coral-line: #e8b8a3;
+
+    /* Teal — adoptive */
+    --teal: #3f7d6e;
+    --teal-bg: #e6efeb;
+    --teal-line: #a8c8be;
+
+    /* Step (dotted neutral) */
+    --step: #8a8377;
+
+    /* States */
+    --ok: #3a7a5a;
+    --ok-bg: #e6f0ea;
+    --warn: #a86b1a;
+    --warn-bg: #f6ecda;
+    --err: #a8412a;
+    --err-bg: #f6e3da;
+
+    /* Type stacks */
+    --font-ui: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --font-serif: "Source Serif 4", "Source Serif Pro", Georgia, serif;
+    --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Consolas, monospace;
+
+    /* Effects */
+    --shadow-card: 0 1px 2px rgba(28, 26, 23, 0.04), 0 4px 16px rgba(28, 26, 23, 0.05);
+    --shadow-pop: 0 4px 12px rgba(28, 26, 23, 0.08), 0 16px 48px rgba(28, 26, 23, 0.12);
+    --dot-grid: radial-gradient(circle, #e3ddce 1px, transparent 1px) 0 0 / 18px 18px;
+
+    /* Radii */
+    --radius-sm: 4px;
+    --radius-md: 6px;
+    --radius-lg: 10px;
+
+    /* Shell metrics */
+    --rail-width: 64px;
+    --topbar-height: 52px;
+}
