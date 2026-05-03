@@ -1,0 +1,29 @@
+using FamilyTree.Domain.ValueObjects;
+
+namespace FamilyTree.Domain.Entities;
+
+public sealed class AdoptiveParentChild
+{
+    public Guid Id { get; private set; } = Guid.NewGuid();
+    public Guid ParentId { get; private set; }
+    public Guid ChildId { get; private set; }
+    public PartialDate? AdoptionDate { get; private set; }
+
+    public Person Parent { get; private set; } = null!;
+    public Person Child { get; private set; } = null!;
+
+    private AdoptiveParentChild() { }
+
+    public AdoptiveParentChild(Guid parentId, Guid childId, PartialDate? adoptionDate = null)
+    {
+        if (parentId == Guid.Empty) throw new ArgumentException("ParentId must not be empty.", nameof(parentId));
+        if (childId == Guid.Empty) throw new ArgumentException("ChildId must not be empty.", nameof(childId));
+        if (parentId == childId) throw new ArgumentException("A person cannot be their own adoptive parent.");
+
+        ParentId = parentId;
+        ChildId = childId;
+        AdoptionDate = adoptionDate;
+    }
+
+    public void UpdateAdoptionDate(PartialDate? adoptionDate) => AdoptionDate = adoptionDate;
+}

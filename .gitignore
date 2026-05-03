@@ -1,0 +1,27 @@
+## .NET build outputs
+bin/
+obj/
+
+## EF Core design-time database
+*.db
+*.db-shm
+*.db-wal
+
+## NuGet
+*.nupkg
+*.snupkg
+.nuget/
+
+## User-specific files
+*.user
+*.suo
+.vs/
+.idea/
+*.DS_Store
+
+## Rider
+.idea/
+
+## Test results
+TestResults/
+coverage/
