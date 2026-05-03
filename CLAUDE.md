@@ -100,3 +100,12 @@ Only create issues for stories that are **fully** delivered by the PR. Partial i
 
 ### Draft PRs
 Open as draft when the branch is not yet ready for review. Convert to ready with `mcp__github__update_pull_request` when complete.
+
+## Architecture Decisions
+
+Significant technical decisions — especially spike results — are recorded in `docs/decisions/` as lightweight ADRs. See `docs/decisions/README.md` for the format and index.
+
+Write an ADR whenever:
+- A spike (throwaway prototype) produces a conclusion
+- You choose between two non-trivial technical approaches
+- The decision would be hard or expensive to reverse
