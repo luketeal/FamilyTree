@@ -80,12 +80,23 @@ multi-system flows) are left unchecked for manual review.
 - [ ] Open the app in a browser, create a person, and confirm the name renders correctly in the tree view
 
 ## User Stories
-List any user story IDs touched (omit section if none).
+List any user story IDs delivered by this PR (omit section if none).
 - US-001, US-007
+Closes #58, #59
 ```
 
 ### Session URL
 Always append the Claude session URL as the last line of the PR body, on its own line with no label. Claude Code appends this automatically.
+
+### User story traceability
+`USER_STORIES.md` is the single source of truth for the backlog — do not maintain a parallel set of open GitHub issues.
+
+When creating a PR, infer which stories from `USER_STORIES.md` are fully delivered by the changes. For each fully delivered story:
+1. Create a GitHub issue using `mcp__github__issue_write` with the story title, user story text, and acceptance criteria from `USER_STORIES.md` as the body
+2. Add a `Closes #N` line for each created issue in the PR body's **User Stories** section
+3. The issue will be auto-closed when the PR merges — do not close it manually
+
+Only create issues for stories that are **fully** delivered by the PR. Partial implementations do not get an issue.
 
 ### Draft PRs
 Open as draft when the branch is not yet ready for review. Convert to ready with `mcp__github__update_pull_request` when complete.
