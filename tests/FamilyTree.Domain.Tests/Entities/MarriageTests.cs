@@ -2,6 +2,7 @@ using FamilyTree.Domain.Entities;
 using FamilyTree.Domain.Enums;
 using FamilyTree.Domain.ValueObjects;
 
+
 namespace FamilyTree.Domain.Tests.Entities;
 
 public sealed class MarriageTests
@@ -152,5 +153,29 @@ public sealed class MarriageTests
     {
         var marriage = new Marriage(Spouse1Id, Spouse2Id, StartDate);
         Assert.Throws<ArgumentNullException>(() => marriage.UpdateDates(null!, null, null, null));
+    }
+
+    // ── Certainty ─────────────────────────────────────────────────────────
+
+    [Fact]
+    public void Constructor_DefaultsCertaintyToConfirmed()
+    {
+        var marriage = new Marriage(Spouse1Id, Spouse2Id, StartDate);
+        Assert.Equal(RelationshipCertainty.Confirmed, marriage.Certainty);
+    }
+
+    [Fact]
+    public void Constructor_SetsCertainty_WhenProvided()
+    {
+        var marriage = new Marriage(Spouse1Id, Spouse2Id, StartDate, certainty: RelationshipCertainty.Speculative);
+        Assert.Equal(RelationshipCertainty.Speculative, marriage.Certainty);
+    }
+
+    [Fact]
+    public void UpdateCertainty_ChangesCertainty()
+    {
+        var marriage = new Marriage(Spouse1Id, Spouse2Id, StartDate);
+        marriage.UpdateCertainty(RelationshipCertainty.Likely);
+        Assert.Equal(RelationshipCertainty.Likely, marriage.Certainty);
     }
 }

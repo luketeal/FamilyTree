@@ -11,6 +11,7 @@ internal sealed class MarriageConfiguration : IEntityTypeConfiguration<Marriage>
         builder.HasKey(m => m.Id);
 
         builder.Property(m => m.StartPlace).HasMaxLength(500);
+        builder.Property(m => m.Certainty).IsRequired().HasDefaultValue(Domain.Enums.RelationshipCertainty.Confirmed);
 
         builder.OwnsOne(m => m.StartDate, owned =>
         {

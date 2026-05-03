@@ -11,6 +11,7 @@ internal sealed class AdoptiveParentChildConfiguration : IEntityTypeConfiguratio
         builder.HasKey(l => l.Id);
 
         builder.HasIndex(l => new { l.ParentId, l.ChildId }).IsUnique();
+        builder.Property(l => l.Certainty).IsRequired().HasDefaultValue(Domain.Enums.RelationshipCertainty.Confirmed);
 
         builder.OwnsOne(l => l.AdoptionDate, owned =>
         {

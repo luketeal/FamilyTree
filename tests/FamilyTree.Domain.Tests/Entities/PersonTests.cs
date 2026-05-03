@@ -208,4 +208,45 @@ public sealed class PersonTests
         var b = new Person("Bob", "Smith", Gender.Male);
         Assert.NotEqual(a.Id, b.Id);
     }
+
+    // ── IsPhantom / CreatePhantom ─────────────────────────────────────────
+
+    [Fact]
+    public void Constructor_SetsIsPhantomFalse()
+    {
+        var person = new Person("Alice", "Smith", Gender.Female);
+        Assert.False(person.IsPhantom);
+    }
+
+    [Fact]
+    public void CreatePhantom_SetsIsPhantomTrue()
+    {
+        var phantom = Person.CreatePhantom();
+        Assert.True(phantom.IsPhantom);
+    }
+
+    [Fact]
+    public void CreatePhantom_AssignsNonEmptyId()
+    {
+        var phantom = Person.CreatePhantom();
+        Assert.NotEqual(Guid.Empty, phantom.Id);
+    }
+
+    [Fact]
+    public void CreatePhantom_LeavesNamesEmpty()
+    {
+        var phantom = Person.CreatePhantom();
+        Assert.Equal(string.Empty, phantom.FirstName);
+        Assert.Equal(string.Empty, phantom.LastName);
+    }
+
+    [Fact]
+    public void CreatePhantom_LeavesOptionalFieldsNull()
+    {
+        var phantom = Person.CreatePhantom();
+        Assert.Null(phantom.BirthDate);
+        Assert.Null(phantom.DeathDate);
+        Assert.Null(phantom.PhotoPath);
+        Assert.Null(phantom.Notes);
+    }
 }

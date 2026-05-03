@@ -26,6 +26,10 @@ namespace FamilyTree.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("ChildId")
                         .HasColumnType("TEXT");
 
+                    b.Property<int>("Certainty")
+                        .HasColumnType("INTEGER")
+                        .HasDefaultValue(0);
+
                     b.Property<Guid>("ParentId")
                         .HasColumnType("TEXT");
 
@@ -48,6 +52,10 @@ namespace FamilyTree.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("ChildId")
                         .HasColumnType("TEXT");
 
+                    b.Property<int>("Certainty")
+                        .HasColumnType("INTEGER")
+                        .HasDefaultValue(0);
+
                     b.Property<Guid>("ParentId")
                         .HasColumnType("TEXT");
 
@@ -66,6 +74,10 @@ namespace FamilyTree.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("TEXT");
+
+                    b.Property<int>("Certainty")
+                        .HasColumnType("INTEGER")
+                        .HasDefaultValue(0);
 
                     b.Property<int?>("EndReason")
                         .HasColumnType("INTEGER");
@@ -114,6 +126,10 @@ namespace FamilyTree.Infrastructure.Persistence.Migrations
 
                     b.Property<int>("Gender")
                         .HasColumnType("INTEGER");
+
+                    b.Property<bool>("IsPhantom")
+                        .HasColumnType("INTEGER")
+                        .HasDefaultValue(false);
 
                     b.Property<string>("LastName")
                         .IsRequired()

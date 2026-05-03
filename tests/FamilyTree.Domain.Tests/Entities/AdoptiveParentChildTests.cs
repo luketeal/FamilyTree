@@ -1,4 +1,5 @@
 using FamilyTree.Domain.Entities;
+using FamilyTree.Domain.Enums;
 using FamilyTree.Domain.ValueObjects;
 
 namespace FamilyTree.Domain.Tests.Entities;
@@ -77,5 +78,29 @@ public sealed class AdoptiveParentChildTests
         var link = new AdoptiveParentChild(ParentId, ChildId, PartialDate.FromYear(2000));
         link.UpdateAdoptionDate(null);
         Assert.Null(link.AdoptionDate);
+    }
+
+    // ── Certainty ─────────────────────────────────────────────────────────
+
+    [Fact]
+    public void Constructor_DefaultsCertaintyToConfirmed()
+    {
+        var link = new AdoptiveParentChild(ParentId, ChildId);
+        Assert.Equal(RelationshipCertainty.Confirmed, link.Certainty);
+    }
+
+    [Fact]
+    public void Constructor_SetsCertainty_WhenProvided()
+    {
+        var link = new AdoptiveParentChild(ParentId, ChildId, certainty: RelationshipCertainty.Likely);
+        Assert.Equal(RelationshipCertainty.Likely, link.Certainty);
+    }
+
+    [Fact]
+    public void UpdateCertainty_ChangesCertainty()
+    {
+        var link = new AdoptiveParentChild(ParentId, ChildId);
+        link.UpdateCertainty(RelationshipCertainty.Speculative);
+        Assert.Equal(RelationshipCertainty.Speculative, link.Certainty);
     }
 }

@@ -18,6 +18,7 @@ internal sealed class PersonConfiguration : IEntityTypeConfiguration<Person>
         builder.Property(p => p.PhotoPath).HasMaxLength(1000);
         builder.Property(p => p.Notes).HasMaxLength(5000);
         builder.Property(p => p.Gender).IsRequired();
+        builder.Property(p => p.IsPhantom).IsRequired().HasDefaultValue(false);
 
         builder.OwnsOne(p => p.BirthDate, ConfigurePartialDate("BirthDate"));
         builder.OwnsOne(p => p.DeathDate, ConfigurePartialDate("DeathDate"));

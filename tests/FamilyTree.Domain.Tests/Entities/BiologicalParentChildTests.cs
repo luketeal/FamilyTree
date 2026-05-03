@@ -1,4 +1,5 @@
 using FamilyTree.Domain.Entities;
+using FamilyTree.Domain.Enums;
 
 namespace FamilyTree.Domain.Tests.Entities;
 
@@ -44,5 +45,29 @@ public sealed class BiologicalParentChildTests
     public void Constructor_Throws_WhenParentAndChildAreSamePerson()
     {
         Assert.Throws<ArgumentException>(() => new BiologicalParentChild(ParentId, ParentId));
+    }
+
+    // ── Certainty ─────────────────────────────────────────────────────────
+
+    [Fact]
+    public void Constructor_DefaultsCertaintyToConfirmed()
+    {
+        var link = new BiologicalParentChild(ParentId, ChildId);
+        Assert.Equal(RelationshipCertainty.Confirmed, link.Certainty);
+    }
+
+    [Fact]
+    public void Constructor_SetsCertainty_WhenProvided()
+    {
+        var link = new BiologicalParentChild(ParentId, ChildId, RelationshipCertainty.Speculative);
+        Assert.Equal(RelationshipCertainty.Speculative, link.Certainty);
+    }
+
+    [Fact]
+    public void UpdateCertainty_ChangesCertainty()
+    {
+        var link = new BiologicalParentChild(ParentId, ChildId);
+        link.UpdateCertainty(RelationshipCertainty.Likely);
+        Assert.Equal(RelationshipCertainty.Likely, link.Certainty);
     }
 }
