@@ -1,0 +1,43 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector" Version="6.0.4" />
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.0" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageReference Include="Microsoft.Playwright" Version="1.56.0" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\FamilyTree.Web\FamilyTree.Web.csproj" />
+  </ItemGroup>
+
+  <!--
+    Auto-install Playwright's Chromium on first build. The shell script lives in the
+    Microsoft.Playwright NuGet package and is staged into the bin folder by the SDK.
+    Skipped if a Playwright browser cache already exists (e.g. provisioned by CI or
+    by the dev environment at /opt/pw-browsers).
+  -->
+  <Target Name="EnsurePlaywrightBrowsers" AfterTargets="Build" Condition="'$(SkipPlaywrightInstall)' != 'true'">
+    <PropertyGroup>
+      <_PlaywrightInstallScript>$(OutDir)playwright.ps1</_PlaywrightInstallScript>
+    </PropertyGroup>
+    <Exec Command="pwsh -NoProfile -File &quot;$(_PlaywrightInstallScript)&quot; install chromium"
+          Condition="Exists('$(_PlaywrightInstallScript)') and '$(PLAYWRIGHT_BROWSERS_PATH)' == ''"
+          ContinueOnError="WarnAndContinue"
+          IgnoreExitCode="true" />
+  </Target>
+
+</Project>
