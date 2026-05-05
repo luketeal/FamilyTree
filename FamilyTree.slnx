@@ -2,8 +2,11 @@
   <Folder Name="/src/">
     <Project Path="src/FamilyTree.Domain/FamilyTree.Domain.csproj" />
     <Project Path="src/FamilyTree.Infrastructure/FamilyTree.Infrastructure.csproj" />
+    <Project Path="src/FamilyTree.Web/FamilyTree.Web.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/FamilyTree.Domain.Tests/FamilyTree.Domain.Tests.csproj" />
+    <Project Path="tests/FamilyTree.Infrastructure.Tests/FamilyTree.Infrastructure.Tests.csproj" />
+    <Project Path="tests/FamilyTree.Web.E2E.Tests/FamilyTree.Web.E2E.Tests.csproj" />
   </Folder>
 </Solution>
