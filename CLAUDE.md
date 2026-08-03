@@ -1,16 +1,20 @@
 # FamilyTree — Claude Instructions
 
 ## Project
-Blazor family tree app, currently in a demo-first phase (see `docs/decisions/ADR-004-demo-first-wasm-delivery.md` and `docs/implementation-plan.md`).
+Client-only Blazor WebAssembly family tree app. **There is no backend** — see `docs/decisions/ADR-004-client-only-wasm-local-first.md` and `docs/implementation-plan.md`.
 
-Tech stack: Blazor WebAssembly (demo host, deployed to GitHub Pages, data in browser localStorage), a shared host-agnostic Razor Class Library holding all UI, ASP.NET Core + Entity Framework Core + SQLite for the persistent backend.
+Tech stack: Blazor WebAssembly deployed to GitHub Pages, all data local-first in the browser via IndexedDB, UI in a `FamilyTree.UI` Razor Class Library, business rules in `FamilyTree.Application`, domain model and repository interfaces in `FamilyTree.Domain`.
 
-**The production host is deliberately undecided** — either Blazor Server or WebAssembly plus a JSON API. Until that is settled (ADR-008), every component in `FamilyTree.UI` must stay host-portable:
-- JS interop via `IJSRuntime` async only — never `IJSInProcessRuntime`
-- No `HttpContext`, `IHttpContextAccessor`, or server-only DI
-- No direct `System.IO` access; no synchronous blocking (`.Result`, `.Wait()`)
+Do not add EF Core, SQLite, ASP.NET Core hosting, or a server project. They were removed deliberately.
+
+**Keep the API seam intact.** A server backend is not built, but must stay swappable — a future `FamilyTree.Storage.Api` implementing the same repository interfaces over `HttpClient` should be a DI change, nothing more:
+- Data access only through `FamilyTree.Domain` repository interfaces — never touch the store directly from a component
+- **No N+1 access patterns.** Fetch in bulk; never loop a per-id read. Free against IndexedDB, catastrophic over HTTP
+- Mutations that span multiple records go through one repository call so they can map to one request later
+- JS interop via `IJSRuntime` async only; no synchronous blocking (`.Result`, `.Wait()`)
 - No multi-threading assumptions — WASM is single-threaded
-- Data access only through `FamilyTree.Domain` repository interfaces
+
+**Data durability is a product requirement, not a feature.** The browser is the only copy. Export/import is the backup mechanism; treat anything that risks silent data loss as a bug.
 
 ## Branch Naming
 Always use: `claude/<short-kebab-description>-<4-char-random-suffix>`

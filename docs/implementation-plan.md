@@ -1,12 +1,10 @@
-# Implementation Plan: FamilyTree — Demo-First on Blazor WebAssembly
+# Implementation Plan: FamilyTree — Client-Only Blazor WebAssembly
 
 ## Context
 
-This plan replaces the earlier bottom-up sequence. Per **ADR-004**, delivery is inverted: a deployable Blazor WebAssembly demo backed by browser localStorage ships first, so real user feedback shapes the interaction design while the persistent backend is still being built.
+Per **ADR-004**, this is a client-only Blazor WebAssembly application deployed to GitHub Pages, with all data stored local-first in the browser via IndexedDB. **There is no backend.** Delivery is UI-first and continuous, so real user feedback shapes the interaction design as it is built.
 
-The domain layer is complete — all entities, the `PartialDate` value object, enums, EF Core configurations, migrations, repository interfaces, and unit tests. The demo reuses it directly. Nothing is mocked at the domain level.
-
-**The production host is deliberately undecided** (ADR-004). All UI lives in a host-agnostic Razor Class Library so that either Blazor Server or WebAssembly-plus-API can be chosen later without rewriting components.
+The domain layer is complete — all entities, the `PartialDate` value object, enums, repository interfaces, and unit tests — and is reused directly. Nothing is mocked at the domain level, and the real business rules are enforced from the first screen.
 
 All UI decisions follow the design system in `.design/Family Tree Application.zip` (wireframes through mid-fidelity mockups).
 
@@ -16,45 +14,53 @@ All UI decisions follow the design system in `.design/Family Tree Application.zi
 
 ```
 src/
-  FamilyTree.Domain/          existing, unchanged — entities, PartialDate, repository interfaces
-  FamilyTree.Application/     new — services, DTOs, Result<T>; host-agnostic, no infrastructure refs
-  FamilyTree.UI/              new — Razor Class Library; ALL components, pages, CSS. Host-agnostic.
-  FamilyTree.Demo/            new — Blazor WASM host; localStorage repositories; deploys to GH Pages
-  FamilyTree.Infrastructure/  existing — EF Core + SQLite; off the demo critical path
-  FamilyTree.Web/             from PR #65 — Blazor Server host; parked but kept compiling
+  FamilyTree.Domain/          existing — entities, PartialDate, repository interfaces (the API seam)
+  FamilyTree.Application/     new — services, DTOs, Result<T>; no storage or UI dependencies
+  FamilyTree.Storage.Browser/ new — IndexedDB implementations of the repository interfaces
+  FamilyTree.UI/              new — Razor Class Library; all components, pages, CSS
+  FamilyTree.App/             new — Blazor WASM host; DI wiring; deploys to GitHub Pages
 tests/
-  FamilyTree.Domain.Tests/          existing
-  FamilyTree.Application.Tests/     new — service and business-rule tests
-  FamilyTree.UI.Tests/              new — bUnit component tests; host-agnostic
-  FamilyTree.Infrastructure.Tests/  from PR #65 — EF repository tests
-  FamilyTree.Demo.E2E.Tests/        new — Playwright against the published static demo
-  FamilyTree.Web.E2E.Tests/         from PR #65 — Playwright against the Blazor Server host;
-                                    retained as the host-portability canary (see below)
+  FamilyTree.Domain.Tests/       existing
+  FamilyTree.Application.Tests/  new — service and business-rule tests
+  FamilyTree.Storage.Tests/      new — IndexedDB round-trip tests
+  FamilyTree.UI.Tests/           new — bUnit component tests
+  FamilyTree.E2E.Tests/          new — Playwright against the published static site
 ```
 
-`FamilyTree.Web` and `FamilyTree.Infrastructure` stay in the solution and stay green, but no demo-phase PR depends on them. They are the on-ramp for the Blazor Server path if it wins.
+**Deleted by ADR-004:** `FamilyTree.Infrastructure`, `FamilyTree.Infrastructure.Tests`, `FamilyTree.Web`, `FamilyTree.Web.E2E.Tests`. Do not reintroduce EF Core, SQLite, or an ASP.NET Core host. The schema thinking is preserved in ADR-003 and recoverable from git history.
 
-**The parked Server host is the portability canary.** The rules above fail silently — a component using synchronous JS interop or server-only DI works perfectly in the WASM demo and breaks only when Blazor Server is wired up, potentially months later. Keeping `FamilyTree.Web` compiling against `FamilyTree.UI` turns a whole class of those violations into build errors, and `FamilyTree.Web.E2E.Tests` (already green, ~14s) proves the shared shell still renders under a real Server circuit. This is the only automated enforcement of the portability discipline, so both projects are kept and kept green rather than retired.
+`FamilyTree.Storage.Browser` is named for the swap: a future `FamilyTree.Storage.Api` implementing the same interfaces over `HttpClient` would be a DI registration change and nothing more.
 
 ---
 
-## Host-Portability Rules (binding while the host is undecided)
+## API-Seam Discipline (binding)
 
-Every component in `FamilyTree.UI` must satisfy all of these. A violation typically works fine in the demo and breaks under Blazor Server, so these are enforced in review, not discovered later.
+A server backend is not built, but must remain swappable. The interfaces survive contact with an API; naive *usage* does not.
 
-- JS interop via `IJSRuntime` **async only** — never `IJSInProcessRuntime` / `IJSInProcessObjectReference`
-- No `HttpContext`, `IHttpContextAccessor`, or server-only DI
-- No direct `System.IO` access — upload via `InputFile`, download via JS interop
-- No synchronous blocking: no `.Result`, no `.Wait()`
-- No multi-threading assumptions — WASM is single-threaded; no `Task.Run`, no `Thread.Sleep`
-- Data access only through `FamilyTree.Domain` repository interfaces; components never construct a store
+- Data access only through `FamilyTree.Domain` repository interfaces — components never touch the store
+- **No N+1 access patterns.** Fetch in bulk; never loop a per-id read. Building a 500-node tree via `GetByIdAsync` per node is free against IndexedDB and catastrophic over HTTP. Prefer `GetByIdsAsync(IEnumerable<Guid>)` and whole-set reads.
+- Multi-record mutations go through a single repository call, so they can map to one request later rather than a half-failing sequence
+- All service methods return `Result<T>` — no exceptions for business rules
+- JS interop via `IJSRuntime` async only; no `.Result`, no `.Wait()`
+- No multi-threading assumptions — WASM is single-threaded
 - `InvariantGlobalization` stays **off** — this app formats dates heavily and needs ICU
 
 ---
 
-## Design System Reference
+## Durability Requirements (binding)
 
-Unchanged from the previous plan. All implementation follows these conventions from the mid-fidelity mockups:
+The browser is the only copy of the user's data. Genealogy data can represent years of irreplaceable research, so data loss is treated as a defect class, not a user error.
+
+- `navigator.storage.persist()` is called at startup so the origin is exempt from routine eviction
+- Export and import land **early** (PR 5), before most features — until they exist, every user is one cache-clear from total loss
+- Every later PR that adds a persisted shape extends export coverage in the same PR
+- The UI surfaces "last exported N days ago" and prompts when stale
+- A `schemaVersion` is stamped on the stored payload so a shape change detects and migrates (or safely resets) rather than crashing
+- File System Access API is evaluated in PR 5 so the tree can live in a user-controlled file
+
+---
+
+## Design System Reference
 
 **Shell**
 - Left icon rail (64px): Tree, People, Relate, Import, Settings
@@ -82,266 +88,192 @@ Unchanged from the previous plan. All implementation follows these conventions f
 
 ---
 
-## Story Scope in the Demo
+## Story Scope
 
-**51 of 53 stories are reachable in the demo.** Two are deferred to the backend phase by ADR-004:
-
-| Story | Why deferred |
-|-------|--------------|
-| US-005 — Profile photo upload | localStorage caps near 5 MB per origin; base64 images do not fit |
-| US-050 — Print / generate a PDF | Candidate libraries need native binaries or headless Chrome; server-side work |
-
-Export and import (US-048, US-049) **stay in the demo** — JSON and GEDCOM are pure text generation and work entirely client-side. Testers exporting real trees is among the most valuable feedback available.
+**All 53 stories are in scope.** IndexedDB removes the storage ceiling that would have deferred photos (US-005), and browser print-to-PDF with a print stylesheet covers US-050 without a server-side PDF library.
 
 ---
 
 ## PR Sequence
 
-### Phase 1 — Demo foundation
+### PR 1 — WASM app, shared RCL, and GitHub Pages deployment
+**Stories:** None (foundation)
 
-#### PR 1 — Restructure into shared RCL, WASM demo host, and GitHub Pages deployment
-**Stories:** None (foundation)  
-**Depends on:** merging PR #65 first
+- Create `src/FamilyTree.UI/` (Razor Class Library) and `src/FamilyTree.App/` (Blazor WASM host).
+- Carry over from PR #65 (the only surviving content): `wwwroot/css/tokens.css`, `wwwroot/css/app.css`, and the `MainLayout`, `IconRail`, `TopBar` components with their `.razor.css` and `data-testid` selectors.
+- Remove `FamilyTree.Infrastructure` and rewrite `FamilyTree.slnx` for the new project set.
+- `.github/workflows/deploy.yml` — the repository's first CI workflow. On PR: `dotnet build` + `dotnet test`. On push to `main`: `dotnet publish -c Release`, rewrite `<base href>` to `/FamilyTree/`, copy `index.html` to `404.html`, write `.nojekyll`, deploy via `actions/deploy-pages`.
+- Create `tests/FamilyTree.UI.Tests/` (bUnit) and `tests/FamilyTree.E2E.Tests/` (Playwright against the published static output) with a boot smoke test asserting the rail and top bar render.
 
-- Merge PR #65 as-is. Its EF repository implementations and `Infrastructure.Tests` are needed under either host; its shell layout and CSS tokens are migrated by this PR.
-- Create `src/FamilyTree.UI/` (Razor Class Library). Move from `FamilyTree.Web`: `wwwroot/css/tokens.css`, `wwwroot/css/app.css`, `MainLayout.razor`, `IconRail.razor`, `TopBar.razor` and their `.razor.css` files. `FamilyTree.Web` then references the RCL and keeps compiling as a parked host.
-- Create `src/FamilyTree.Demo/` — Blazor WASM host referencing `FamilyTree.UI`; `Program.cs` registers DI; `index.html` with the design system's fonts served as static assets.
-- Add both projects plus the new test projects to `FamilyTree.slnx`.
-- `.github/workflows/deploy-demo.yml` — the repository's first CI workflow. On push to `main`: `dotnet publish -c Release`, rewrite `<base href>` to `/FamilyTree/`, copy `index.html` to `404.html`, write `.nojekyll`, deploy via `actions/deploy-pages`. Also runs `dotnet test` on every PR.
-- Create `tests/FamilyTree.Demo.E2E.Tests/` — xUnit + `Microsoft.Playwright` against the published static output (no host fixture needed; simpler than the Blazor Server equivalent). One boot smoke test asserting the left rail and top bar render.
-- Create `tests/FamilyTree.UI.Tests/` — bUnit project, scaffold plus one layout render test.
-- Retarget `FamilyTree.Web` and its existing `Web.E2E.Tests` boot smoke test at the RCL shell, so both hosts render the same components and the portability canary starts working immediately.
-- Resolve the `SQLitePCLRaw.lib.e_sqlite3` 2.1.11 advisory (GHSA-2m69-gcr7-jv3q, high severity), inherited transitively from `Microsoft.EntityFrameworkCore.Sqlite` 10.0.7 and present on `main` today. Pin a patched `SQLitePCLRaw.bundle_e_sqlite3` or bump EF Core, and confirm the build is warning-free. Blocks nothing in the demo (which has no SQLite), but the foundation PR is the right place to clear it.
+**Outcome: a live URL exists.** Shell only, no data yet.
 
-**Outcome: a live demo URL exists.** Shell only, no data yet.
-
-#### PR 2 — Application service layer and browser-backed storage
-**Stories:** US-040 at service layer  
-**Depends on:** PR 1
+### PR 2 — Application layer and IndexedDB storage
+**Stories:** US-040 at service layer
 
 - `src/FamilyTree.Application/` (references `FamilyTree.Domain` only)
-  - `Common/Result.cs` — `IsSuccess`, `Value`, `Error`, `IsWarning`; returned by every service method instead of throwing
+  - `Common/Result.cs` — `IsSuccess`, `Value`, `Error`, `IsWarning`
   - `Common/PersonSummaryDto.cs`, `PersonDetailDto.cs` — flat DTOs; UI never touches domain entities
-  - `Services/CircularReferenceChecker.cs` — BFS from `proposedParentId` across bio **and** adoptive ancestor links; returns `true` if `childId` is reached
-  - `Services/PersonService.cs` — required fields, birth-before-death ordering, duplicate name+date warning (`IsWarning`, non-blocking), phantom person creation (US-054)
-- `src/FamilyTree.Demo/Storage/` — localStorage implementations of all four `FamilyTree.Domain` repository interfaces.
-  - **Persist flat records, not the object graph.** `Person` has a private constructor, private setters, and bidirectional navigation collections; `System.Text.Json` can neither round-trip it nor escape the circular references. Define `PersonRecord`, `BiologicalLinkRecord`, `AdoptiveLinkRecord`, `MarriageRecord`, `StepparentRecord` mirroring the EF table shapes, and rehydrate through domain factory methods. Keep these in sync with the `Infrastructure` EF configurations.
-  - `PartialDateJsonConverter` — the value object needs explicit conversion.
-  - Stamp a `schemaVersion` on the stored payload so a shape change can detect and reset stale tester data rather than crashing.
-- Seeded sample family fixture, deliberately exercising the hard cases: half-siblings via a shared parent, an adoption, a remarriage after widowhood, a phantom grandparent, and one speculative-certainty link. Plus a "Reset to sample data" action in Settings.
-- Tests: `Application.Tests` (circular checker — no cycle, direct, indirect, disconnected root; `PersonService` — required fields, date ordering, duplicate warning, phantom creation) and storage round-trip tests (every entity type survives save/load; `PartialDate` precision and `IsApproximate` preserved).
+  - `Services/CircularReferenceChecker.cs` — BFS from `proposedParentId` across bio **and** adoptive ancestor links
+  - `Services/PersonService.cs` — required fields, birth-before-death ordering, duplicate name+date warning (non-blocking), phantom person creation (US-054)
+- `src/FamilyTree.Storage.Browser/` — IndexedDB implementations of all four repository interfaces via `IJSRuntime` and a small JS module.
+  - **Persist flat records, not the object graph.** `Person` has a private constructor, private setters, and bidirectional navigation collections; `System.Text.Json` can neither round-trip it nor escape the circular references. Define `PersonRecord`, `BiologicalLinkRecord`, `AdoptiveLinkRecord`, `MarriageRecord`, `StepparentRecord`, and rehydrate through domain factory methods.
+  - `PartialDateJsonConverter` for the value object.
+  - Bulk read paths from the start per the API-seam discipline.
+  - `schemaVersion` stamp; `navigator.storage.persist()` on startup.
+- Seeded sample family exercising the hard cases: half-siblings via a shared parent, an adoption, a remarriage after widowhood, a phantom grandparent, one speculative-certainty link. Plus "Reset to sample data" in Settings.
+- Tests: `Application.Tests` (circular checker — no cycle, direct, indirect, disconnected root; `PersonService` rules) and `Storage.Tests` (round-trip per entity type; `PartialDate` precision and `IsApproximate` preserved).
 
-#### PR 3 — Tree visualization spike and ADR-005
-**Stories:** None (spike)  
-**Depends on:** PR 1; runs in parallel with PRs 4–8
+### PR 3 — Tree visualization spike and ADR-005
+**Stories:** None (spike) — runs in parallel with PRs 4–9
 
-Moved from PR 9 in the old plan. This is the project's largest unknown and the tree is the centrepiece of any feedback session, so it resolves before the tree is built rather than after everything else.
+The project's largest unknown, resolved before the tree is built. Evaluate against: DAG rendering (a person may have both biological and adoptive parents — a directed acyclic graph, not a strict tree), pan/zoom, five distinct edge styles, nodes ~172×70px, performance at ~500 nodes, phantom node styling, mini-map.
 
-Evaluate against: DAG rendering (a person may have both biological and adoptive parents — this is a directed acyclic graph, not a strict tree), pan/zoom, five distinct edge styles, nodes ~172×70px with photo and text, performance at ~500 nodes, phantom node styling, mini-map.
-
-**Criteria changed by ADR-004:** the library must work under **WebAssembly**, and ideally under Blazor Server too, since the host is undecided. D3 via JS interop satisfies both; some pure-.NET diagram libraries assume a Server circuit. Payload size now counts against the WASM download budget.
+**Must work under WebAssembly**, and payload size counts against the download budget. D3 via JS interop is the reference option.
 
 Output: `docs/decisions/ADR-005-tree-visualization-library.md`.
 
-### Phase 2 — User-facing functionality
+### PR 4 — Person CRUD, people list, and shared components
+**Stories:** US-001, US-002, US-003, US-004, US-006, US-041, US-044, US-052, US-053
 
-#### PR 4 — Person CRUD, people list, and shared components
-**Stories:** US-001, US-002, US-003, US-004, US-006, US-041, US-044, US-052, US-053  
-**Depends on:** PR 2
+- `Pages/People/PeopleListPage.razor` — empty state with "Add your first person" (US-052); excludes phantom persons
+- `Pages/People/PersonProfilePage.razor` — all fields; "(née …)"; "Deceased" badge; age with "~" when approximate; relationship section stubs; also renders as a 360px right panel from the tree
+- `Pages/People/AddPersonPage.razor`, `EditPersonPage.razor` — required names, non-blocking duplicate warning, unsaved-changes indicator
+- `Shared/QuickAddPersonPopover.razor` (US-053), `PersonChip.razor` (four variants), `DeleteConfirmModal.razor`, `PartialDateInput.razor` (year-only stub), `ToastNotification.razor`, `ErrorAlert.razor`
 
-In `src/FamilyTree.UI/Components/`:
-- `Pages/People/PeopleListPage.razor` — all people; empty state with "Add your first person" (US-052); excludes phantom persons
-- `Pages/People/PersonProfilePage.razor` — all fields; "(née …)" birth surname; "Deceased" badge; age with "~" when approximate; relationship section stubs; also renders as a 360px right panel when opened from the tree (controlled by a parameter)
-- `Pages/People/AddPersonPage.razor` — required first/last name; inline non-blocking duplicate warning
-- `Pages/People/EditPersonPage.razor` — pre-populated; `EditContext` unsaved-changes indicator
-- `Shared/QuickAddPersonPopover.razor` — compact popover (name, years, gender); duplicate warning; "Open full form" link (US-053)
-- `Shared/PersonChip.razor` — four variants: bio (solid), adoptive (dashed teal), step (dotted), phantom (hatched)
-- `Shared/DeleteConfirmModal.razor` — two-step confirmation; for person delete shows affected relationships and offers Replace-with-phantom / Detach-all / Merge
-- `Shared/PartialDateInput.razor` — **stub**, year-only for now; extended in PR 5
-- `Shared/ToastNotification.razor`, `Shared/ErrorAlert.razor`
+E2E: empty state → add form; missing first name shows inline error; a valid person **survives a page reload** (IndexedDB round-trip); quick-add opens, accepts, closes.
 
-bUnit (`UI.Tests`): AddPersonPage and QuickAddPersonPopover validation, empty-state rendering, `PersonChip` variant classes.
+### PR 5 — Export and import
+**Stories:** US-048, US-049
 
-E2E: empty DB shows the empty state and its button navigates to the add form; submitting with no first name shows the inline error and stays on the form; a valid person persists **and survives a page reload** (localStorage round-trip); quick-add popover opens, accepts a person, closes.
+Deliberately early — this is the durability mechanism, not a feature. Covers everything that exists at this point; every later PR extends it.
 
-#### PR 5 — PartialDate input: full precision and circa
-**Stories:** US-045  
-**Depends on:** PR 4
+- `Application/Services/ExportService.cs` — `ExportToJsonAsync()`; phantom persons excluded
+- `Application/Services/ImportService.cs` — JSON import; `ImportConflictResolution` (Skip/Overwrite/Merge); returns `ImportResultDto`
+- `Pages/Export/ExportPage.razor`, `Pages/Import/ImportPage.razor` — download via JS interop, upload via `InputFile`, preview pane, conflict radios, summary report
+- "Last exported N days ago" indicator with a stale-backup prompt
+- Evaluate the File System Access API for user-controlled file storage; record the finding inline if it changes the approach
+- GEDCOM deferred to PR 15 — JSON round-trip is what protects the data
 
-Extends `PartialDateInput.razor` in place, so all callers inherit it.
-- Internal state: `int? year`, `int? month`, `int? day`, `bool isApproximate`
-- Year input → Month dropdown → Day dropdown (1–N for the chosen month) → Circa checkbox
-- Clearing month clears day; converts to/from `PartialDate?` only on `ValueChanged`
-- Tests: year-only → `FromYear`, year+month → `FromYearMonth`, full → `FromYearMonthDay`, circa sets `IsApproximate`, clearing month clears day, invalid year/day shows error
+E2E: Playwright captures the download, parses it, asserts seeded persons present; a fixture import with Skip produces expected counts.
 
-E2E: year-only birth date saves and the profile shows just the year; full date plus circa renders with the "~" prefix; selecting then clearing a month also clears the day.
+### PR 6 — PartialDate input: full precision and circa
+**Stories:** US-045
 
-#### PR 6 — Biological relationships
-**Stories:** US-007, US-008, US-009, US-010, US-011, US-012, US-013, US-037, US-039 (bio section), US-051  
-**Depends on:** PR 2 (circular checker), PR 4 (profile stubs, `PersonChip`)
+Extends `PartialDateInput.razor` in place. Year → Month → Day → Circa; clearing month clears day; converts to/from `PartialDate?` only on `ValueChanged`. Tests cover each precision level, circa, and cascade clearing.
 
-- `Application/Services/BiologicalRelationshipService.cs` — `AddParentAsync` (circular check, two-parent cap, duplicate check), `RemoveAsync`, `ReplaceParentAsync` (US-009), `GetSiblingsAsync` classifying full vs half
-- Fill in profile sections: bio parents (max 2, "Unknown" slots as phantom `PersonChip`), bio children (sorted by birth date), siblings
-- `Shared/PersonSearchSelect.razor` — debounced name search; "Create new person" inline (opens `QuickAddPersonPopover`); returns `Guid`; accepts an exclusion list
-- `Shared/AddRelationshipDialog.razor` — unified 3-step wizard: kind (Parent/Child/Sibling/Spouse as radio cards) → person → details (subtype Bio/Adoptive/Step, certainty segmented control, date range, note). Replaces all per-type modals; kind + subtype drive which service is called.
-- Tests: happy path, circular blocked, two-parent cap, duplicate blocked, replace updates both parties, sibling classification, certainty stored
+### PR 7 — Biological relationships
+**Stories:** US-007 – US-013, US-037, US-039 (bio), US-051
 
-E2E: walk the dialog end to end and confirm the new parent appears as a chip; adding a shared parent to two people makes each appear in the other's siblings; a cycle-creating parent surfaces the error and blocks save.
+- `BiologicalRelationshipService` — `AddParentAsync` (circular check, two-parent cap, duplicate check), `RemoveAsync`, `ReplaceParentAsync`, `GetSiblingsAsync` classifying full vs half
+- Profile sections: bio parents (max 2, "Unknown" phantom slots), bio children (birth-date sorted), siblings
+- `Shared/PersonSearchSelect.razor` — debounced search, "Create new person" inline, exclusion list
+- `Shared/AddRelationshipDialog.razor` — unified 3-step wizard (kind → person → details incl. subtype, certainty, dates, note); replaces all per-type modals
+- Extend export coverage
 
-#### PR 7 — Adoptive relationships
-**Stories:** US-014, US-015, US-016, US-017, US-018, US-019, US-020, US-039 (adoptive alongside bio)  
-**Depends on:** PR 6
+### PR 8 — Adoptive relationships
+**Stories:** US-014 – US-020, US-039 (adoptive)
 
-- `Application/Services/AdoptiveRelationshipService.cs` — same guards as bio (the circular check already spans both link types), **no upper cap**; `UpdateAdoptionDateAsync`; `ReplaceAdoptiveParentAsync`
-- Profile: adoptive parents (dashed teal chips) and adoptive children; adoption date or "Date unknown"
-- Tests mirror the biological service; adoption date optional; unlimited count; certainty stored
+Same guards as biological, **no upper cap**; adoption date optional ("Date unknown"); dashed-teal chips with "(A)". Extend export coverage.
 
-E2E: an adoptive parent renders as a dashed-teal chip with the "(A)" label; a third adoptive parent is accepted and all three render; omitting the date renders "Date unknown".
+### PR 9 — Marriage and stepparent relationships
+**Stories:** US-021 – US-027, US-038, US-042, US-044
 
-#### PR 8 — Marriage and stepparent relationships
-**Stories:** US-021, US-022, US-023, US-024, US-025, US-026, US-027, US-038, US-042, US-044  
-**Depends on:** PR 6
+- `IStepparentRelationshipRepository` — **new interface** (does not exist yet) plus its IndexedDB implementation
+- `MarriageService` — self-reference check, active-duplicate check, overlap warning, end-after-start validation, `SuggestEndDateFromSpouseDeathAsync` (US-026)
+- `StepparentService` — validates the marriage involves a parent of the stepchild
+- Profile: "Marriages / Partnerships" and "Stepchildren"; dialog step 3 extended for marriage fields
+- Extend export coverage
 
-- `Domain/Repositories/IStepparentRelationshipRepository.cs` — **new interface** (does not exist yet): `AddAsync`, `DeleteAsync`, `GetForPersonAsync`, `GetForMarriageAsync`. Implemented in `Demo/Storage/` now and in `Infrastructure/` during Phase 3.
-- `Application/Services/MarriageService.cs` — self-reference check, active-duplicate check, overlap warning (non-blocking), end-after-start validation, `SuggestEndDateFromSpouseDeathAsync` (US-026)
-- `Application/Services/StepparentService.cs` — validates the marriage involves a parent of the stepchild; prevents duplicate labels
-- Profile: "Marriages / Partnerships" (spouse chip, dates, end-reason badge, ongoing highlighted) and "Stepchildren"; "Label as Stepparent" action on a child's profile
-- `AddRelationshipDialog` step 3 extended: start/end dates, location, end reason, widowhood auto-fill suggestion
-- Tests: self-reference blocked, active duplicate blocked, overlap warning, widowhood auto-fill, stepparent marriage validation
+### PR 10 — Full tree view, focus, and phantom nodes
+**Stories:** US-028 – US-031, US-054  
+**Depends on:** PR 3 and PRs 7–9
 
-E2E: a marriage appears on both spouses' profiles with the start date; ending a marriage by death offers and accepts the widowhood suggestion; "Label as Stepparent" puts the child in the stepparent's Stepchildren section.
+- `TreeGraphService` — builds `TreeGraphDto` in **one bulk read**; optional `focusPersonId` and `generationDepth`; nodes carry `IsPhantom`; edges typed and carry certainty
+- `Pages/Tree/TreePage.razor` — view-mode toggle, fit-to-screen, zoom, breadcrumbs, mini-map, empty state, focus in URL query string (US-030)
+- `Pages/Tree/FamilyTreeDiagram.razor` — five edge styles, legend, hatched phantom nodes
+- `Shared/IdentifyPhantomDialog.razor` (US-054)
 
-#### PR 9 — Full tree view, focus, and phantom nodes
-**Stories:** US-028, US-029, US-030, US-031, US-054  
-**Depends on:** PR 3 (ADR-005 decided) and PRs 6–8
+E2E: expected node count and one edge of each style; node click opens the panel; empty state instead of a blank canvas; phantom identify flow; baseline screenshot for visual regression.
 
-- `Application/Services/TreeGraphService.cs` — builds `TreeGraphDto` (nodes + edges); optional `focusPersonId` and `generationDepth`; nodes carry `IsPhantom`; edges typed Biological / Adoptive / Marriage / Stepparent and carry certainty
-- `Application/Common/TreeGraphDto.cs`, `PersonNodeDto.cs`, `RelationshipEdgeDto.cs`
-- `Pages/Tree/TreePage.razor` — diagram host; view-mode toggle (Explore/Pedigree/Descendants); fit-to-screen and zoom overlay; breadcrumb trail; mini-map; empty state (US-052); focus in the URL query string for back/forward (US-030)
-- `Pages/Tree/FamilyTreeDiagram.razor` — five edge styles; legend; phantom nodes hatched with dashed border and "?" avatar; node click opens the profile panel
-- `Shared/IdentifyPhantomDialog.razor` — search existing or create new; replaces the phantom (US-054)
-- Tests: empty → empty graph; node/edge counts; edge types; phantom included; focus with depth 1 returns immediate family only; speculative edge flagged
+### PR 11 — Pedigree and descendant charts
+**Stories:** US-032, US-033
 
-E2E: seeded tree renders the expected node count and at least one edge of each style; node click opens the panel; empty DB shows the empty state rather than a blank canvas; identifying a phantom re-renders it without phantom styling; baseline screenshot captured for visual regression.
+Ahnentafel pedigree (4 generations, unknown slots as nulls) and descendant chart (bio + adoptive with edge type), both left-to-right / top-down per the design.
 
-#### PR 10 — Pedigree and descendant charts
-**Stories:** US-032, US-033  
-**Depends on:** PR 9
+### PR 12 — Search and browse
+**Stories:** US-034, US-035, US-036
 
-- `Application/Services/PedigreeChartService.cs` — ancestors only, 4 generations, Ahnentafel positions, unknown slots as nulls
-- `Application/Services/DescendantChartService.cs` — descendants 4 generations, bio + adoptive children with edge type
-- `Pages/Tree/PedigreeChartPage.razor` (left-to-right) and `Pages/Tree/DescendantChartPage.razor` (top-down); name, birth year, death year per box; click opens the profile panel
-- Tests: generation counts, unknown parent slots null, adoptive children included
+`PersonSearchService` (case-insensitive partial match, year-range filters, phantoms excluded), `GlobalSearchBar` in the top bar with 300ms debounce, and `PeopleListPage` extended with sorting, pagination, and filters.
 
-E2E: two known parents and two unknown grandparents render empty boxes in the correct Ahnentafel positions; a descendant chart shows one bio and one adoptive child with their edge labels; clicking a box opens the panel.
+### PR 13 — Undo and certainty UI
+**Stories:** US-046, US-055, plus UI surfacing for US-038, US-040, US-042
 
-#### PR 11 — Search and browse
-**Stories:** US-034, US-035, US-036  
-**Depends on:** PR 4
+`UndoService` storing the last relationship mutation, cleared on person edit/delete; `UndoButton` in the top bar; certainty segmented control with lighter strokes and badges for Likely/Speculative.
 
-- `Application/Services/PersonSearchService.cs` — case-insensitive partial match on first + last name; birth/death year range filters; excludes phantom persons; sorted by last name
-- `Layout/GlobalSearchBar.razor` — into the top bar; 300ms debounce; dropdown of `PersonChip` results with years; "No match — Add a new person?" opens `QuickAddPersonPopover` pre-filled
-- Extend `PeopleListPage` — sortable columns, pagination (20/page), name filter, year-range inputs, result count
-- Tests: partial match, case-insensitivity, birth-year filter, combined filters, phantoms excluded, empty tree
+### PR 14 — Profile photos
+**Stories:** US-005  
+**Requires:** `docs/decisions/ADR-006-photo-crop.md` spike
 
-E2E: partial name shows matching results after debounce; no-match link opens the popover pre-filled; a birth-year range narrows the list and updates the count.
+Back in scope because IndexedDB stores blobs. Circular crop dialog per the design (drag to reposition, scroll to zoom, zoom slider); JPEG/PNG/WebP; photos stored as blobs keyed by person id; included in export.
 
-#### PR 12 — Undo and certainty UI
-**Stories:** US-046, US-055, plus UI surfacing for US-038, US-040, US-042  
-**Depends on:** PR 8
+### PR 15 — GEDCOM and print-to-PDF
+**Stories:** US-050, plus GEDCOM in US-048/049
 
-- `Application/Services/UndoService.cs` — scoped; stores the last relationship mutation as `IUndoableAction`; cleared on person edit/delete; covers add/remove for bio, adoptive, and marriage
-- `Layout/UndoButton.razor` — into the top bar; enabled only when an undoable action exists
-- Certainty UI: segmented control in dialog step 3 (Confirmed/Likely/Speculative); Likely and Speculative render with lighter strokes and a certainty badge on chips
-- Tests: add-then-undo removes; remove-then-undo restores; second undo unavailable; undo cleared by person edit; badge shown for non-Confirmed
+- GEDCOM 5.5.5 INDI + FAM export and basic import, extending PR 5
+- Print stylesheet for profile and tree, driving browser print-to-PDF via `window.print()` — no server-side PDF library needed
 
-E2E: adding a parent enables Undo, clicking it removes the chip and disables the button; editing a person disables Undo even after a relationship change; a Speculative relationship renders the badge and a lighter tree edge.
+### PR 16 — Feedback hardening
+**Stories:** determined by feedback
 
-#### PR 13 — Export and import (client-side)
-**Stories:** US-048, US-049  
-**Depends on:** PRs 4–8
-
-- `Application/Services/ExportService.cs` — `ExportToJsonAsync()` and `ExportToGedcomAsync()` (GEDCOM 5.5.5 INDI + FAM); phantom persons excluded
-- `Application/Services/ImportService.cs` — JSON and basic GEDCOM; `ImportConflictResolution` enum (Skip/Overwrite/Merge); returns `ImportResultDto`
-- `Pages/Export/ExportPage.razor`, `Pages/Import/ImportPage.razor` — two-column layout per the design; download via JS interop; upload via `InputFile`; preview pane; conflict radios; progress; summary report
-- Tests: JSON round-trip fidelity, GEDCOM INDI records, partial dates preserved, phantoms excluded, Skip vs Overwrite behaviour
-
-E2E: Playwright captures the JSON download, parses it, asserts seeded persons present; a fixture import with Skip produces the expected summary counts and updates the People list.
-
-Doubles as the tester feedback channel — testers export and send their file.
-
-#### PR 14 — Feedback hardening
-**Stories:** determined by feedback  
-**Depends on:** PRs 4–13 deployed and exercised by testers
-
-Deliberately reserved and left unplanned. The point of the demo is to learn things not currently known; this is where that gets absorbed before backend work locks behaviour in.
-
-### Phase 3 — Backend convergence
-
-Not blocking the demo. Runs once feedback has settled the interaction design.
-
-#### PR 15 — EF repositories and infrastructure parity
-Bring `FamilyTree.Infrastructure` up to the interface set the demo proved out: the four repository implementations from PR #65 plus `StepparentRelationshipRepository` from PR 8, and a migration for any schema change the demo surfaced. Verify the flat browser records and the EF configurations still describe the same shapes.
-
-#### PR 16 — Host decision and ADR-008
-Decide Blazor Server versus WebAssembly-plus-API, using what the demo taught: real tree sizes, whether layout needs server-side computation, whether offline use matters, measured first-load payload on testers' actual devices. Record as `ADR-008-production-host.md`. Wire the winning host to `FamilyTree.UI` — which requires no component changes if the portability rules held.
-
-#### PR 17 — Deferred features
-US-005 (photo upload, needs `ADR-006-photo-storage-and-crop.md`) and US-050 (PDF, needs `ADR-007-pdf-generation.md`). Both depend on the host decision.
+Deliberately reserved and unplanned. The point of shipping early is to learn things not currently known; this is where that gets absorbed.
 
 ---
 
 ## Dependency Graph
 
 ```
-PR #65 (merge: EF repos + infra tests)
-  └─ PR 1 (RCL split + WASM demo host + GH Pages CI)   ← demo URL live
-       ├─ PR 2 (Application services + localStorage store + sample data)
-       │    ├─ PR 4 (Person CRUD + PersonChip + QuickAdd)
-       │    │    ├─ PR 5 (PartialDate input)
-       │    │    ├─ PR 11 (search + browse)
-       │    │    └─ PR 6 (bio relationships + AddRelationshipDialog)
-       │    │         └─ PR 7 (adoptive)
-       │    │              └─ PR 8 (marriage + stepparent)
-       │    │                   ├─ PR 12 (undo + certainty UI)
-       │    │                   └─ PR 13 (export/import)
-       │    └─ (CircularReferenceChecker feeds PR 6)
-       └─ PR 3 (viz spike → ADR-005) ── parallel with PRs 4–8
-            └─ PR 9 (tree + focus + phantom)  ← also needs PRs 6–8
-                 └─ PR 10 (pedigree + descendant)
+PR 1 (RCL + WASM app + GH Pages CI)   ← live URL
+  ├─ PR 2 (Application services + IndexedDB + sample data)
+  │    └─ PR 4 (Person CRUD + shared components)
+  │         ├─ PR 5 (export/import — durability baseline)
+  │         ├─ PR 6 (PartialDate input)
+  │         ├─ PR 12 (search + browse)
+  │         └─ PR 7 (bio relationships + AddRelationshipDialog)
+  │              └─ PR 8 (adoptive)
+  │                   └─ PR 9 (marriage + stepparent)
+  │                        ├─ PR 13 (undo + certainty UI)
+  │                        └─ PR 10 (tree) ← also needs PR 3
+  │                                  └─ PR 11 (pedigree + descendant)
+  └─ PR 3 (viz spike → ADR-005) ── parallel with PRs 4–9
 
-PR 14 (feedback hardening) ← after 4–13 are deployed
-
-Phase 3: PR 15 (EF parity) → PR 16 (host decision, ADR-008) → PR 17 (photos, PDF)
+PR 14 (photos, ADR-006) and PR 15 (GEDCOM + print PDF) after PR 5
+PR 16 (feedback hardening) after the rest is deployed
 ```
 
 ---
 
 ## ADR Ledger
 
-ADR-004 took the number previously reserved for the photo-crop spike, so the pending spikes are renumbered.
-
 | ADR | Status | Topic |
 |-----|--------|-------|
 | ADR-001 | Decided | Storage-agnostic domain design |
 | ADR-002 | Decided | PartialDate value object |
 | ADR-003 | Decided | Separate tables per relationship type |
-| ADR-004 | Decided | Demo-first delivery on Blazor WASM with a shared UI library |
-| ADR-005 | PR 3 spike | Tree visualization library (DAG, 5 edge styles, phantom nodes, mini-map, **WASM-compatible**) |
-| ADR-006 | PR 17 | Photo storage and crop |
-| ADR-007 | PR 17 | PDF generation |
-| ADR-008 | PR 16 | Production host: Blazor Server vs WASM + API |
+| ADR-004 | Decided | Client-only Blazor WASM with local-first storage |
+| ADR-005 | PR 3 spike | Tree visualization library (DAG, 5 edge styles, phantom nodes, WASM-compatible) |
+| ADR-006 | PR 14 spike | Photo crop approach (circular mask, drag + zoom) |
+
+ADR-004 resolved the production-host question outright, so no host ADR is needed. PDF is handled by a print stylesheet rather than a library, so no PDF ADR is needed.
 
 ---
 
 ## Cross-Cutting Requirements (Every PR)
 
-- Tests in the matching project (`Domain.Tests`, `Application.Tests`, `UI.Tests`, `Infrastructure.Tests`, `Demo.E2E.Tests`)
-- Every PR shipping UI adds at least one Playwright test against the published demo; bUnit alone is not sufficient for UI work
-- **Every PR shipping UI is reviewed against the Host-Portability Rules above**
-- All service methods return `Result<T>` — no exceptions for business rules
+- Tests in the matching project (`Domain.Tests`, `Application.Tests`, `Storage.Tests`, `UI.Tests`, `E2E.Tests`)
+- Every PR shipping UI adds at least one Playwright test against the published site; bUnit alone is not sufficient
+- **Every PR is reviewed against the API-Seam Discipline and Durability Requirements above**
+- Any PR adding a persisted shape extends export coverage and bumps `schemaVersion` in the same PR
 - UI never references domain entities directly; DTOs only
-- Any change to a persisted shape updates **both** the browser flat records and the EF configurations, and bumps `schemaVersion`
 - Phantom persons (`IsPhantom = true`) are excluded from all lists, search results, and exports — visible only in the tree and the Identify dialog
 - Certainty defaults to `Confirmed`; Likely and Speculative are visually indicated everywhere relationships appear
 - Branch naming: `claude/<short-kebab-description>-<4-char-suffix>` per CLAUDE.md
