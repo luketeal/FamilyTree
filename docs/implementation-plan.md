@@ -28,9 +28,13 @@ tests/
   FamilyTree.UI.Tests/              new — bUnit component tests; host-agnostic
   FamilyTree.Infrastructure.Tests/  from PR #65 — EF repository tests
   FamilyTree.Demo.E2E.Tests/        new — Playwright against the published static demo
+  FamilyTree.Web.E2E.Tests/         from PR #65 — Playwright against the Blazor Server host;
+                                    retained as the host-portability canary (see below)
 ```
 
 `FamilyTree.Web` and `FamilyTree.Infrastructure` stay in the solution and stay green, but no demo-phase PR depends on them. They are the on-ramp for the Blazor Server path if it wins.
+
+**The parked Server host is the portability canary.** The rules above fail silently — a component using synchronous JS interop or server-only DI works perfectly in the WASM demo and breaks only when Blazor Server is wired up, potentially months later. Keeping `FamilyTree.Web` compiling against `FamilyTree.UI` turns a whole class of those violations into build errors, and `FamilyTree.Web.E2E.Tests` (already green, ~14s) proves the shared shell still renders under a real Server circuit. This is the only automated enforcement of the portability discipline, so both projects are kept and kept green rather than retired.
 
 ---
 
@@ -106,6 +110,8 @@ Export and import (US-048, US-049) **stay in the demo** — JSON and GEDCOM are 
 - `.github/workflows/deploy-demo.yml` — the repository's first CI workflow. On push to `main`: `dotnet publish -c Release`, rewrite `<base href>` to `/FamilyTree/`, copy `index.html` to `404.html`, write `.nojekyll`, deploy via `actions/deploy-pages`. Also runs `dotnet test` on every PR.
 - Create `tests/FamilyTree.Demo.E2E.Tests/` — xUnit + `Microsoft.Playwright` against the published static output (no host fixture needed; simpler than the Blazor Server equivalent). One boot smoke test asserting the left rail and top bar render.
 - Create `tests/FamilyTree.UI.Tests/` — bUnit project, scaffold plus one layout render test.
+- Retarget `FamilyTree.Web` and its existing `Web.E2E.Tests` boot smoke test at the RCL shell, so both hosts render the same components and the portability canary starts working immediately.
+- Resolve the `SQLitePCLRaw.lib.e_sqlite3` 2.1.11 advisory (GHSA-2m69-gcr7-jv3q, high severity), inherited transitively from `Microsoft.EntityFrameworkCore.Sqlite` 10.0.7 and present on `main` today. Pin a patched `SQLitePCLRaw.bundle_e_sqlite3` or bump EF Core, and confirm the build is warning-free. Blocks nothing in the demo (which has no SQLite), but the foundation PR is the right place to clear it.
 
 **Outcome: a live demo URL exists.** Shell only, no data yet.
 
