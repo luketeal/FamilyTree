@@ -44,7 +44,20 @@ jobs:
         run: pwsh tests/FamilyTree.E2E.Tests/bin/Release/net10.0/playwright.ps1 install --with-deps chromium
 
       - name: End-to-end tests
+        env:
+          FAMILYTREE_SCREENSHOT_DIR: ${{ github.workspace }}/screenshots
         run: dotnet test tests/FamilyTree.E2E.Tests -c Release --no-build --verbosity normal
+
+      # Screenshots are a visual record for review, not a gate: assertions
+      # confirm elements exist and are wired up, these show whether the page
+      # actually looks right. Uploaded even on failure, when they help most.
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: shell-screenshots
+          path: screenshots/
+          if-no-files-found: warn
 
       - name: Publish
         run: dotnet publish src/FamilyTree.App/FamilyTree.App.csproj -c Release -o publish
