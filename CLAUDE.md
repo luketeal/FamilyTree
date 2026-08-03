@@ -1,7 +1,16 @@
 # FamilyTree — Claude Instructions
 
 ## Project
-Blazor Server family tree app. Tech stack: Blazor Server (UI + real-time), ASP.NET Core (backend), Entity Framework Core (ORM), SQLite.
+Blazor family tree app, currently in a demo-first phase (see `docs/decisions/ADR-004-demo-first-wasm-delivery.md` and `docs/implementation-plan.md`).
+
+Tech stack: Blazor WebAssembly (demo host, deployed to GitHub Pages, data in browser localStorage), a shared host-agnostic Razor Class Library holding all UI, ASP.NET Core + Entity Framework Core + SQLite for the persistent backend.
+
+**The production host is deliberately undecided** — either Blazor Server or WebAssembly plus a JSON API. Until that is settled (ADR-008), every component in `FamilyTree.UI` must stay host-portable:
+- JS interop via `IJSRuntime` async only — never `IJSInProcessRuntime`
+- No `HttpContext`, `IHttpContextAccessor`, or server-only DI
+- No direct `System.IO` access; no synchronous blocking (`.Result`, `.Wait()`)
+- No multi-threading assumptions — WASM is single-threaded
+- Data access only through `FamilyTree.Domain` repository interfaces
 
 ## Branch Naming
 Always use: `claude/<short-kebab-description>-<4-char-random-suffix>`

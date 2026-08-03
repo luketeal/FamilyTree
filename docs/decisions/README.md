@@ -41,3 +41,4 @@ What does this decision make easier? What does it make harder or foreclose?
 | [ADR-001](ADR-001-storage-agnostic-design.md) | Storage-agnostic domain design | Decided |
 | [ADR-002](ADR-002-partial-date-value-object.md) | PartialDate value object for approximate and partial dates | Decided |
 | [ADR-003](ADR-003-relationship-schema.md) | Separate tables per relationship type | Decided |
+| [ADR-004](ADR-004-demo-first-wasm-delivery.md) | Demo-first delivery on Blazor WebAssembly with a shared UI library | Decided |
