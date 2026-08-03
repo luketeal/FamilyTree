@@ -68,6 +68,32 @@ public class ShellLayoutTests(StaticSiteFixture fixture)
         Assert.Equal("none", outline);
     }
 
+    // The pre-boot loading indicator is the first thing every visitor sees, for
+    // the whole multi-megabyte download. Its rules live in the global stylesheet
+    // rather than a component, so nothing else covers them: unstyled, the SVG
+    // falls back to a 300x150 box with fill: black.
+    [Fact]
+    public async Task PreBootLoadingIndicator_IsStyled()
+    {
+        var page = await fixture.Browser.NewPageAsync(new BrowserNewPageOptions
+        {
+            ViewportSize = new ViewportSize { Width = 1440, Height = 900 },
+        });
+
+        // Never let the runtime load, so the pre-boot markup stays on screen.
+        await page.RouteAsync("**/_framework/dotnet*.js", route => route.AbortAsync());
+        await page.GotoAsync(fixture.BaseUrl);
+        await page.Locator(".loading-progress").WaitForAsync();
+
+        var svgWidth = await page.Locator(".loading-progress")
+            .EvaluateAsync<string>("el => getComputedStyle(el).width");
+        var circleFill = await page.Locator(".loading-progress circle").First
+            .EvaluateAsync<string>("el => getComputedStyle(el).fill");
+
+        Assert.NotEqual("300px", svgWidth);
+        Assert.Equal("none", circleFill);
+    }
+
     // Blazor reveals this banner by setting display: block when an unhandled
     // exception reaches the renderer, so it must be hidden by default. It is
     // not part of any component, so no component test covers it.
@@ -79,16 +105,25 @@ public class ShellLayoutTests(StaticSiteFixture fixture)
         await Assertions.Expect(page.Locator("#blazor-error-ui")).ToBeHiddenAsync();
     }
 
+    // Both axes: an earlier horizontal-only version passed while the content
+    // area overflowed vertically by 37px on a phone, because the home page
+    // recomputed its own height from desktop padding and ignored the bottom rail.
     [Theory]
     [InlineData(390)]
     [InlineData(768)]
     [InlineData(1440)]
-    public async Task Shell_DoesNotScrollHorizontally(int width)
+    public async Task Shell_DoesNotScroll(int width)
     {
         var page = await OpenAsync(width, 844);
 
-        var overflowBy = await page.EvaluateAsync<double>(
-            "() => document.documentElement.scrollWidth - document.documentElement.clientWidth");
+        var overflowBy = await page.EvaluateAsync<double>(@"() => {
+            const de = document.documentElement;
+            const scrollers = [de, ...document.querySelectorAll('.shell__content, .home')];
+            return Math.max(...scrollers.flatMap(el => [
+                el.scrollWidth - el.clientWidth,
+                el.scrollHeight - el.clientHeight,
+            ]));
+        }");
 
         // Naming the widest offender turns a failure that needs a debugging
         // session into one that points straight at the selector to fix.
@@ -108,7 +143,7 @@ public class ShellLayoutTests(StaticSiteFixture fixture)
         }");
 
         Assert.True(overflowBy <= 0,
-            $"Page scrolls horizontally by {overflowBy}px at {width}px wide. Widest offender: {offender}");
+            $"Page scrolls by {overflowBy}px at {width}x844. Widest horizontal offender: {offender}");
     }
 
     [Fact]

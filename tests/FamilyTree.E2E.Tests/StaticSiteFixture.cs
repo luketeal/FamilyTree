@@ -24,6 +24,9 @@ public sealed class StaticSiteFixture : IAsyncLifetime
 
     public string BaseUrl { get; private set; } = string.Empty;
 
+    /// <summary>Published wwwroot on disk, for tests that inspect build output.</summary>
+    public string PublishedRoot => _rootDirectory;
+
     public async Task InitializeAsync()
     {
         _rootDirectory = PublishApp();
@@ -67,12 +70,12 @@ public sealed class StaticSiteFixture : IAsyncLifetime
     private static string PublishApp()
     {
         var repoRoot = FindRepositoryRoot();
-        var output = Path.Combine(Path.GetTempPath(), "familytree-e2e-publish");
 
-        if (Directory.Exists(output))
-        {
-            Directory.Delete(output, recursive: true);
-        }
+        // Unique per run: a fixed path means two concurrent runs delete each
+        // other's publish output mid-test.
+        var output = Path.Combine(
+            Path.GetTempPath(),
+            $"familytree-e2e-publish-{Guid.NewGuid():N}");
 
         var project = Path.Combine(repoRoot, "src", "FamilyTree.App", "FamilyTree.App.csproj");
         var psi = new ProcessStartInfo("dotnet")
@@ -104,8 +107,19 @@ public sealed class StaticSiteFixture : IAsyncLifetime
     private static void ApplyGitHubPagesTransforms(string root)
     {
         var indexPath = Path.Combine(root, "index.html");
-        var html = File.ReadAllText(indexPath)
-            .Replace("<base href=\"/\" />", $"<base href=\"{BasePath}\" />");
+        var original = File.ReadAllText(indexPath);
+        var html = original.Replace("<base href=\"/\" />", $"<base href=\"{BasePath}\" />");
+
+        // string.Replace silently no-ops when the pattern is absent, which would
+        // leave the suite testing a root-hosted site while claiming to cover the
+        // subpath deployment. The deploy workflow guards its equivalent sed with
+        // grep -q; this is the same guard.
+        if (ReferenceEquals(html, original) || html == original)
+        {
+            throw new InvalidOperationException(
+                "base href rewrite matched nothing — the published index.html shape changed. " +
+                "Update both this fixture and the sed in .github/workflows/deploy.yml.");
+        }
 
         File.WriteAllText(indexPath, html);
         File.WriteAllText(Path.Combine(root, "404.html"), html);
@@ -158,6 +172,21 @@ public sealed class StaticSiteFixture : IAsyncLifetime
             catch (HttpListenerException)
             {
                 // Client disconnected mid-response; nothing to recover.
+            }
+            catch (Exception ex)
+            {
+                // Anything escaping here would otherwise unwind the accept loop
+                // and kill the server for the rest of the run, so every later
+                // test fails with an opaque navigation timeout instead of this.
+                Console.Error.WriteLine($"StaticSiteFixture failed to serve a request: {ex}");
+                try
+                {
+                    context.Response.StatusCode = 500;
+                }
+                catch (ObjectDisposedException)
+                {
+                    // Response already closed; nothing further to report.
+                }
             }
             finally
             {

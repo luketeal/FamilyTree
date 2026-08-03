@@ -1,8 +1,12 @@
+/* The parent .shell__content is already sized by the shell grid, so fill it
+   rather than recomputing its height. The previous calc() subtracted the
+   desktop padding and never accounted for the mobile bottom rail, which
+   overflowed the content area by 37px at 390x844. */
 .home {
     display: flex;
     align-items: center;
     justify-content: center;
-    min-height: calc(100vh - var(--topbar-height) - 48px);
+    min-height: 100%;
 }
 
 .home__empty {

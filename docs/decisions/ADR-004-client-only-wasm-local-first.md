@@ -26,14 +26,9 @@ Delivery is inverted from the original plan: UI ships first and continuously, so
 
 **The swap to a server backend is preserved as a seam, not built.** All data access goes through the existing `FamilyTree.Domain` repository interfaces, per ADR-001. The IndexedDB implementations live in `FamilyTree.Storage.Browser`, named so that a future `FamilyTree.Storage.Api` implementing the same interfaces over `HttpClient` is a DI registration change rather than a restructure. No UI or application code would change.
 
-Consequently, these are **deleted**, not parked:
+Consequently `FamilyTree.Infrastructure` — EF Core, SQLite, the migrations and the entity configurations — is **deleted**, not parked. The schema thinking it encodes is preserved in ADR-003 and recoverable from git history.
 
-- `FamilyTree.Infrastructure` — EF Core, SQLite, migrations, entity configurations
-- `FamilyTree.Infrastructure.Tests`
-- `FamilyTree.Web` — the Blazor Server host
-- `FamilyTree.Web.E2E.Tests`
-
-The schema thinking they encode is preserved in ADR-003 and recoverable from git history.
+The Blazor Server host and its test projects (`FamilyTree.Web`, `FamilyTree.Web.E2E.Tests`, `FamilyTree.Infrastructure.Tests`) are abandoned along with the unmerged PR #65 that introduced them. They never reached `main`, so nothing removes them — they simply are not carried forward.
 
 **Export and import become the durability model,** not a late-stage feature. See Consequences.
 

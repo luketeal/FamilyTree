@@ -267,3 +267,45 @@ p {
     color: var(--err);
     text-decoration: underline;
 }
+
+/* Pre-boot loading indicator. Blazor drives these via --blazor-load-percentage
+   while the runtime downloads, then replaces the whole #app content. The
+   framework templates ship these rules in their own stylesheet; this app
+   replaced that file wholesale, so without them the SVG falls back to its
+   default 300x150 box with fill: black — a clipped black shape in the corner
+   for the entire multi-megabyte first load. */
+.loading-progress {
+    position: relative;
+    display: block;
+    width: 6rem;
+    height: 6rem;
+    margin: 22vh auto 0 auto;
+}
+
+.loading-progress circle {
+    fill: none;
+    stroke: var(--line);
+    stroke-width: 0.4rem;
+    transform-origin: 50% 50%;
+    transform: rotate(-90deg);
+}
+
+.loading-progress circle:last-child {
+    stroke: var(--coral);
+    stroke-dasharray: calc(3.141 * var(--blazor-load-percentage, 0%) * 0.8), 500%;
+    transition: stroke-dasharray 0.05s ease-in-out;
+}
+
+.loading-progress-text {
+    position: absolute;
+    /* Below the ring, not inside it: the ring starts at 22vh and is 6rem tall. */
+    inset: calc(22vh + 6rem + 0.75rem) 0 auto 0;
+    text-align: center;
+    font-family: var(--font-ui);
+    font-size: 13px;
+    color: var(--ink3);
+}
+
+.loading-progress-text:after {
+    content: var(--blazor-load-percentage-text, "Loading FamilyTree…");
+}
