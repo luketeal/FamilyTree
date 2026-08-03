@@ -36,10 +36,22 @@
     --err: #a8412a;
     --err-bg: #f6e3da;
 
-    /* Type stacks */
-    --font-ui: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-    --font-serif: "Source Serif 4", "Source Serif Pro", Georgia, serif;
-    --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Consolas, monospace;
+    /* Type stacks. The webfonts are fetched from a third party, so they are
+       absent whenever the app is offline or the request is blocked — the
+       fallbacks are a normal rendering path, not an edge case. Each stack
+       degrades through the closest system equivalents before reaching a
+       generic family. */
+    --font-ui: "Inter", system-ui, -apple-system, "Segoe UI Variable Text", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+
+    /* ui-serif resolves to New York on Apple platforms, and Charter and Cambria
+       are transitional serifs in the same lineage as Source Serif. Georgia is a
+       much heavier design with a larger x-height, so it is the wide net rather
+       than the first choice it used to be. */
+    --font-serif: "Source Serif 4", "Source Serif Pro", ui-serif, Charter, "Bitstream Charter", Cambria, Georgia, serif;
+
+    /* Cascadia Mono ships with Windows 11 and is far closer to JetBrains Mono
+       than Consolas; DejaVu Sans Mono covers most Linux desktops. */
+    --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", "Cascadia Mono", Consolas, "DejaVu Sans Mono", monospace;
 
     /* Effects */
     --shadow-card: 0 1px 2px rgba(28, 26, 23, 0.04), 0 4px 16px rgba(28, 26, 23, 0.05);
