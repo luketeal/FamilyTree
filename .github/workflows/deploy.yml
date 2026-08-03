@@ -11,9 +11,11 @@ env:
   DOTNET_NOLOGO: true
   DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
 
+# Pages has a single deployment target, so every run shares one queue rather
+# than one per ref: two refs deploying concurrently would race for the site.
 concurrency:
-  group: pages-${{ github.ref }}
-  cancel-in-progress: true
+  group: github-pages
+  cancel-in-progress: false
 
 jobs:
   build:
@@ -65,8 +67,12 @@ jobs:
         with:
           path: publish/wwwroot
 
+  # A pull request from a branch in this repository is already covered by the
+  # push run for that same branch, so deploying here too would double-deploy
+  # the same commit.
   deploy:
     needs: build
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     permissions:
       pages: write
