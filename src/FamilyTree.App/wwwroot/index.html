@@ -8,10 +8,11 @@
     <!-- Rewritten to the repository subpath by the GitHub Pages deploy workflow. -->
     <base href="/" />
     <link rel="preload" id="webassembly" />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link rel="stylesheet"
-          href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&family=JetBrains+Mono:wght@400;500&display=swap" />
+    <!-- Fonts are self-hosted and declared in tokens.css; this app makes no
+         third-party requests. Preloaded because they are render-blocking for
+         the shell and the stylesheet only discovers them after it parses. -->
+    <link rel="preload" href="_content/FamilyTree.UI/fonts/inter-latin-variable.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="_content/FamilyTree.UI/fonts/source-serif-4-latin-variable.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="stylesheet" href="_content/FamilyTree.UI/css/tokens.css" />
     <link rel="stylesheet" href="_content/FamilyTree.UI/css/app.css" />
     <link rel="icon" type="image/png" href="favicon.png" />

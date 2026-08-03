@@ -15,6 +15,58 @@ public class BootSmokeTests(StaticSiteFixture fixture)
         return page;
     }
 
+    // ADR-004 claims the app works offline and that nothing leaves the browser.
+    // A single third-party asset — a webfont, an analytics script, a CDN
+    // library — breaks both claims silently, so assert on it rather than
+    // relying on review to notice one being added.
+    [Fact]
+    public async Task Application_MakesNoThirdPartyRequests()
+    {
+        var page = await fixture.Browser.NewPageAsync();
+        var external = new List<string>();
+
+        page.Request += (_, request) =>
+        {
+            if (!request.Url.StartsWith(fixture.BaseUrl.Split("/FamilyTree/")[0], StringComparison.Ordinal))
+            {
+                external.Add(request.Url);
+            }
+        };
+
+        await page.GotoAsync(fixture.BaseUrl, new PageGotoOptions
+        {
+            WaitUntil = WaitUntilState.NetworkIdle,
+        });
+
+        Assert.True(
+            external.Count == 0,
+            $"App requested {external.Count} third-party asset(s): {string.Join(", ", external)}");
+    }
+
+    [Fact]
+    public async Task SelfHostedFonts_AreActuallyApplied()
+    {
+        var page = await fixture.Browser.NewPageAsync();
+        await page.GotoAsync(fixture.BaseUrl, new PageGotoOptions
+        {
+            WaitUntil = WaitUntilState.NetworkIdle,
+        });
+
+        // document.fonts only reports faces the browser successfully loaded, so
+        // this fails if a woff2 is missing or the @font-face path is wrong —
+        // which would otherwise degrade silently to a system font. Family names
+        // come back as authored, quotes included, so normalise before comparing.
+        var loaded = await page.EvaluateAsync<string[]>(@"async () => {
+            await document.fonts.ready;
+            return [...document.fonts]
+                .filter(f => f.status === 'loaded')
+                .map(f => f.family.replace(/^[""']|[""']$/g, ''));
+        }");
+
+        Assert.True(loaded.Contains("Inter"), $"Inter not loaded. Loaded faces: [{string.Join(", ", loaded)}]");
+        Assert.True(loaded.Contains("Source Serif 4"), $"Source Serif 4 not loaded. Loaded faces: [{string.Join(", ", loaded)}]");
+    }
+
     [Fact]
     public async Task Application_BootsAndRendersTheShell()
     {

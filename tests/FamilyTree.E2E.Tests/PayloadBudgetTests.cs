@@ -16,22 +16,39 @@ public class PayloadBudgetTests(StaticSiteFixture fixture)
     [Fact]
     public void CompressedFirstLoad_StaysWithinBudget()
     {
-        var framework = Path.Combine(fixture.PublishedRoot, "_framework");
-        Assert.True(Directory.Exists(framework), $"No published _framework at {framework}");
+        var root = fixture.PublishedRoot;
+        Assert.True(Directory.Exists(root), $"No published output at {root}");
 
-        // Brotli is what a browser negotiates for these assets, so it is the
-        // number that matters rather than the size on disk.
-        var compressed = Directory
-            .EnumerateFiles(framework, "*.br", SearchOption.AllDirectories)
-            .Sum(f => new FileInfo(f).Length);
+        // Everything the browser fetches, not just the framework: self-hosted
+        // fonts and stylesheets are part of first load too. Count the brotli
+        // variant where one exists, since that is what gets negotiated, and the
+        // raw file otherwise. 404.html is excluded as a duplicate of index.html
+        // that no single visit downloads alongside it.
+        var assets = Directory
+            .EnumerateFiles(root, "*", SearchOption.AllDirectories)
+            .Where(f => !f.EndsWith(".br", StringComparison.Ordinal))
+            .Where(f => !f.EndsWith(".gz", StringComparison.Ordinal))
+            .Where(f => Path.GetFileName(f) != "404.html")
+            .ToArray();
+
+        Assert.NotEmpty(assets);
+
+        var total = assets.Sum(f =>
+        {
+            var brotli = new FileInfo(f + ".br");
+            return brotli.Exists ? brotli.Length : new FileInfo(f).Length;
+        });
+
+        var largest = assets
+            .Select(f => (Name: Path.GetRelativePath(root, f),
+                          Size: File.Exists(f + ".br") ? new FileInfo(f + ".br").Length : new FileInfo(f).Length))
+            .OrderByDescending(a => a.Size)
+            .Take(3)
+            .Select(a => $"{a.Name} {a.Size / 1000}kB");
 
         Assert.True(
-            compressed > 0,
-            "Found no .br assets — publish compression changed, so this budget is no longer measuring anything.");
-
-        Assert.True(
-            compressed <= BudgetBytes,
-            $"Compressed first-load payload is {compressed / 1_000_000.0:F2} MB, over the " +
-            $"{BudgetBytes / 1_000_000.0:F2} MB budget. Either trim it or raise the budget deliberately.");
+            total <= BudgetBytes,
+            $"First-load payload is {total / 1_000_000.0:F2} MB, over the {BudgetBytes / 1_000_000.0:F2} MB " +
+            $"budget. Largest: {string.Join(", ", largest)}. Either trim it or raise the budget deliberately.");
     }
 }

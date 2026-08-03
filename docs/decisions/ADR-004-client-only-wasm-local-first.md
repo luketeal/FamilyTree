@@ -32,6 +32,8 @@ The Blazor Server host and its test projects (`FamilyTree.Web`, `FamilyTree.Web.
 
 **Export and import become the durability model,** not a late-stage feature. See Consequences.
 
+**No third-party requests.** Typography is self-hosted rather than fetched from Google Fonts: an external stylesheet would contradict both the offline claim and the premise that nothing leaves the browser. Latin subsets in variable form, 204 kB, vendored under `FamilyTree.UI/wwwroot/fonts/` with their OFL licence. An end-to-end test asserts the published site issues no cross-origin request, so this holds by construction rather than by review.
+
 ## Reasoning
 
 **Why client-only over WASM-plus-API.** No story in the backlog needs a server. An API layer would mean designing, versioning, securing, and hosting endpoints, plus adding authentication that the stated scope explicitly excludes, to serve requirements that do not exist. It can be added later behind the existing interfaces if the scope ever grows — which is cheap precisely because ADR-001 put the seam there already.
@@ -49,7 +51,7 @@ The Blazor Server host and its test projects (`FamilyTree.Web`, `FamilyTree.Web.
 **Easier**
 
 - A shareable, always-on URL exists from the first PR, and is the product rather than a throwaway.
-- The application works offline and costs nothing to host, permanently.
+- The application works offline — including its typography — and costs nothing to host, permanently. It makes no third-party requests at all, so nothing about a user's family tree is observable to anyone else, not even as request timing.
 - The tree-visualization spike (ADR-005) moves to the front of the queue, resolving the largest technical unknown early.
 - No API layer, no authentication, no server deployment, no dual-host discipline, no CI matrix.
 - The `SQLitePCLRaw.lib.e_sqlite3` high-severity advisory (GHSA-2m69-gcr7-jv3q), inherited transitively from EF Core Sqlite, leaves the dependency tree with `FamilyTree.Infrastructure`.
