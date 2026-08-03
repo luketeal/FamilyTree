@@ -1,0 +1,37 @@
+@* Top bar (52px). Search, Undo, and Add Person are placeholder markup —
+   wired up in later PRs (12 for search, 13 for Undo, 3 for Add Person). *@
+
+<header class="topbar">
+    <div class="topbar__brand" data-testid="app-logo">
+        <span class="topbar__brand-name">FamilyTree</span>
+        <span class="topbar__stats">0 people · 0 relationships</span>
+    </div>
+
+    <div class="topbar__search">
+        <div class="input topbar__search-input" aria-disabled="true">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+                 stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="11" cy="11" r="7"></circle>
+                <path d="m20 20-3.5-3.5"></path>
+            </svg>
+            <input type="search" placeholder="Search people…" disabled />
+        </div>
+    </div>
+
+    <div class="topbar__actions">
+        <button type="button" class="btn btn--ghost btn--icon" disabled title="Undo (coming in PR 13)" aria-label="Undo">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+                 stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M9 14l-4-4 4-4"></path>
+                <path d="M5 10h9a5 5 0 0 1 5 5v0a5 5 0 0 1-5 5h-3"></path>
+            </svg>
+        </button>
+        <button type="button" class="btn btn--primary" data-testid="add-person-button" disabled>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+                 stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 5v14M5 12h14"></path>
+            </svg>
+            Add person
+        </button>
+    </div>
+</header>

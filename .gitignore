@@ -1,11 +1,7 @@
 ## .NET build outputs
 bin/
 obj/
-
-## EF Core design-time database
-*.db
-*.db-shm
-*.db-wal
+publish/
 
 ## NuGet
 *.nupkg

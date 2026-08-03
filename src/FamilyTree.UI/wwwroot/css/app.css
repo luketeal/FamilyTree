@@ -1,0 +1,228 @@
+/* Base resets and shared primitives.
+   Component-scoped styles live in their .razor.css siblings. */
+
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+}
+
+html,
+body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+}
+
+body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--font-ui);
+    font-size: 13px;
+    line-height: 1.45;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+a {
+    color: var(--ink);
+    text-decoration: none;
+}
+
+a:hover {
+    color: var(--coral);
+}
+
+h1,
+h2,
+h3,
+h4 {
+    font-family: var(--font-serif);
+    color: var(--ink);
+    margin: 0 0 8px;
+    letter-spacing: -0.01em;
+}
+
+p {
+    margin: 0 0 8px;
+    color: var(--ink2);
+}
+
+/* Field label convention (see mid-tokens.jsx Field component). */
+.field-label {
+    font-family: var(--font-ui);
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--ink2);
+    letter-spacing: 0.1px;
+}
+
+.field-label--required::after {
+    content: "*";
+    color: var(--coral);
+    margin-left: 2px;
+}
+
+/* Buttons. */
+.btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 7px 14px;
+    height: 32px;
+    font-family: var(--font-ui);
+    font-size: 13px;
+    font-weight: 500;
+    letter-spacing: -0.05px;
+    background: var(--paper);
+    color: var(--ink);
+    border: 1px solid var(--line2);
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.12s, border-color 0.12s;
+}
+
+.btn:hover:not(:disabled) {
+    background: var(--paper2);
+}
+
+.btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.45;
+}
+
+.btn--primary {
+    background: var(--coral);
+    color: #fff;
+    border-color: var(--coral);
+}
+
+.btn--primary:hover:not(:disabled) {
+    background: var(--coral-hov);
+    border-color: var(--coral-hov);
+}
+
+.btn--secondary {
+    background: var(--paper);
+    color: var(--ink);
+    border-color: var(--line2);
+}
+
+.btn--ghost {
+    background: transparent;
+    color: var(--ink2);
+    border-color: transparent;
+}
+
+.btn--ghost:hover:not(:disabled) {
+    background: var(--paper2);
+}
+
+.btn--destructive {
+    background: var(--paper);
+    color: var(--err);
+    border-color: var(--coral-line);
+}
+
+.btn--destructive:hover:not(:disabled) {
+    background: var(--err-bg);
+}
+
+.btn--teal {
+    background: var(--teal);
+    color: #fff;
+    border-color: var(--teal);
+}
+
+.btn--teal:hover:not(:disabled) {
+    background: #33665a;
+    border-color: #33665a;
+}
+
+.btn--icon {
+    width: 32px;
+    padding: 0;
+    justify-content: center;
+}
+
+/* Tag / badge styles. */
+.badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    height: 20px;
+    padding: 0 8px;
+    font-size: 11px;
+    font-weight: 500;
+    border-radius: 999px;
+    background: var(--paper2);
+    color: var(--ink2);
+    border: 1px solid var(--line);
+}
+
+.badge--coral {
+    background: var(--coral-bg);
+    color: var(--coral);
+    border-color: var(--coral-line);
+}
+
+.badge--teal {
+    background: var(--teal-bg);
+    color: var(--teal);
+    border-color: var(--teal-line);
+}
+
+.badge--ok {
+    background: var(--ok-bg);
+    color: var(--ok);
+    border-color: transparent;
+}
+
+.badge--warn {
+    background: var(--warn-bg);
+    color: var(--warn);
+    border-color: transparent;
+}
+
+.badge--err {
+    background: var(--err-bg);
+    color: var(--err);
+    border-color: transparent;
+}
+
+/* Inputs (placeholder shell only — full component lands in PR 3). */
+.input {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: 34px;
+    padding: 0 10px;
+    background: var(--paper);
+    border: 1px solid var(--line2);
+    border-radius: var(--radius-md);
+    font-family: var(--font-ui);
+    font-size: 13px;
+    color: var(--ink);
+    transition: border-color 0.12s, box-shadow 0.12s;
+}
+
+.input:focus-within {
+    border-color: var(--coral);
+    box-shadow: 0 0 0 3px var(--coral-bg);
+}
+
+.input input {
+    flex: 1;
+    border: 0;
+    outline: 0;
+    background: transparent;
+    font: inherit;
+    color: inherit;
+    min-width: 0;
+}
+
+.input input::placeholder {
+    color: var(--ink4);
+}
