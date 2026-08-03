@@ -60,6 +60,17 @@ The browser is the only copy of the user's data. Genealogy data can represent ye
 
 ---
 
+## Responsive Scope
+
+The mid-fidelity mockups specify a desktop shell only. Rather than invent a mobile design that does not exist yet, the position is:
+
+- **The shell is responsive now.** Below 768px the icon rail becomes a bottom bar and the top bar compacts. Every later page nests inside the shell, so it is the single most expensive thing to retrofit and the cheapest to get right up front.
+- **No fixed pixel widths on containers** in any later PR. Use flex/grid with `max-width`, and remember that a grid item's default `min-width: auto` will refuse to shrink — `minmax(0, 1fr)` is usually what you want.
+- **Every PR checks 390px.** The E2E suite asserts no horizontal scroll at 390/768/1440 and captures both viewports as screenshots, so regressions surface without anyone remembering to look.
+- **Genuinely mobile-specific UX is deferred** until the design exists: the tree canvas on a phone, and the 360px profile panel becoming a bottom sheet. These need design decisions, not media queries, and they cost the same later as now.
+
+The reasoning is that the cost curve is asymmetric. Shell responsiveness is cheap now and expensive later because everything nests in it; touch-first tree interaction is expensive whenever it happens. Testers for a family tree app will open the link on a phone, and the feedback loop is the whole point of shipping UI first — so the shell must not be broken for them.
+
 ## Design System Reference
 
 **Shell**
