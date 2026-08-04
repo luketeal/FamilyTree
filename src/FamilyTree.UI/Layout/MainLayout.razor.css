@@ -1,0 +1,45 @@
+.shell {
+    display: grid;
+    grid-template-columns: var(--rail-width) 1fr;
+    height: 100vh;
+    width: 100%;
+    background: var(--paper);
+}
+
+.shell__main {
+    display: grid;
+    grid-template-rows: var(--topbar-height) 1fr;
+    min-width: 0;
+    min-height: 0;
+}
+
+.shell__content {
+    overflow: auto;
+    padding: 24px;
+    background: var(--paper);
+}
+
+/* Stack to a single column with the rail as a bottom bar. Ordering the rail
+   last in the grid keeps it below the content without changing the markup,
+   so the DOM order still reads rail-then-content for assistive technology. */
+@media (max-width: 768px) {
+    .shell {
+        grid-template-columns: 1fr;
+        grid-template-rows: 1fr auto;
+    }
+
+    /* ::deep for the same reason as in IconRail: the rail is a child
+       component, so this scope's attribute is not on its root element. */
+    .shell ::deep .rail {
+        grid-row: 2;
+    }
+
+    .shell__main {
+        grid-row: 1;
+        min-height: 0;
+    }
+
+    .shell__content {
+        padding: 16px;
+    }
+}

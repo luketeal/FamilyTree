@@ -1,6 +1,6 @@
 # Family Tree App — User Stories
 
-**Tech Stack:** Blazor Server + ASP.NET Core + Entity Framework Core + SQLite (dev) / PostgreSQL (prod)
+**Tech Stack:** Blazor WebAssembly, client-only, local-first storage in the browser (IndexedDB) — no backend. See `docs/decisions/ADR-004-client-only-wasm-local-first.md`.
 **Scope:** Single-user, single tree, no authentication required
 **Relationship types:** Biological, Adoptive, Marriage, Stepparent
 

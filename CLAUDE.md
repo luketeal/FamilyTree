@@ -1,7 +1,79 @@
 # FamilyTree — Claude Instructions
 
 ## Project
-Blazor Server family tree app. Tech stack: Blazor Server (UI + real-time), ASP.NET Core (backend), Entity Framework Core (ORM), SQLite.
+Client-only Blazor WebAssembly family tree app. **There is no backend** — see `docs/decisions/ADR-004-client-only-wasm-local-first.md` and `docs/implementation-plan.md`.
+
+Tech stack: Blazor WebAssembly deployed to GitHub Pages, all data local-first in the browser via IndexedDB, UI in a `FamilyTree.UI` Razor Class Library, business rules in `FamilyTree.Application`, domain model and repository interfaces in `FamilyTree.Domain`.
+
+Do not add EF Core, SQLite, ASP.NET Core hosting, or a server project. They were removed deliberately.
+
+**Keep the API seam intact.** A server backend is not built, but must stay swappable — a future `FamilyTree.Storage.Api` implementing the same repository interfaces over `HttpClient` should be a DI change, nothing more:
+- Data access only through `FamilyTree.Domain` repository interfaces — never touch the store directly from a component
+- **No N+1 access patterns.** Fetch in bulk; never loop a per-id read. Free against IndexedDB, catastrophic over HTTP
+- Mutations that span multiple records go through one repository call so they can map to one request later
+- JS interop via `IJSRuntime` async only; no synchronous blocking (`.Result`, `.Wait()`)
+- No multi-threading assumptions — WASM is single-threaded
+
+**Data durability is a product requirement, not a feature.** The browser is the only copy. Export/import is the backup mechanism; treat anything that risks silent data loss as a bug.
+
+## Development Environment
+
+### Installing the .NET 10 SDK
+
+Sessions usually start without a .NET SDK. Install it before doing anything else — you cannot build, test, or verify without one.
+
+**Preferred: the Ubuntu archive.** On Ubuntu 24.04 (noble) the SDK is packaged in `noble-updates`:
+
+```bash
+sudo apt-get update          # do not skip this
+sudo apt-get install -y dotnet-sdk-10.0
+dotnet --version             # expect 10.0.x
+```
+
+`apt-get update` is not optional. A stale package index resolves to `.deb` files that have already been superseded in the pool, and every download fails with a 404 that looks like the package is missing.
+
+**Other options, if the archive is unavailable:**
+- `https://dot.net/v1/dotnet-install.sh` — the official install script. It downloads binaries from `builds.dotnet.microsoft.com`, which is **often blocked by egress policy** in sandboxed sessions. A 403 on `CONNECT` is a policy denial: report it, do not try to route around it.
+- The `actions/setup-dotnet@v4` action, which is what CI uses. Not available locally.
+
+NuGet (`api.nuget.org`) is normally reachable even when the SDK download host is not, so package restore works once an SDK is present.
+
+### Playwright browsers
+
+Some environments pre-provision Chromium at `/opt/pw-browsers` (`StaticSiteFixture` detects this automatically). Otherwise:
+
+```bash
+pwsh tests/FamilyTree.E2E.Tests/bin/Release/net10.0/playwright.ps1 install --with-deps chromium
+```
+
+## Verifying UI work with Playwright
+
+**Assertions confirm that elements exist and are wired up. They do not confirm the page looks right.** Every one of these shipped with a fully green test suite:
+
+- Rail navigation styled as `display: inline` because the scoped CSS never matched, leaving labels overflowing the rail
+- A visible focus ring around the page heading from `FocusOnNavigate`
+- Blazor's "An unhandled error has occurred" banner permanently visible, because the replaced stylesheet dropped its `display: none`
+- The top bar forcing 29px of horizontal scroll on a phone
+
+So when you change anything that renders:
+
+1. **Run the app and look at it.** `dotnet test tests/FamilyTree.E2E.Tests` publishes the site, serves it exactly as GitHub Pages does, and writes screenshots to `FAMILYTREE_SCREENSHOT_DIR` (defaulting to a temp directory). Read the PNGs — do not just check the suite went green.
+2. **Check both viewports.** 1440×900 and 390×844 are captured by default. Mobile breaks silently and often.
+3. **Diagnose with the browser, not by reading CSS.** When something looks wrong, query `getComputedStyle` and `getBoundingClientRect` through Playwright. Reading the stylesheet and reasoning about it is how the `::deep` bug above got misdiagnosed twice — the CSS was correct, it simply was not being applied.
+4. **Convert every visual bug you find into a computed-style assertion** in `tests/FamilyTree.E2E.Tests/ShellLayoutTests.cs`. Screenshots find these bugs; assertions are what stop them coming back. bUnit cannot: it renders markup without a CSS engine, so all of the above pass at the component level.
+5. **Make failures name the culprit.** The horizontal-overflow test reports the widest offending selector, which turns a debugging session into a one-line fix.
+
+Screenshots are a review artifact, not a gate — font and platform rendering differ enough that image comparison is flaky. Assert on computed values instead. The exception is the tree view (PR 10), where layout genuinely is the feature and baseline comparison earns its keep.
+
+### Blazor CSS isolation
+
+Scoped `.razor.css` does **not** apply to elements rendered by child components — `<NavLink class="x">` never receives the parent's scope attribute, so a plain `.x` selector silently matches nothing. Reach through with `::deep` from a scoped ancestor:
+
+```css
+.rail__items ::deep .rail__item { ... }
+```
+
+This fails silently and looks like the stylesheet did not load. Suspect it whenever styles apply to plain elements but not to components.
 
 ## Branch Naming
 Always use: `claude/<short-kebab-description>-<4-char-random-suffix>`
@@ -20,14 +92,16 @@ Always write unit tests alongside any code change. Tests are not optional.
 
 ### Coverage requirements
 - **Business logic:** Every function with conditional branches, calculations, or data transformations must have tests covering the happy path and all meaningful edge cases
-- **API endpoints:** Test success responses, validation errors, and not-found cases
+- **Application services:** Test the success path, every validation failure, and the not-found case. Services return `Result<T>` rather than throwing, so assert on the result, not on exceptions
 - **UI validation:** Test that invalid input (empty required fields, wrong formats, out-of-range values) is caught and that valid input is accepted — test the validation logic, not just that a component renders
+- **Rendered appearance:** Anything that renders needs an end-to-end check in a real browser. See "Verifying UI work with Playwright" above
 
 ### Conventions
 - Place tests in a separate `*.Tests` xUnit project mirroring the source project structure
 - Use descriptive method names that read as sentences: `RejectsPerson_WhenFirstNameIsEmpty`
 - One assertion per test where practical; avoid mega-tests that cover multiple behaviors
-- Mock external dependencies (DbContext, services) at the boundary using Moq — don't hit real infrastructure in unit tests
+- Mock dependencies at the repository-interface boundary using Moq — unit tests must not touch IndexedDB or a browser
+- Component tests use bUnit and cover markup and behaviour; computed layout and appearance belong in `FamilyTree.E2E.Tests`, which has a real CSS engine
 
 ### When code is modified
 If you change existing code, update or add tests to cover the modified behavior. Never delete tests to make a PR pass.

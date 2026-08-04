@@ -1,0 +1,37 @@
+/* The parent .shell__content is already sized by the shell grid, so fill it
+   rather than recomputing its height. The previous calc() subtracted the
+   desktop padding and never accounted for the mobile bottom rail, which
+   overflowed the content area by 37px at 390x844. */
+.home {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100%;
+}
+
+.home__empty {
+    text-align: center;
+    max-width: 420px;
+    padding: 32px;
+    background: var(--paper);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-card);
+}
+
+.home__empty h1 {
+    font-size: 20px;
+    margin-bottom: 8px;
+}
+
+.home__empty p {
+    color: var(--ink3);
+    margin-bottom: 16px;
+}
+
+.home__hint {
+    margin-top: 16px;
+    font-size: 11px;
+    color: var(--ink4);
+    margin-bottom: 0;
+}

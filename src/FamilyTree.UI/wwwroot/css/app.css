@@ -1,0 +1,311 @@
+/* Base resets and shared primitives.
+   Component-scoped styles live in their .razor.css siblings. */
+
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+}
+
+html,
+body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+}
+
+body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--font-ui);
+    font-size: 13px;
+    line-height: 1.45;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+a {
+    color: var(--ink);
+    text-decoration: none;
+}
+
+a:hover {
+    color: var(--coral);
+}
+
+h1,
+h2,
+h3,
+h4 {
+    font-family: var(--font-serif);
+    color: var(--ink);
+    margin: 0 0 8px;
+    letter-spacing: -0.01em;
+}
+
+p {
+    margin: 0 0 8px;
+    color: var(--ink2);
+}
+
+/* Field label convention (see mid-tokens.jsx Field component). */
+.field-label {
+    font-family: var(--font-ui);
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--ink2);
+    letter-spacing: 0.1px;
+}
+
+.field-label--required::after {
+    content: "*";
+    color: var(--coral);
+    margin-left: 2px;
+}
+
+/* Buttons. */
+.btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 7px 14px;
+    height: 32px;
+    font-family: var(--font-ui);
+    font-size: 13px;
+    font-weight: 500;
+    letter-spacing: -0.05px;
+    background: var(--paper);
+    color: var(--ink);
+    border: 1px solid var(--line2);
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.12s, border-color 0.12s;
+}
+
+.btn:hover:not(:disabled) {
+    background: var(--paper2);
+}
+
+.btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.45;
+}
+
+.btn--primary {
+    background: var(--coral);
+    color: #fff;
+    border-color: var(--coral);
+}
+
+.btn--primary:hover:not(:disabled) {
+    background: var(--coral-hov);
+    border-color: var(--coral-hov);
+}
+
+.btn--secondary {
+    background: var(--paper);
+    color: var(--ink);
+    border-color: var(--line2);
+}
+
+.btn--ghost {
+    background: transparent;
+    color: var(--ink2);
+    border-color: transparent;
+}
+
+.btn--ghost:hover:not(:disabled) {
+    background: var(--paper2);
+}
+
+.btn--destructive {
+    background: var(--paper);
+    color: var(--err);
+    border-color: var(--coral-line);
+}
+
+.btn--destructive:hover:not(:disabled) {
+    background: var(--err-bg);
+}
+
+.btn--teal {
+    background: var(--teal);
+    color: #fff;
+    border-color: var(--teal);
+}
+
+.btn--teal:hover:not(:disabled) {
+    background: #33665a;
+    border-color: #33665a;
+}
+
+.btn--icon {
+    width: 32px;
+    padding: 0;
+    justify-content: center;
+}
+
+/* Tag / badge styles. */
+.badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    height: 20px;
+    padding: 0 8px;
+    font-size: 11px;
+    font-weight: 500;
+    border-radius: 999px;
+    background: var(--paper2);
+    color: var(--ink2);
+    border: 1px solid var(--line);
+}
+
+.badge--coral {
+    background: var(--coral-bg);
+    color: var(--coral);
+    border-color: var(--coral-line);
+}
+
+.badge--teal {
+    background: var(--teal-bg);
+    color: var(--teal);
+    border-color: var(--teal-line);
+}
+
+.badge--ok {
+    background: var(--ok-bg);
+    color: var(--ok);
+    border-color: transparent;
+}
+
+.badge--warn {
+    background: var(--warn-bg);
+    color: var(--warn);
+    border-color: transparent;
+}
+
+.badge--err {
+    background: var(--err-bg);
+    color: var(--err);
+    border-color: transparent;
+}
+
+/* Inputs (placeholder shell only — full component lands in PR 3). */
+.input {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: 34px;
+    padding: 0 10px;
+    background: var(--paper);
+    border: 1px solid var(--line2);
+    border-radius: var(--radius-md);
+    font-family: var(--font-ui);
+    font-size: 13px;
+    color: var(--ink);
+    transition: border-color 0.12s, box-shadow 0.12s;
+}
+
+.input:focus-within {
+    border-color: var(--coral);
+    box-shadow: 0 0 0 3px var(--coral-bg);
+}
+
+.input input {
+    flex: 1;
+    border: 0;
+    outline: 0;
+    background: transparent;
+    font: inherit;
+    color: inherit;
+    min-width: 0;
+}
+
+.input input::placeholder {
+    color: var(--ink4);
+}
+
+/* Blazor's FocusOnNavigate moves focus to the page heading after navigation so
+   screen readers announce the new page. It makes the heading focusable with
+   tabindex="-1", which browsers then draw a focus ring around even though the
+   focus was programmatic rather than from the keyboard. Interactive elements
+   keep their focus indicators; this only suppresses the ring on elements that
+   exist purely as a programmatic focus target. */
+[tabindex="-1"]:focus {
+    outline: none;
+}
+
+/* Blazor reveals this banner by setting display: block on it when an unhandled
+   exception reaches the renderer, which means it must be hidden by default.
+   The framework templates carry that rule in their own stylesheet; this app
+   replaced that file wholesale, so the rule lives here instead. */
+#blazor-error-ui {
+    display: none;
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 1000;
+    padding: 12px 16px;
+    font-family: var(--font-ui);
+    font-size: 13px;
+    color: var(--err);
+    background: var(--err-bg);
+    border-top: 1px solid var(--err);
+    box-shadow: var(--shadow-pop);
+}
+
+#blazor-error-ui .dismiss {
+    cursor: pointer;
+    float: right;
+    padding: 0 4px;
+}
+
+#blazor-error-ui .reload {
+    color: var(--err);
+    text-decoration: underline;
+}
+
+/* Pre-boot loading indicator. Blazor drives these via --blazor-load-percentage
+   while the runtime downloads, then replaces the whole #app content. The
+   framework templates ship these rules in their own stylesheet; this app
+   replaced that file wholesale, so without them the SVG falls back to its
+   default 300x150 box with fill: black — a clipped black shape in the corner
+   for the entire multi-megabyte first load. */
+.loading-progress {
+    position: relative;
+    display: block;
+    width: 6rem;
+    height: 6rem;
+    margin: 22vh auto 0 auto;
+}
+
+.loading-progress circle {
+    fill: none;
+    stroke: var(--line);
+    stroke-width: 0.4rem;
+    transform-origin: 50% 50%;
+    transform: rotate(-90deg);
+}
+
+.loading-progress circle:last-child {
+    stroke: var(--coral);
+    stroke-dasharray: calc(3.141 * var(--blazor-load-percentage, 0%) * 0.8), 500%;
+    transition: stroke-dasharray 0.05s ease-in-out;
+}
+
+.loading-progress-text {
+    position: absolute;
+    /* Below the ring, not inside it: the ring starts at 22vh and is 6rem tall. */
+    inset: calc(22vh + 6rem + 0.75rem) 0 auto 0;
+    text-align: center;
+    font-family: var(--font-ui);
+    font-size: 13px;
+    color: var(--ink3);
+}
+
+.loading-progress-text:after {
+    content: var(--blazor-load-percentage-text, "Loading FamilyTree…");
+}

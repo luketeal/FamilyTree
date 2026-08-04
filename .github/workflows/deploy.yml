@@ -1,0 +1,98 @@
+name: Build, test and deploy
+
+on:
+  push:
+    branches: [main, 'claude/**']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+
+# Pages has a single deployment target, so every run shares one queue rather
+# than one per ref: two refs deploying concurrently would race for the site.
+concurrency:
+  group: github-pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore
+        run: dotnet restore FamilyTree.slnx
+
+      - name: Build
+        run: dotnet build FamilyTree.slnx -c Release --no-restore
+
+      - name: Unit tests
+        run: |
+          dotnet test tests/FamilyTree.Domain.Tests -c Release --no-build --verbosity normal
+          dotnet test tests/FamilyTree.UI.Tests -c Release --no-build --verbosity normal
+
+      # Publishes the app itself, so it must run after the build and before the
+      # artifact is uploaded. Chromium is provisioned by Playwright's own script.
+      - name: Install Playwright browsers
+        run: pwsh tests/FamilyTree.E2E.Tests/bin/Release/net10.0/playwright.ps1 install --with-deps chromium
+
+      - name: End-to-end tests
+        env:
+          FAMILYTREE_SCREENSHOT_DIR: ${{ github.workspace }}/screenshots
+        run: dotnet test tests/FamilyTree.E2E.Tests -c Release --no-build --verbosity normal
+
+      # Screenshots are a visual record for review, not a gate: assertions
+      # confirm elements exist and are wired up, these show whether the page
+      # actually looks right. Uploaded even on failure, when they help most.
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: shell-screenshots
+          path: screenshots/
+          if-no-files-found: warn
+
+      - name: Publish
+        run: dotnet publish src/FamilyTree.App/FamilyTree.App.csproj -c Release -o publish
+
+      # GitHub Pages serves this repository from /FamilyTree/, so the base href
+      # baked in at publish time (/) has to be rewritten to the subpath.
+      - name: Rewrite base href for the repository subpath
+        run: |
+          sed -i 's|<base href="/" />|<base href="/${{ github.event.repository.name }}/" />|' publish/wwwroot/index.html
+          grep -q '<base href="/${{ github.event.repository.name }}/" />' publish/wwwroot/index.html
+
+      # Unknown paths are served 404.html; making it a copy of index.html lets
+      # client-side routing resolve deep links instead of showing an error page.
+      - name: Add SPA fallback and disable Jekyll
+        run: |
+          cp publish/wwwroot/index.html publish/wwwroot/404.html
+          touch publish/wwwroot/.nojekyll
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: publish/wwwroot
+
+  # A pull request from a branch in this repository is already covered by the
+  # push run for that same branch, so deploying here too would double-deploy
+  # the same commit.
+  deploy:
+    needs: build
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

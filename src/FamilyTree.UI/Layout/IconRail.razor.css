@@ -1,0 +1,101 @@
+.rail {
+    width: var(--rail-width);
+    height: 100vh;
+    background: var(--paper2);
+    border-right: 1px solid var(--line);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.rail__brand {
+    height: var(--topbar-height);
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--ink);
+    border-bottom: 1px solid var(--hairline);
+}
+
+.rail__items {
+    list-style: none;
+    margin: 0;
+    padding: 8px 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    width: 100%;
+}
+
+/* Each rail item is a NavLink, and CSS isolation does not apply this
+   component's scope attribute to a child component's rendered element, so a
+   plain `.rail__item` selector never matches the anchor. ::deep reaches
+   through from the scoped `.rail__items` list. Without it these rules are
+   silently dropped and the anchors fall back to display: inline. */
+.rail__items ::deep .rail__item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    height: 56px;
+    width: 100%;
+    color: var(--ink3);
+    text-decoration: none;
+    border-left: 2px solid transparent;
+    transition: color 0.12s, background 0.12s, border-color 0.12s;
+}
+
+.rail__items ::deep .rail__item:hover {
+    color: var(--ink);
+    background: var(--paper3);
+}
+
+.rail__items ::deep .rail__item.active {
+    color: var(--coral);
+    background: var(--coral-bg);
+    border-left-color: var(--coral);
+}
+
+.rail__label {
+    font-family: var(--font-ui);
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 0.2px;
+}
+
+/* Below the tablet breakpoint the rail becomes a bottom bar. The shell is the
+   one thing every later page nests inside, so it is made to survive small
+   screens now; genuinely mobile-specific UX (the tree canvas, the profile
+   side panel) is deferred until that design exists. */
+@media (max-width: 768px) {
+    .rail {
+        width: 100%;
+        height: auto;
+        flex-direction: row;
+        border-right: none;
+        border-top: 1px solid var(--line);
+    }
+
+    .rail__brand {
+        display: none;
+    }
+
+    .rail__items {
+        flex-direction: row;
+        justify-content: space-around;
+        padding: 0;
+    }
+
+    .rail__items ::deep .rail__item {
+        height: 52px;
+        border-left: none;
+        border-top: 2px solid transparent;
+    }
+
+    .rail__items ::deep .rail__item.active {
+        border-left-color: transparent;
+        border-top-color: var(--coral);
+    }
+}

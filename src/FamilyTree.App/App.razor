@@ -1,0 +1,12 @@
+@using FamilyTree.UI.Layout
+
+@* Routable components live in the FamilyTree.UI class library, so the router
+   must be told to scan that assembly in addition to this one. *@
+<Router AppAssembly="@typeof(App).Assembly"
+        AdditionalAssemblies="@(new[] { typeof(MainLayout).Assembly })"
+        NotFoundPage="typeof(Pages.NotFound)">
+    <Found Context="routeData">
+        <RouteView RouteData="@routeData" DefaultLayout="@typeof(MainLayout)" />
+        <FocusOnNavigate RouteData="@routeData" Selector="h1" />
+    </Found>
+</Router>
