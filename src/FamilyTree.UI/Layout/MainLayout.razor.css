@@ -1,7 +1,12 @@
 .shell {
     display: grid;
     grid-template-columns: var(--rail-width) 1fr;
+    /* dvh follows the visual viewport as mobile browser chrome appears and
+       disappears. With vh the shell is taller than the visible area, so the
+       bottom rail ends up underneath Safari's toolbar. vh stays as a fallback
+       for browsers without dvh. */
     height: 100vh;
+    height: 100dvh;
     width: 100%;
     background: var(--paper);
 }

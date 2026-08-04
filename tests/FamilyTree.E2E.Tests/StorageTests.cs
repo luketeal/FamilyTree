@@ -113,4 +113,65 @@ public class StorageTests(StaticSiteFixture fixture)
         await Assertions.Expect(status).ToContainTextAsync(
             new System.Text.RegularExpressions.Regex("Persistent|Best effort|cannot guarantee"));
     }
+
+    // The sample family is chosen to exercise every relationship type and the
+    // awkward cases, so a full reload that reproduces its exact shape proves
+    // each record type survives the flat-record mapping — not just people.
+    [Fact]
+    public async Task EveryRelationshipTypeSurvivesAReload()
+    {
+        var page = await OpenSettingsAsync();
+        await page.GetByTestId("load-sample").ClickAsync();
+        await Assertions.Expect(page.GetByTestId("settings-stats")).ToHaveTextAsync("10 people · 14 relationships");
+
+        await page.ReloadAsync(new PageReloadOptions { WaitUntil = WaitUntilState.NetworkIdle });
+
+        var counts = await page.EvaluateAsync<string>(@"async () => {
+            const db = await new Promise((res, rej) => {
+                const r = indexedDB.open('familytree');
+                r.onsuccess = () => res(r.result);
+                r.onerror = () => rej(r.error);
+            });
+            const count = store => new Promise(res => {
+                const req = db.transaction([store], 'readonly').objectStore(store).getAll();
+                req.onsuccess = () => res(req.result.length);
+            });
+            return JSON.stringify({
+                people: await count('people'),
+                bio: await count('biologicalLinks'),
+                adoptive: await count('adoptiveLinks'),
+                marriages: await count('marriages'),
+            });
+        }");
+
+        // 11 stored people: 10 real plus the unidentified ancestor.
+        Assert.Equal(
+            """{"people":11,"bio":9,"adoptive":2,"marriages":3}""",
+            counts);
+    }
+
+    // PartialDate carries precision and a circa flag, and a year-only date must
+    // not come back claiming a month it never had.
+    [Fact]
+    public async Task PartialDatesKeepTheirPrecisionThroughStorage()
+    {
+        var page = await OpenSettingsAsync();
+        await page.GetByTestId("load-sample").ClickAsync();
+        await Assertions.Expect(page.GetByTestId("settings-stats")).ToHaveTextAsync("10 people · 14 relationships");
+
+        var stored = await page.EvaluateAsync<string>(@"async () => {
+            const db = await new Promise(res => {
+                const r = indexedDB.open('familytree');
+                r.onsuccess = () => res(r.result);
+            });
+            const people = await new Promise(res => {
+                const req = db.transaction(['people'], 'readonly').objectStore('people').getAll();
+                req.onsuccess = () => res(req.result);
+            });
+            const arthur = people.find(p => p.firstName === 'Arthur');
+            return JSON.stringify(arthur.birthDate);
+        }");
+
+        Assert.Equal("""{"year":1918,"month":null,"day":null,"isApproximate":false}""", stored);
+    }
 }

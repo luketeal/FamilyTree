@@ -1,6 +1,7 @@
 .rail {
     width: var(--rail-width);
     height: 100vh;
+    height: 100dvh;
     background: var(--paper2);
     border-right: 1px solid var(--line);
     display: flex;
@@ -86,6 +87,14 @@
         flex-direction: row;
         justify-content: space-around;
         padding: 0;
+    }
+
+    /* Clears the home indicator and Safari's floating toolbar, which overlap
+       the bottom of the viewport and were cutting the rail labels in half on a
+       real iPhone. Headless Chromium has no browser chrome, so no assertion in
+       this suite can catch that — it took looking at the deployed site. */
+    .rail {
+        padding-bottom: env(safe-area-inset-bottom, 0px);
     }
 
     .rail__items ::deep .rail__item {
