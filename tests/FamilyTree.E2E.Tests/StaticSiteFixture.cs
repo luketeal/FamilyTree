@@ -114,7 +114,7 @@ public sealed class StaticSiteFixture : IAsyncLifetime
         // leave the suite testing a root-hosted site while claiming to cover the
         // subpath deployment. The deploy workflow guards its equivalent sed with
         // grep -q; this is the same guard.
-        if (ReferenceEquals(html, original) || html == original)
+        if (html == original)
         {
             throw new InvalidOperationException(
                 "base href rewrite matched nothing — the published index.html shape changed. " +

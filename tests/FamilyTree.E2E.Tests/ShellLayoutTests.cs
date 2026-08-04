@@ -116,34 +116,48 @@ public class ShellLayoutTests(StaticSiteFixture fixture)
     {
         var page = await OpenAsync(width, 844);
 
+        // Find scroll containers by computed overflow rather than by a hardcoded
+        // selector list, so a container added later cannot escape the check.
+        //
+        // Containers marked data-scrolls are exempt on the vertical axis only:
+        // .shell__content is designed to scroll once a page is longer than the
+        // viewport, so asserting it never does would fail on the first long
+        // list. Horizontal overflow is always a bug in this layout, so it is
+        // checked everywhere with no exemption.
         var overflowBy = await page.EvaluateAsync<double>(@"() => {
             const de = document.documentElement;
-            const scrollers = [de, ...document.querySelectorAll('.shell__content, .home')];
-            return Math.max(...scrollers.flatMap(el => [
+            const scrollable = [de, ...document.querySelectorAll('*')].filter(el => {
+                if (el === de) return true;
+                const o = getComputedStyle(el);
+                return ['auto', 'scroll'].includes(o.overflowX) || ['auto', 'scroll'].includes(o.overflowY);
+            });
+            return Math.max(0, ...scrollable.flatMap(el => [
                 el.scrollWidth - el.clientWidth,
-                el.scrollHeight - el.clientHeight,
+                el.hasAttribute('data-scrolls') ? 0 : el.scrollHeight - el.clientHeight,
             ]));
         }");
 
-        // Naming the widest offender turns a failure that needs a debugging
-        // session into one that points straight at the selector to fix.
+        // Naming the axis and the offender turns a failure that needs a
+        // debugging session into one that points straight at the fix.
         var offender = await page.EvaluateAsync<string>(@"() => {
-            const limit = document.documentElement.clientWidth;
-            let worst = null, worstBy = 0;
-            for (const el of document.querySelectorAll('*')) {
-                const by = el.getBoundingClientRect().right - limit;
-                if (by > worstBy) { worstBy = by; worst = el; }
-            }
-            if (!worst) return 'none';
-            const id = worst.tagName.toLowerCase() +
-                (worst.className && typeof worst.className === 'string'
-                    ? '.' + worst.className.trim().split(/\s+/).join('.')
+            const describe = el => el.tagName.toLowerCase() +
+                (el.className && typeof el.className === 'string'
+                    ? '.' + el.className.trim().split(/\s+/).join('.')
                     : '');
-            return `${id} (+${Math.round(worstBy)}px)`;
+
+            const de = document.documentElement;
+            let worst = null, worstBy = 0, axis = '';
+            for (const el of [de, ...document.querySelectorAll('*')]) {
+                const h = el.scrollWidth - el.clientWidth;
+                const v = el.hasAttribute('data-scrolls') ? 0 : el.scrollHeight - el.clientHeight;
+                if (h > worstBy) { worstBy = h; worst = el; axis = 'horizontally'; }
+                if (v > worstBy) { worstBy = v; worst = el; axis = 'vertically'; }
+            }
+            return worst ? `${describe(worst)} ${axis} by ${Math.round(worstBy)}px` : 'none';
         }");
 
         Assert.True(overflowBy <= 0,
-            $"Page scrolls by {overflowBy}px at {width}x844. Widest horizontal offender: {offender}");
+            $"Page scrolls by {overflowBy}px at {width}x844. Worst offender: {offender}");
     }
 
     [Fact]

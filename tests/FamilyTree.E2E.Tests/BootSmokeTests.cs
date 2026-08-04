@@ -23,11 +23,12 @@ public class BootSmokeTests(StaticSiteFixture fixture)
     public async Task Application_MakesNoThirdPartyRequests()
     {
         var page = await fixture.Browser.NewPageAsync();
+        var origin = new Uri(fixture.BaseUrl).GetLeftPart(UriPartial.Authority);
         var external = new List<string>();
 
         page.Request += (_, request) =>
         {
-            if (!request.Url.StartsWith(fixture.BaseUrl.Split("/FamilyTree/")[0], StringComparison.Ordinal))
+            if (!request.Url.StartsWith(origin, StringComparison.Ordinal))
             {
                 external.Add(request.Url);
             }

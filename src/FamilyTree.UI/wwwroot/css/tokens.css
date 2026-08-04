@@ -69,9 +69,10 @@
     --err: #a8412a;
     --err-bg: #f6e3da;
 
-    /* Type stacks. The webfonts are fetched from a third party, so they are
-       absent whenever the app is offline or the request is blocked — the
-       fallbacks are a normal rendering path, not an edge case. Each stack
+    /* Type stacks. The faces above are self-hosted, so they are not subject to
+       a third party being reachable — but the fallbacks are still a normal
+       rendering path rather than an edge case: font-display: swap paints them
+       first on every cold load, and a woff2 can fail to decode. Each stack
        degrades through the closest system equivalents before reaching a
        generic family. */
     --font-ui: "Inter", system-ui, -apple-system, "Segoe UI Variable Text", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
