@@ -4,6 +4,9 @@ namespace FamilyTree.Domain.Repositories;
 
 public interface IAdoptiveRelationshipRepository
 {
+    /// <summary>The whole set, for tree building, counts and export.</summary>
+    Task<IReadOnlyList<AdoptiveParentChild>> GetAllAsync(CancellationToken ct = default);
+
     Task<IReadOnlyList<AdoptiveParentChild>> GetParentLinksForChildAsync(Guid childId, CancellationToken ct = default);
 
     /// <summary>

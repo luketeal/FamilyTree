@@ -14,6 +14,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\FamilyTree.UI\FamilyTree.UI.csproj" />
+    <ProjectReference Include="..\FamilyTree.Application\FamilyTree.Application.csproj" />
+    <ProjectReference Include="..\FamilyTree.Storage.Browser\FamilyTree.Storage.Browser.csproj" />
   </ItemGroup>
 
 </Project>

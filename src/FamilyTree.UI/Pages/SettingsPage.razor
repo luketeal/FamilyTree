@@ -1,0 +1,116 @@
+@page "/settings"
+@inject ITreeDataAdministration TreeData
+@inject TreeStatsService Stats
+@inject TreeDataNotifier Notifier
+
+<PageTitle>Settings — FamilyTree</PageTitle>
+
+<section class="settings">
+    <h1>Settings</h1>
+
+    <div class="settings__card">
+        <h2>Your data</h2>
+        <p class="settings__lede">
+            Everything lives in this browser. Nothing is sent anywhere, which also
+            means this device holds the only copy.
+        </p>
+
+        <dl class="settings__facts">
+            <dt>In this tree</dt>
+            <dd data-testid="settings-stats">@_stats</dd>
+
+            <dt>Storage</dt>
+            <dd data-testid="settings-persistence">@PersistenceLabel</dd>
+        </dl>
+    </div>
+
+    <div class="settings__card">
+        <h2>Sample family</h2>
+        <p class="settings__lede">
+            A demonstration tree containing half-siblings, an adoption, a remarriage
+            after widowhood, an unidentified ancestor, and a relationship the family
+            is unsure about — the cases this app exists to handle.
+        </p>
+
+        <div class="settings__actions">
+            <button type="button" class="btn btn--primary" data-testid="load-sample"
+                    disabled="@_busy" @onclick="LoadSampleAsync">
+                Load sample family
+            </button>
+            <button type="button" class="btn btn--secondary" data-testid="clear-data"
+                    disabled="@_busy" @onclick="ClearAsync">
+                Clear everything
+            </button>
+        </div>
+
+        @if (_message is not null)
+        {
+            <p class="settings__message" data-testid="settings-message">@_message</p>
+        }
+    </div>
+</section>
+
+@code {
+    private TreeStats _stats = TreeStats.Empty;
+    private StorageDurability? _durability;
+    private string? _message;
+    private bool _busy;
+
+    private string PersistenceLabel => _durability switch
+    {
+        null => "Checking…",
+        { Supported: false } => "This browser cannot guarantee persistence",
+        { Persistent: true } => "Persistent — the browser will not evict this data automatically",
+        _ => "Best effort — the browser may evict this data under storage pressure",
+    };
+
+    protected override async Task OnInitializedAsync() => await RefreshAsync();
+
+    private async Task LoadSampleAsync()
+    {
+        _busy = true;
+        try
+        {
+            // Replaces rather than merges, in one transaction: loading the sample
+            // twice should give the same tree, not two overlapping families.
+            await TreeData.LoadSampleFamilyAsync();
+            await AfterChangeAsync("Sample family loaded.");
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task ClearAsync()
+    {
+        _busy = true;
+        try
+        {
+            await TreeData.ClearAsync();
+            await AfterChangeAsync("All data cleared.");
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task AfterChangeAsync(string message)
+    {
+        _message = message;
+        await RefreshAsync();
+        await Notifier.NotifyChangedAsync();
+    }
+
+    private async Task RefreshAsync()
+    {
+        var stats = await Stats.GetAsync();
+        if (stats.IsSuccess)
+        {
+            _stats = stats.Value!;
+        }
+
+        _durability = await TreeData.EnsureDurableAsync();
+    }
+}

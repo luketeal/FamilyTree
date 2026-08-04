@@ -1,4 +1,5 @@
 @inherits LayoutComponentBase
+@inject ITreeDataAdministration TreeData
 
 <div class="shell">
     <IconRail />
@@ -9,3 +10,27 @@
         </main>
     </div>
 </div>
+
+@code {
+    // The browser holds the only copy of the user's tree (ADR-004), so eviction
+    // is data loss rather than a cache miss. Asking once per session on first
+    // render — the earliest point the Blazor runtime can reach a JS module.
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+
+        try
+        {
+            await TreeData.EnsureDurableAsync();
+        }
+        catch (Exception ex)
+        {
+            // A browser that refuses or lacks the API must not break the shell;
+            // the Settings page reports whatever status resulted.
+            Console.Error.WriteLine($"Could not request persistent storage: {ex.Message}");
+        }
+    }
+}

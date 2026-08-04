@@ -29,7 +29,7 @@ public sealed class StaticSiteFixture : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
-        _rootDirectory = PublishApp();
+        _rootDirectory = await PublishAppAsync();
         ApplyGitHubPagesTransforms(_rootDirectory);
 
         var port = GetFreePort();
@@ -67,7 +67,7 @@ public sealed class StaticSiteFixture : IAsyncLifetime
         _playwright?.Dispose();
     }
 
-    private static string PublishApp()
+    private static async Task<string> PublishAppAsync()
     {
         var repoRoot = FindRepositoryRoot();
 
@@ -80,17 +80,36 @@ public sealed class StaticSiteFixture : IAsyncLifetime
         var project = Path.Combine(repoRoot, "src", "FamilyTree.App", "FamilyTree.App.csproj");
         var psi = new ProcessStartInfo("dotnet")
         {
-            ArgumentList = { "publish", project, "-c", "Release", "-o", output, "--nologo", "-v", "q" },
+            ArgumentList =
+            {
+                "publish", project, "-c", "Release", "-o", output, "--nologo", "-v", "q",
+                // Without this MSBuild leaves worker nodes running after publish
+                // exits. They inherit the redirected pipes and keep them open, so
+                // reading to end never sees EOF and the fixture hangs forever
+                // rather than failing — the whole suite simply stops.
+                "-nodeReuse:false",
+            },
             RedirectStandardOutput = true,
             RedirectStandardError = true,
         };
+        psi.Environment["MSBUILDDISABLENODEREUSE"] = "1";
 
         using var process = Process.Start(psi)
             ?? throw new InvalidOperationException("Could not start dotnet publish.");
 
-        var stdout = process.StandardOutput.ReadToEnd();
-        var stderr = process.StandardError.ReadToEnd();
-        process.WaitForExit();
+        // Both streams must be drained concurrently. Reading one to completion
+        // first deadlocks as soon as the child fills the other's pipe buffer,
+        // which publish does once the solution is large enough — the process
+        // blocks writing, the parent blocks reading, and neither ever returns.
+        // Both streams drained concurrently: reading one to completion first
+        // deadlocks as soon as the child fills the other's pipe buffer.
+        var stdoutTask = process.StandardOutput.ReadToEndAsync();
+        var stderrTask = process.StandardError.ReadToEndAsync();
+        await Task.WhenAll(stdoutTask, stderrTask);
+        await process.WaitForExitAsync();
+
+        var stdout = await stdoutTask;
+        var stderr = await stderrTask;
 
         if (process.ExitCode != 0)
         {

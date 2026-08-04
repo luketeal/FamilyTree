@@ -28,4 +28,14 @@ public sealed class StepparentRelationship
         StepchildId = stepchildId;
         MarriageId = marriageId;
     }
+
+    /// <summary>Reconstitutes a link from storage, preserving its identity.</summary>
+    public static StepparentRelationship Rehydrate(
+        Guid id, Guid stepparentId, Guid stepchildId, Guid marriageId) => new()
+        {
+            Id = id,
+            StepparentId = stepparentId,
+            StepchildId = stepchildId,
+            MarriageId = marriageId,
+        };
 }

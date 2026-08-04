@@ -4,6 +4,9 @@ namespace FamilyTree.Domain.Repositories;
 
 public interface IBiologicalRelationshipRepository
 {
+    /// <summary>The whole set, for tree building, counts and export.</summary>
+    Task<IReadOnlyList<BiologicalParentChild>> GetAllAsync(CancellationToken ct = default);
+
     Task<IReadOnlyList<BiologicalParentChild>> GetParentLinksForChildAsync(Guid childId, CancellationToken ct = default);
 
     /// <summary>

@@ -2,6 +2,7 @@
   <Folder Name="/src/">
     <Project Path="src/FamilyTree.Domain/FamilyTree.Domain.csproj" />
     <Project Path="src/FamilyTree.Application/FamilyTree.Application.csproj" />
+    <Project Path="src/FamilyTree.Storage.Browser/FamilyTree.Storage.Browser.csproj" />
     <Project Path="src/FamilyTree.UI/FamilyTree.UI.csproj" />
     <Project Path="src/FamilyTree.App/FamilyTree.App.csproj" />
   </Folder>

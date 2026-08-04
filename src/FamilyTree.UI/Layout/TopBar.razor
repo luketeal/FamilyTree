@@ -1,10 +1,13 @@
 @* Top bar (52px). Search, Undo, and Add Person are placeholder markup —
    wired up in later PRs (12 for search, 13 for Undo, 3 for Add Person). *@
+@implements IDisposable
+@inject TreeStatsService Stats
+@inject TreeDataNotifier Notifier
 
 <header class="topbar">
     <div class="topbar__brand" data-testid="app-logo">
         <span class="topbar__brand-name">FamilyTree</span>
-        <span class="topbar__stats">0 people · 0 relationships</span>
+        <span class="topbar__stats" data-testid="tree-stats">@_stats</span>
     </div>
 
     <div class="topbar__search">
@@ -35,3 +38,27 @@
         </button>
     </div>
 </header>
+
+@code {
+    private TreeStats _stats = TreeStats.Empty;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Notifier.Changed += RefreshAsync;
+        await RefreshAsync();
+    }
+
+    // Anything that changes the tree raises this, so the counts stay honest
+    // without every page having to remember to update them.
+    private async Task RefreshAsync()
+    {
+        var result = await Stats.GetAsync();
+        if (result.IsSuccess)
+        {
+            _stats = result.Value!;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    public void Dispose() => Notifier.Changed -= RefreshAsync;
+}

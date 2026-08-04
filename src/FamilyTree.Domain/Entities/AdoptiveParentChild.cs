@@ -31,4 +31,16 @@ public sealed class AdoptiveParentChild
     public void UpdateAdoptionDate(PartialDate? adoptionDate) => AdoptionDate = adoptionDate;
 
     public void UpdateCertainty(RelationshipCertainty certainty) => Certainty = certainty;
+
+    /// <summary>Reconstitutes a link from storage, preserving its identity.</summary>
+    public static AdoptiveParentChild Rehydrate(
+        Guid id, Guid parentId, Guid childId, PartialDate? adoptionDate,
+        RelationshipCertainty certainty) => new()
+        {
+            Id = id,
+            ParentId = parentId,
+            ChildId = childId,
+            AdoptionDate = adoptionDate,
+            Certainty = certainty,
+        };
 }

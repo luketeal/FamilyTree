@@ -82,4 +82,29 @@ public sealed class Person
     public void UpdatePhoto(string? photoPath) => PhotoPath = photoPath;
 
     public void UpdateNotes(string? notes) => Notes = notes;
+
+    /// <summary>
+    /// Reconstitutes a person from storage. Bypasses the validation in the
+    /// public constructor deliberately: these values were validated when the
+    /// person was created, and a stored record must round-trip exactly rather
+    /// than be re-judged by rules that may have changed since.
+    /// </summary>
+    public static Person Rehydrate(
+        Guid id, string firstName, string lastName, string? birthSurname,
+        PartialDate? birthDate, string? birthPlace, PartialDate? deathDate, string? deathPlace,
+        Gender gender, string? photoPath, string? notes, bool isPhantom) => new()
+        {
+            Id = id,
+            FirstName = firstName,
+            LastName = lastName,
+            BirthSurname = birthSurname,
+            BirthDate = birthDate,
+            BirthPlace = birthPlace,
+            DeathDate = deathDate,
+            DeathPlace = deathPlace,
+            Gender = gender,
+            PhotoPath = photoPath,
+            Notes = notes,
+            IsPhantom = isPhantom,
+        };
 }
