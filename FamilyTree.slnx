@@ -1,11 +1,13 @@
 <Solution>
   <Folder Name="/src/">
     <Project Path="src/FamilyTree.Domain/FamilyTree.Domain.csproj" />
+    <Project Path="src/FamilyTree.Application/FamilyTree.Application.csproj" />
     <Project Path="src/FamilyTree.UI/FamilyTree.UI.csproj" />
     <Project Path="src/FamilyTree.App/FamilyTree.App.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/FamilyTree.Domain.Tests/FamilyTree.Domain.Tests.csproj" />
+    <Project Path="tests/FamilyTree.Application.Tests/FamilyTree.Application.Tests.csproj" />
     <Project Path="tests/FamilyTree.UI.Tests/FamilyTree.UI.Tests.csproj" />
     <Project Path="tests/FamilyTree.E2E.Tests/FamilyTree.E2E.Tests.csproj" />
   </Folder>
