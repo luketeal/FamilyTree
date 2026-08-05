@@ -78,7 +78,9 @@ public class StorageTests(StaticSiteFixture fixture)
 
         await page.GetByTestId("load-sample").ClickAsync();
         await Assertions.Expect(page.GetByTestId("settings-stats")).ToHaveTextAsync("10 people · 14 relationships");
+        // The tree is no longer empty, so the second load has to be confirmed.
         await page.GetByTestId("load-sample").ClickAsync();
+        await page.GetByTestId("confirm-destructive").ClickAsync();
 
         await Assertions.Expect(page.GetByTestId("settings-stats"))
             .ToHaveTextAsync("10 people · 14 relationships");
@@ -92,9 +94,91 @@ public class StorageTests(StaticSiteFixture fixture)
         await Assertions.Expect(page.GetByTestId("settings-stats")).ToHaveTextAsync("10 people · 14 relationships");
 
         await page.GetByTestId("clear-data").ClickAsync();
+        await page.GetByTestId("confirm-destructive").ClickAsync();
 
         await Assertions.Expect(page.GetByTestId("settings-stats"))
             .ToHaveTextAsync("0 people · 0 relationships");
+    }
+
+    // The case the original tests all missed: every one of them started from an
+    // empty tree, so nothing exercised the path where there was something to
+    // lose. Loading the sample replaces the whole dataset in one transaction, so
+    // without a confirmation a misclick is an unrecoverable wipe — there is no
+    // export and no undo yet.
+    [Fact]
+    public async Task LoadingTheSampleOverAnExistingTreeAsksFirst()
+    {
+        var page = await OpenSettingsAsync();
+        await page.GetByTestId("load-sample").ClickAsync();
+        await Assertions.Expect(page.GetByTestId("settings-stats")).ToHaveTextAsync("10 people · 14 relationships");
+
+        await page.GetByTestId("load-sample").ClickAsync();
+
+        await Assertions.Expect(page.GetByTestId("settings-confirm")).ToBeVisibleAsync();
+        await Assertions.Expect(page.GetByTestId("settings-confirm-text"))
+            .ToContainTextAsync("10 people and 14 relationships");
+    }
+
+    [Fact]
+    public async Task CancellingTheConfirmationLeavesTheTreeIntact()
+    {
+        var page = await OpenSettingsAsync();
+        await page.GetByTestId("load-sample").ClickAsync();
+        await Assertions.Expect(page.GetByTestId("settings-stats")).ToHaveTextAsync("10 people · 14 relationships");
+
+        await page.GetByTestId("clear-data").ClickAsync();
+        await page.GetByTestId("cancel-destructive").ClickAsync();
+
+        await Assertions.Expect(page.GetByTestId("settings-confirm")).Not.ToBeVisibleAsync();
+        await Assertions.Expect(page.GetByTestId("settings-stats"))
+            .ToHaveTextAsync("10 people · 14 relationships");
+
+        // Not merely still on screen — still in the database.
+        await page.ReloadAsync(new PageReloadOptions { WaitUntil = WaitUntilState.NetworkIdle });
+        await Assertions.Expect(page.GetByTestId("tree-stats"))
+            .ToHaveTextAsync("10 people · 14 relationships");
+    }
+
+    // An empty tree has nothing to lose, so the confirmation would be pure
+    // friction. This pins that distinction so it does not drift.
+    [Fact]
+    public async Task LoadingTheSampleIntoAnEmptyTreeDoesNotAsk()
+    {
+        var page = await OpenSettingsAsync();
+
+        await page.GetByTestId("load-sample").ClickAsync();
+
+        await Assertions.Expect(page.GetByTestId("settings-stats"))
+            .ToHaveTextAsync("10 people · 14 relationships");
+        await Assertions.Expect(page.GetByTestId("settings-confirm")).Not.ToBeVisibleAsync();
+    }
+
+    // A clear wipes every store, and the schema stamp lives in one of them.
+    // Losing it would leave later writes going into an unlabelled database.
+    [Fact]
+    public async Task ClearingKeepsTheSchemaStamp()
+    {
+        var page = await OpenSettingsAsync();
+        await page.GetByTestId("load-sample").ClickAsync();
+        await Assertions.Expect(page.GetByTestId("settings-stats")).ToHaveTextAsync("10 people · 14 relationships");
+
+        await page.GetByTestId("clear-data").ClickAsync();
+        await page.GetByTestId("confirm-destructive").ClickAsync();
+        await Assertions.Expect(page.GetByTestId("settings-stats")).ToHaveTextAsync("0 people · 0 relationships");
+
+        var meta = await page.EvaluateAsync<string>(@"async () => {
+            const db = await new Promise(res => {
+                const r = indexedDB.open('familytree');
+                r.onsuccess = () => res(r.result);
+            });
+            const rows = await new Promise(res => {
+                const req = db.transaction(['meta'], 'readonly').objectStore('meta').getAll();
+                req.onsuccess = () => res(req.result);
+            });
+            return JSON.stringify(rows.map(r => r.schemaVersion));
+        }");
+
+        Assert.Equal("[1]", meta);
     }
 
     // Asserts that the request happens and a real answer comes back, not that

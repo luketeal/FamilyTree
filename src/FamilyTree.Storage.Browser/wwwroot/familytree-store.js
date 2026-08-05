@@ -33,6 +33,13 @@ function open() {
         request.onblocked = () => reject(new Error('IndexedDB upgrade blocked by another open tab.'));
     });
 
+    // Without this a single failure is cached for the life of the page: every
+    // later call returns the same rejected promise. The blocked case is exactly
+    // the one that recovers on its own once the other tab closes, so a retry has
+    // to be possible. Attached to a branch of the chain rather than reassigned
+    // into it, so callers still see the rejection.
+    dbPromise.catch(() => { dbPromise = null; });
+
     return dbPromise;
 }
 
@@ -65,26 +72,10 @@ export async function get(store, id) {
     return (await request(tx(db, [store], 'readonly').objectStore(store).get(id))) ?? null;
 }
 
-export async function getMany(store, ids) {
-    const db = await open();
-    const os = tx(db, [store], 'readonly').objectStore(store);
-    const results = await Promise.all(ids.map(id => request(os.get(id))));
-    return results.filter(r => r !== undefined);
-}
-
 export async function put(store, record) {
     const db = await open();
     const transaction = tx(db, [store], 'readwrite');
     transaction.objectStore(store).put(record);
-    await done(transaction);
-}
-
-/** One transaction for many records, so a multi-record change cannot half-apply. */
-export async function putMany(store, records) {
-    const db = await open();
-    const transaction = tx(db, [store], 'readwrite');
-    const os = transaction.objectStore(store);
-    for (const record of records) os.put(record);
     await done(transaction);
 }
 
@@ -107,10 +98,16 @@ export async function replaceAll(payload) {
     await done(transaction);
 }
 
-export async function clearAll() {
+/**
+ * Empties the data stores and re-stamps the schema version. Clearing the stamp
+ * along with the data would leave an unstamped database that later writes go
+ * into unlabelled, so the version is rewritten in the same transaction.
+ */
+export async function clearAll(meta) {
     const db = await open();
     const transaction = tx(db, STORES, 'readwrite');
     for (const store of STORES) transaction.objectStore(store).clear();
+    transaction.objectStore('meta').put(meta);
     await done(transaction);
 }
 

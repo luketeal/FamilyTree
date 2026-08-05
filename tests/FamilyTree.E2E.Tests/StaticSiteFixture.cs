@@ -101,8 +101,6 @@ public sealed class StaticSiteFixture : IAsyncLifetime
         // first deadlocks as soon as the child fills the other's pipe buffer,
         // which publish does once the solution is large enough — the process
         // blocks writing, the parent blocks reading, and neither ever returns.
-        // Both streams drained concurrently: reading one to completion first
-        // deadlocks as soon as the child fills the other's pipe buffer.
         var stdoutTask = process.StandardOutput.ReadToEndAsync();
         var stderrTask = process.StandardError.ReadToEndAsync();
         await Task.WhenAll(stdoutTask, stderrTask);

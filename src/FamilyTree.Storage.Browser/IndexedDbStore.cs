@@ -10,9 +10,11 @@ namespace FamilyTree.Storage.Browser;
 /// </summary>
 public sealed class IndexedDbStore(IJSRuntime js) : IAsyncDisposable
 {
-    // Bumped when a persisted record shape changes. Stored alongside the data so
-    // a mismatch can be detected and handled, rather than deserialising stale
-    // records into the wrong shape and failing somewhere unrelated.
+    // Bumped when a persisted record shape changes. Written alongside the data
+    // so that a future version can tell which shape it is reading before it
+    // tries. Nothing reads it yet — there is only one shape — but the stamp has
+    // to be present from the first release or the v1 data is indistinguishable
+    // from unstamped data when a migration is finally needed.
     public const int SchemaVersion = 1;
 
     public const string People = "people";
@@ -43,22 +45,6 @@ public sealed class IndexedDbStore(IJSRuntime js) : IAsyncDisposable
         return await module.InvokeAsync<T?>("get", ct, store, id);
     }
 
-    /// <summary>
-    /// One round trip for many keys. The repositories expose batched reads so
-    /// callers never loop single gets — harmless here, ruinous over HTTP.
-    /// </summary>
-    public async Task<IReadOnlyList<T>> GetManyAsync<T>(
-        string store, IReadOnlyCollection<Guid> ids, CancellationToken ct = default)
-    {
-        if (ids.Count == 0)
-        {
-            return [];
-        }
-
-        var module = await ModuleAsync();
-        return await module.InvokeAsync<T[]>("getMany", ct, store, ids);
-    }
-
     public async Task PutAsync<T>(string store, T record, CancellationToken ct = default)
     {
         var module = await ModuleAsync();
@@ -83,7 +69,7 @@ public sealed class IndexedDbStore(IJSRuntime js) : IAsyncDisposable
             [AdoptiveLinks] = dataset.AdoptiveLinks,
             [Marriages] = dataset.Marriages,
             [StepparentLinks] = dataset.StepparentLinks,
-            [Meta] = new[] { new { id = Guid.Empty, schemaVersion = SchemaVersion } },
+            [Meta] = new[] { SchemaStamp },
         };
 
         await module.InvokeVoidAsync("replaceAll", ct, payload);
@@ -92,8 +78,10 @@ public sealed class IndexedDbStore(IJSRuntime js) : IAsyncDisposable
     public async Task ClearAllAsync(CancellationToken ct = default)
     {
         var module = await ModuleAsync();
-        await module.InvokeVoidAsync("clearAll", ct);
+        await module.InvokeVoidAsync("clearAll", ct, SchemaStamp);
     }
+
+    private static object SchemaStamp => new { id = Guid.Empty, schemaVersion = SchemaVersion };
 
     /// <summary>
     /// Asks the browser to make this origin's storage persistent. The browser is

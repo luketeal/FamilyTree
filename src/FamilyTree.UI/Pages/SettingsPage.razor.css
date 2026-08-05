@@ -58,6 +58,23 @@
     gap: 8px;
 }
 
+/* Deliberately heavier than the rest of the card. This is the last thing
+   standing between a misclick and an unrecoverable tree. */
+.settings__confirm {
+    margin-top: 14px;
+    padding: 14px;
+    border: 1px solid var(--danger, #b3401f);
+    border-radius: 8px;
+    background: var(--danger-wash, rgba(179, 64, 31, 0.06));
+}
+
+.settings__confirm-text {
+    margin: 0 0 12px;
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--ink);
+}
+
 .settings__message {
     margin: 14px 0 0;
     font-size: 12px;

@@ -34,14 +34,34 @@
 
         <div class="settings__actions">
             <button type="button" class="btn btn--primary" data-testid="load-sample"
-                    disabled="@_busy" @onclick="LoadSampleAsync">
+                    disabled="@_busy" @onclick="() => RequestAsync(DestructiveAction.LoadSample)">
                 Load sample family
             </button>
             <button type="button" class="btn btn--secondary" data-testid="clear-data"
-                    disabled="@_busy" @onclick="ClearAsync">
+                    disabled="@_busy" @onclick="() => RequestAsync(DestructiveAction.Clear)">
                 Clear everything
             </button>
         </div>
+
+        @if (_pending is not null)
+        {
+            <div class="settings__confirm" role="alertdialog" aria-labelledby="confirm-title"
+                 data-testid="settings-confirm">
+                <p id="confirm-title" class="settings__confirm-text" data-testid="settings-confirm-text">
+                    @ConfirmPrompt
+                </p>
+                <div class="settings__actions">
+                    <button type="button" class="btn btn--destructive" data-testid="confirm-destructive"
+                            disabled="@_busy" @onclick="ConfirmAsync">
+                        @ConfirmLabel
+                    </button>
+                    <button type="button" class="btn btn--secondary" data-testid="cancel-destructive"
+                            disabled="@_busy" @onclick="Cancel">
+                        Cancel
+                    </button>
+                </div>
+            </div>
+        }
 
         @if (_message is not null)
         {
@@ -51,10 +71,17 @@
 </section>
 
 @code {
+    private enum DestructiveAction
+    {
+        LoadSample,
+        Clear,
+    }
+
     private TreeStats _stats = TreeStats.Empty;
     private StorageDurability? _durability;
     private string? _message;
     private bool _busy;
+    private DestructiveAction? _pending;
 
     private string PersistenceLabel => _durability switch
     {
@@ -64,31 +91,84 @@
         _ => "Best effort — the browser may evict this data under storage pressure",
     };
 
-    protected override async Task OnInitializedAsync() => await RefreshAsync();
-
-    private async Task LoadSampleAsync()
+    private string ConfirmLabel => _pending switch
     {
-        _busy = true;
-        try
+        DestructiveAction.LoadSample => "Replace my tree",
+        _ => "Delete everything",
+    };
+
+    // Names what is about to be lost rather than asking a generic "are you sure".
+    // There is no backup and no undo yet, so the count is the only warning the
+    // user gets that this is not recoverable.
+    private string ConfirmPrompt
+    {
+        get
         {
-            // Replaces rather than merges, in one transaction: loading the sample
-            // twice should give the same tree, not two overlapping families.
-            await TreeData.LoadSampleFamilyAsync();
-            await AfterChangeAsync("Sample family loaded.");
-        }
-        finally
-        {
-            _busy = false;
+            var held = $"{Describe(_stats.People, "person", "people")} and {Describe(_stats.Relationships, "relationship", "relationships")}";
+            return _pending switch
+            {
+                DestructiveAction.LoadSample =>
+                    $"Loading the sample family replaces your tree. The {held} in this browser will be permanently deleted, and there is no undo.",
+                _ =>
+                    $"This permanently deletes the {held} in this browser. There is no undo.",
+            };
         }
     }
 
-    private async Task ClearAsync()
+    private static string Describe(int count, string singular, string plural) =>
+        $"{count} {(count == 1 ? singular : plural)}";
+
+    protected override async Task OnInitializedAsync() => await RefreshAsync();
+
+    // Confirmation is only worth the friction when there is something to lose.
+    // On an empty tree both actions are no-ops, so they run straight through.
+    private async Task RequestAsync(DestructiveAction action)
+    {
+        if (_stats.People == 0 && _stats.Relationships == 0)
+        {
+            await RunAsync(action);
+            return;
+        }
+
+        _pending = action;
+        _message = null;
+    }
+
+    private void Cancel()
+    {
+        _pending = null;
+        _message = "Nothing was changed.";
+    }
+
+    private async Task ConfirmAsync()
+    {
+        if (_pending is not { } action)
+        {
+            return;
+        }
+
+        _pending = null;
+        await RunAsync(action);
+    }
+
+    private async Task RunAsync(DestructiveAction action)
     {
         _busy = true;
         try
         {
-            await TreeData.ClearAsync();
-            await AfterChangeAsync("All data cleared.");
+            if (action == DestructiveAction.LoadSample)
+            {
+                // Replaces rather than merges, in one transaction: loading the
+                // sample twice should give the same tree, not two overlapping
+                // families.
+                await TreeData.LoadSampleFamilyAsync();
+                await AfterChangeAsync("Sample family loaded.");
+            }
+            else
+            {
+                await TreeData.ClearAsync();
+                await AfterChangeAsync("All data cleared.");
+            }
         }
         finally
         {

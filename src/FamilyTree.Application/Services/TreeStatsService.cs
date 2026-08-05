@@ -35,6 +35,11 @@ public sealed class TreeStatsService(
         // counting them would overstate how much of the tree is actually known.
         var realPeople = allPeople.Count(p => !p.IsPhantom);
 
+        // Stepparent links are deliberately absent: the store and the record
+        // exist, but no repository writes them yet, so there is nothing to
+        // count. Add them here at the same time as the stepparent repository,
+        // or this total starts silently under-reporting.
+
         return Result<TreeStats>.Success(
             new TreeStats(realPeople, bio.Count + adopt.Count + married.Count));
     }
