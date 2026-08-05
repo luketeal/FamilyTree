@@ -11,6 +11,10 @@
     </div>
 </div>
 
+@* Rendered once here rather than per page, so a confirmation raised by a page
+   survives that page navigating away as part of its own success. *@
+<ToastNotification />
+
 @code {
     // The browser holds the only copy of the user's tree (ADR-004), so eviction
     // is data loss rather than a cache miss. Asking once per session on first

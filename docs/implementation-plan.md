@@ -107,6 +107,14 @@ The reasoning is that the cost curve is asymmetric. Shell responsiveness is chea
 
 ## PR Sequence
 
+**One PR open at a time.** The deploy workflow publishes to GitHub Pages from
+any branch, so concurrent PRs overwrite each other's deployment and there is no
+longer a single answer to "what does the live site do right now". Reviewing a
+change in the browser is the point of the demo-first ordering, so the sequence
+below is worked one entry at a time even where the dependency graph would allow
+parallelism. Only relax this if the workflow is changed to give PR builds their
+own preview URL.
+
 ### PR 1 — WASM app, shared RCL, and GitHub Pages deployment
 **Stories:** None (foundation)
 
@@ -135,7 +143,13 @@ The reasoning is that the cost curve is asymmetric. Shell responsiveness is chea
 - Tests: `Application.Tests` (circular checker — no cycle, direct, indirect, disconnected root; `PersonService` rules) and `Storage.Tests` (round-trip per entity type; `PartialDate` precision and `IsApproximate` preserved).
 
 ### PR 3 — Tree visualization spike and ADR-005
-**Stories:** None (spike) — runs in parallel with PRs 4–9
+**Stories:** None (spike) — **deferred until after PR 4**
+
+> Has no code dependency on PRs 4–9 and could be built at any point, but is
+> **not run concurrently with them**. The deploy workflow publishes to GitHub
+> Pages from any branch, so two open PRs contend for the live site and
+> "check the deployed version" stops having a single answer. Sequence it into
+> a gap when nothing else is awaiting review — it only blocks PR 10.
 
 The project's largest unknown, resolved before the tree is built. Evaluate against: DAG rendering (a person may have both biological and adoptive parents — a directed acyclic graph, not a strict tree), pan/zoom, five distinct edge styles, nodes ~172×70px, performance at ~500 nodes, phantom node styling, mini-map.
 
@@ -257,7 +271,9 @@ PR 1 (RCL + WASM app + GH Pages CI)   ← live URL
   │                        ├─ PR 13 (undo + certainty UI)
   │                        └─ PR 10 (tree) ← also needs PR 3
   │                                  └─ PR 11 (pedigree + descendant)
-  └─ PR 3 (viz spike → ADR-005) ── parallel with PRs 4–9
+  └─ PR 3 (viz spike → ADR-005) ── no code dependency, but not run
+                                   concurrently: one Pages deployment,
+                                   one PR under review at a time
 
 PR 14 (photos, ADR-006) and PR 15 (GEDCOM + print PDF) after PR 5
 PR 16 (feedback hardening) after the rest is deployed

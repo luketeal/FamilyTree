@@ -1,0 +1,68 @@
+@implements IDisposable
+@inject ToastService Toasts
+
+@* Rendered once by the layout. Success messages auto-dismiss; warnings and
+   errors stay until dismissed, because the case that raises them — a duplicate
+   person saved anyway — is a decision the user has to actually see, and it
+   often arrives at the same moment as a navigation. *@
+
+<div class="toasts" aria-live="polite" aria-atomic="false" data-testid="toast-region">
+    @foreach (var entry in _toasts)
+    {
+        <div class="toast toast--@entry.Toast.Level.ToString().ToLowerInvariant()"
+             data-testid="toast" @key="entry.Id">
+            <span class="toast__text">@entry.Toast.Message</span>
+            <button type="button" class="toast__close" aria-label="Dismiss"
+                    @onclick="() => Remove(entry.Id)">×</button>
+        </div>
+    }
+</div>
+
+@code {
+    private sealed record Entry(Guid Id, Toast Toast);
+
+    private readonly List<Entry> _toasts = [];
+    private readonly CancellationTokenSource _disposing = new();
+
+    protected override void OnInitialized() => Toasts.Raised += OnRaised;
+
+    private void OnRaised(Toast toast)
+    {
+        var entry = new Entry(Guid.NewGuid(), toast);
+        _toasts.Add(entry);
+        StateHasChanged();
+
+        if (toast.Level == ToastLevel.Success)
+        {
+            _ = DismissLaterAsync(entry.Id);
+        }
+    }
+
+    private async Task DismissLaterAsync(Guid id)
+    {
+        try
+        {
+            await Task.Delay(TimeSpan.FromSeconds(4), _disposing.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+
+        // InvokeAsync because the continuation is off the renderer's context.
+        await InvokeAsync(() =>
+        {
+            Remove(id);
+            StateHasChanged();
+        });
+    }
+
+    private void Remove(Guid id) => _toasts.RemoveAll(t => t.Id == id);
+
+    public void Dispose()
+    {
+        Toasts.Raised -= OnRaised;
+        _disposing.Cancel();
+        _disposing.Dispose();
+    }
+}

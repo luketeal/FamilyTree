@@ -1,0 +1,67 @@
+@page "/people/add"
+@inject PersonService People
+@inject TreeDataNotifier Notifier
+@inject ToastService Toasts
+@inject NavigationManager Nav
+
+<PageTitle>Add person — FamilyTree</PageTitle>
+
+@* A person form is legitimately taller than a phone viewport, so it declares
+   itself scrollable. Horizontal overflow is still checked with no exemption. *@
+<section class="person-edit" data-scrolls>
+    <header class="person-edit__header">
+        <h1>Add person</h1>
+        <a class="person-edit__back" href="people">Back to people</a>
+    </header>
+
+    <PersonForm @ref="_form"
+                SubmitLabel="Save person"
+                Error="@_error"
+                Busy="_busy"
+                Submit="SaveAsync"
+                Cancel="GoBack" />
+</section>
+
+@code {
+    private PersonForm? _form;
+    private string? _error;
+    private bool _busy;
+
+    private async Task SaveAsync(PersonService.PersonInput input)
+    {
+        _busy = true;
+        try
+        {
+            var result = await People.CreateAsync(input);
+
+            if (!result.IsSuccess)
+            {
+                _error = result.Error;
+                return;
+            }
+
+            _error = null;
+            _form?.MarkSaved();
+            await Notifier.NotifyChangedAsync();
+
+            Toasts.Show($"{result.Value!.DisplayName} saved.");
+
+            // A duplicate is a warning, not a rejection — two cousins genuinely
+            // can share a name and a birth year, so the person was saved. Raised
+            // as a warning toast because it must survive the navigation below
+            // and stay put until the user has actually read it.
+            if (result.IsWarning)
+            {
+                Toasts.Show(result.Warning!, ToastLevel.Warning);
+            }
+
+            Nav.NavigateTo($"people/{result.Value!.Id}");
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private void GoBack() => Nav.NavigateTo("people");
+}

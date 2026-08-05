@@ -14,6 +14,7 @@ builder.Services.AddScoped<PersonService>();
 builder.Services.AddScoped<CircularReferenceChecker>();
 builder.Services.AddScoped<TreeStatsService>();
 builder.Services.AddScoped<TreeDataNotifier>();
+builder.Services.AddScoped<ToastService>();
 
 // Persistent storage is requested from MainLayout on first render rather than
 // here. JS interop needs the Blazor runtime to be up, which RunAsync starts —

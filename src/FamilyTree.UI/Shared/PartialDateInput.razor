@@ -1,0 +1,82 @@
+@* Year-only stub. PR 6 extends this in place to Year → Month → Day → Circa;
+   the parameter contract is already PartialDate? so that change does not reach
+   the pages using it.
+
+   A genealogy record frequently knows the year and nothing else, so an ordinary
+   <input type="date"> is the wrong control: it would force a month and day the
+   source never recorded. PartialDate carries the precision explicitly. *@
+
+<div class="pdate">
+    <label class="field-label" for="@_yearId">@Label</label>
+    <div class="pdate__row">
+        <div class="input pdate__year">
+            <input id="@_yearId"
+                   type="number"
+                   inputmode="numeric"
+                   min="1"
+                   max="@MaxYear"
+                   placeholder="Year"
+                   value="@_year"
+                   data-testid="@TestId"
+                   @oninput="OnYearInput" />
+        </div>
+
+        <label class="pdate__circa">
+            <input type="checkbox"
+                   checked="@_isApproximate"
+                   data-testid="@($"{TestId}-approx")"
+                   @onchange="OnApproximateChanged" />
+            <span>Approximate</span>
+        </label>
+    </div>
+</div>
+
+@code {
+    private readonly string _yearId = $"pdate-{Guid.NewGuid():N}";
+
+    private int? _year;
+    private bool _isApproximate;
+
+    // A year beyond next year is a typo rather than a record. Kept generous
+    // rather than clamped to today so a birth recorded slightly ahead of the
+    // clock does not get rejected over a time zone.
+    private static int MaxYear => DateTime.UtcNow.Year + 1;
+
+    [Parameter] public string Label { get; set; } = "Year";
+
+    [Parameter] public PartialDate? Value { get; set; }
+
+    [Parameter] public EventCallback<PartialDate?> ValueChanged { get; set; }
+
+    [Parameter] public string TestId { get; set; } = "partial-date";
+
+    protected override void OnParametersSet()
+    {
+        _year = Value?.Year;
+        _isApproximate = Value?.IsApproximate ?? false;
+    }
+
+    private async Task OnYearInput(ChangeEventArgs args)
+    {
+        _year = int.TryParse(args.Value?.ToString(), out var parsed) ? parsed : null;
+        await EmitAsync();
+    }
+
+    private async Task OnApproximateChanged(ChangeEventArgs args)
+    {
+        _isApproximate = args.Value is true;
+        await EmitAsync();
+    }
+
+    // An out-of-range year emits null rather than a PartialDate the domain would
+    // reject: the control's job is to produce a valid value or none at all.
+    private async Task EmitAsync()
+    {
+        PartialDate? next = _year is int year && year >= 1 && year <= MaxYear
+            ? PartialDate.FromYear(year, _isApproximate)
+            : null;
+
+        Value = next;
+        await ValueChanged.InvokeAsync(next);
+    }
+}

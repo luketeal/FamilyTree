@@ -1,8 +1,9 @@
-@* Top bar (52px). Search, Undo, and Add Person are placeholder markup —
-   wired up in later PRs (12 for search, 13 for Undo, 3 for Add Person). *@
+@* Top bar (52px). Search and Undo are still placeholder markup — wired up in
+   PR 12 and PR 13 respectively. *@
 @implements IDisposable
 @inject TreeStatsService Stats
 @inject TreeDataNotifier Notifier
+@inject NavigationManager Nav
 
 <header class="topbar">
     <div class="topbar__brand" data-testid="app-logo">
@@ -29,7 +30,8 @@
                 <path d="M5 10h9a5 5 0 0 1 5 5v0a5 5 0 0 1-5 5h-3"></path>
             </svg>
         </button>
-        <button type="button" class="btn btn--primary" data-testid="add-person-button" disabled>
+        <button type="button" class="btn btn--primary" data-testid="add-person-button"
+                @onclick="() => _quickAdding = true">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
                  stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M12 5v14M5 12h14"></path>
@@ -39,8 +41,15 @@
     </div>
 </header>
 
+@* Quick add rather than a navigation (US-053): the point of a top-bar action is
+   that it does not cost you your place. *@
+<QuickAddPersonPopover @bind-Visible="_quickAdding" Added="OnQuickAdded" />
+
 @code {
     private TreeStats _stats = TreeStats.Empty;
+    private bool _quickAdding;
+
+    private void OnQuickAdded(PersonDetailDto person) => Nav.NavigateTo($"people/{person.Id}");
 
     protected override async Task OnInitializedAsync()
     {

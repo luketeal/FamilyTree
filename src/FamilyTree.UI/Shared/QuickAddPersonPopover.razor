@@ -1,0 +1,140 @@
+@inject PersonService People
+@inject TreeDataNotifier Notifier
+@inject ToastService Toasts
+
+@* US-053. Adding a person from wherever you already are, without losing your
+   place. Name only — everything else is optional on the full form anyway, and
+   the point of this control is that it takes seconds. *@
+
+@if (Visible)
+{
+    <div class="quickadd" data-testid="quick-add">
+        <div class="quickadd__backdrop" @onclick="CloseAsync"></div>
+        <div class="quickadd__panel" role="dialog" aria-modal="true" aria-labelledby="@_titleId"
+             tabindex="-1" @ref="_panel" @onkeydown="OnKeyDown">
+            <h2 id="@_titleId" class="quickadd__title">Add person</h2>
+
+            <ErrorAlert Message="@_error" TestId="quick-add-error" />
+
+            <form class="quickadd__form" @onsubmit="SaveAsync" @onsubmit:preventDefault>
+                <div class="quickadd__field">
+                    <label class="field-label field-label--required" for="quick-first">First name</label>
+                    <div class="input">
+                        <input id="quick-first" type="text" autocomplete="off" data-testid="quick-first-name"
+                               value="@_firstName" @ref="_firstInput"
+                               @oninput="e => _firstName = e.Value?.ToString() ?? string.Empty" />
+                    </div>
+                </div>
+
+                <div class="quickadd__field">
+                    <label class="field-label field-label--required" for="quick-last">Last name</label>
+                    <div class="input">
+                        <input id="quick-last" type="text" autocomplete="off" data-testid="quick-last-name"
+                               value="@_lastName"
+                               @oninput="e => _lastName = e.Value?.ToString() ?? string.Empty" />
+                    </div>
+                </div>
+
+                <div class="quickadd__actions">
+                    <button type="submit" class="btn btn--primary" data-testid="quick-save" disabled="@_busy">
+                        Add
+                    </button>
+                    <button type="button" class="btn btn--ghost" data-testid="quick-cancel" disabled="@_busy"
+                            @onclick="CloseAsync">
+                        Cancel
+                    </button>
+                </div>
+
+                <p class="quickadd__hint">Dates and details can be filled in from the person's profile.</p>
+            </form>
+        </div>
+    </div>
+}
+
+@code {
+    private readonly string _titleId = $"quickadd-{Guid.NewGuid():N}";
+    private ElementReference _panel;
+    private ElementReference _firstInput;
+    private bool _wasVisible;
+
+    private string _firstName = string.Empty;
+    private string _lastName = string.Empty;
+    private string? _error;
+    private bool _busy;
+
+    [Parameter] public bool Visible { get; set; }
+
+    [Parameter] public EventCallback<bool> VisibleChanged { get; set; }
+
+    /// <summary>Raised with the new person so a caller can navigate to them.</summary>
+    [Parameter] public EventCallback<PersonDetailDto> Added { get; set; }
+
+    private void OnKeyDown(KeyboardEventArgs args)
+    {
+        if (args.Key == "Escape")
+        {
+            _ = CloseAsync();
+        }
+    }
+
+    // Focus goes to the first field rather than the panel: this control exists to
+    // be typed into immediately, so landing anywhere else costs a keystroke.
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (Visible && !_wasVisible)
+        {
+            _wasVisible = true;
+            await _firstInput.FocusAsync();
+        }
+        else if (!Visible)
+        {
+            _wasVisible = false;
+        }
+    }
+
+    private async Task CloseAsync()
+    {
+        _firstName = string.Empty;
+        _lastName = string.Empty;
+        _error = null;
+        Visible = false;
+        await VisibleChanged.InvokeAsync(false);
+    }
+
+    private async Task SaveAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_firstName) || string.IsNullOrWhiteSpace(_lastName))
+        {
+            _error = "First and last name are both required.";
+            return;
+        }
+
+        _busy = true;
+        try
+        {
+            var result = await People.CreateAsync(new PersonService.PersonInput(_firstName, _lastName));
+
+            if (!result.IsSuccess)
+            {
+                _error = result.Error;
+                return;
+            }
+
+            await Notifier.NotifyChangedAsync();
+            Toasts.Show($"{result.Value!.DisplayName} saved.");
+
+            if (result.IsWarning)
+            {
+                Toasts.Show(result.Warning!, ToastLevel.Warning);
+            }
+
+            var added = result.Value!;
+            await CloseAsync();
+            await Added.InvokeAsync(added);
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}

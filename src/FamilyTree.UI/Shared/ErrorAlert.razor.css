@@ -1,0 +1,31 @@
+.alert {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 10px 12px;
+    border-radius: var(--radius-md);
+    border: 1px solid transparent;
+    font-size: 13px;
+    line-height: 1.45;
+}
+
+.alert__icon {
+    flex: none;
+    margin-top: 1px;
+}
+
+.alert__text {
+    min-width: 0;
+}
+
+.alert--error {
+    background: var(--err-bg);
+    border-color: var(--err);
+    color: var(--err);
+}
+
+.alert--warning {
+    background: var(--warn-bg);
+    border-color: var(--warn);
+    color: var(--warn);
+}

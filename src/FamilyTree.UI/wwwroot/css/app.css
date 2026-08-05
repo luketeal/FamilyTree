@@ -309,3 +309,33 @@ p {
 .loading-progress-text:after {
     content: var(--blazor-load-percentage-text, "Loading FamilyTree…");
 }
+
+/* Add and Edit person share this page frame. Global rather than scoped because
+   scoped CSS is per-component, and duplicating it into both would let the two
+   pages drift apart. */
+.person-edit {
+    max-width: 720px;
+}
+
+.person-edit__header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 16px;
+}
+
+.person-edit__header h1 {
+    margin: 0;
+}
+
+.person-edit__back {
+    font-size: 12px;
+    color: var(--ink3);
+}
+
+.person-edit__status {
+    font-size: 13px;
+    color: var(--ink3);
+}

@@ -1,0 +1,67 @@
+@* Deleting a person is unrecoverable: there is no export yet and Undo lands in
+   PR 13. The prompt therefore names who is being deleted rather than asking a
+   generic "are you sure", the same rule the Settings wipe follows. *@
+
+@if (Visible)
+{
+    <div class="modal" data-testid="delete-modal">
+        <div class="modal__backdrop" @onclick="() => Cancel.InvokeAsync()"></div>
+        <div class="modal__panel" role="alertdialog" aria-modal="true" aria-labelledby="@_titleId"
+             tabindex="-1" @ref="_panel" @onkeydown="OnKeyDown">
+            <h2 id="@_titleId" class="modal__title">Delete @Name?</h2>
+            <p class="modal__body" data-testid="delete-modal-body">
+                This permanently removes @Name from your tree. There is no undo.
+            </p>
+            <div class="modal__actions">
+                <button type="button" class="btn btn--destructive" data-testid="confirm-delete"
+                        disabled="@Busy" @onclick="() => Confirm.InvokeAsync()">
+                    Delete
+                </button>
+                <button type="button" class="btn btn--secondary" data-testid="cancel-delete"
+                        disabled="@Busy" @onclick="() => Cancel.InvokeAsync()">
+                    Cancel
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private readonly string _titleId = $"delete-title-{Guid.NewGuid():N}";
+    private ElementReference _panel;
+    private bool _wasVisible;
+
+    [Parameter] public bool Visible { get; set; }
+
+    [Parameter] public string? Name { get; set; }
+
+    [Parameter] public bool Busy { get; set; }
+
+    [Parameter] public EventCallback Confirm { get; set; }
+
+    [Parameter] public EventCallback Cancel { get; set; }
+
+    private void OnKeyDown(KeyboardEventArgs args)
+    {
+        if (args.Key == "Escape")
+        {
+            Cancel.InvokeAsync();
+        }
+    }
+
+    // Focus moves to the panel as it opens so a screen reader announces it and a
+    // keyboard user is already inside the dialog. Guarded on the transition so
+    // later renders do not steal focus back from the buttons.
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (Visible && !_wasVisible)
+        {
+            _wasVisible = true;
+            await _panel.FocusAsync();
+        }
+        else if (!Visible)
+        {
+            _wasVisible = false;
+        }
+    }
+}

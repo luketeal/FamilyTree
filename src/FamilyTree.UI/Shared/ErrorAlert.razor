@@ -1,0 +1,39 @@
+@* Inline alert for a service failure or a non-blocking warning. Separate from
+   ToastNotification because these stay on screen: a validation failure has to
+   remain visible next to the form that caused it. *@
+
+@if (!string.IsNullOrWhiteSpace(Message))
+{
+    <div class="alert alert--@Kind.ToString().ToLowerInvariant()"
+         role="@(Kind == AlertKind.Error ? "alert" : "status")"
+         data-testid="@TestId">
+        <svg class="alert__icon" width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"
+             stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+            @if (Kind == AlertKind.Error)
+            {
+                <circle cx="12" cy="12" r="9"></circle>
+                <path d="M12 7v6M12 16v.5"></path>
+            }
+            else
+            {
+                <path d="M12 3l9 16H3z"></path>
+                <path d="M12 9v4M12 16v.5"></path>
+            }
+        </svg>
+        <span class="alert__text">@Message</span>
+    </div>
+}
+
+@code {
+    public enum AlertKind
+    {
+        Error,
+        Warning,
+    }
+
+    [Parameter] public string? Message { get; set; }
+
+    [Parameter] public AlertKind Kind { get; set; } = AlertKind.Error;
+
+    [Parameter] public string TestId { get; set; } = "alert";
+}

@@ -1,0 +1,44 @@
+.pdate {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.pdate__row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.pdate__year {
+    width: 120px;
+}
+
+/* Number inputs get spinners that make a four-digit year cramped, and the
+   arrows are meaningless for a date nobody increments. */
+.pdate__year input {
+    -moz-appearance: textfield;
+    appearance: textfield;
+}
+
+.pdate__year input::-webkit-outer-spin-button,
+.pdate__year input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+.pdate__circa {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--ink2);
+    cursor: pointer;
+}
+
+.pdate__hint {
+    margin: 0;
+    font-size: 11px;
+    color: var(--ink4);
+}

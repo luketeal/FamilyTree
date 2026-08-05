@@ -39,6 +39,10 @@ public abstract class ShellTestContext : BunitContext
         Services.AddSingleton(marriages.Object);
         Services.AddSingleton<TreeStatsService>();
         Services.AddSingleton<TreeDataNotifier>();
+        // The top bar hosts the quick-add popover, and the layout hosts toasts,
+        // so shell tests now need both even when asserting only on markup.
+        Services.AddSingleton<PersonService>();
+        Services.AddSingleton<ToastService>();
         // A no-op double: the layout only asks whether storage is durable, and
         // the real IndexedDB call is covered end to end in FamilyTree.E2E.Tests.
         var treeData = new Mock<ITreeDataAdministration>();

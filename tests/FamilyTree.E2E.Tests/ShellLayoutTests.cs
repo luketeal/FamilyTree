@@ -11,13 +11,13 @@ namespace FamilyTree.E2E.Tests;
 [Collection(nameof(StaticSiteCollection))]
 public class ShellLayoutTests(StaticSiteFixture fixture)
 {
-    private async Task<IPage> OpenAsync(int width = 1440, int height = 900)
+    private async Task<IPage> OpenAsync(int width = 1440, int height = 900, string path = "")
     {
         var page = await fixture.Browser.NewPageAsync(new BrowserNewPageOptions
         {
             ViewportSize = new ViewportSize { Width = width, Height = height },
         });
-        await page.GotoAsync(fixture.BaseUrl, new PageGotoOptions
+        await page.GotoAsync(fixture.BaseUrl + path, new PageGotoOptions
         {
             WaitUntil = WaitUntilState.NetworkIdle,
         });
@@ -109,13 +109,23 @@ public class ShellLayoutTests(StaticSiteFixture fixture)
     // Both axes: an earlier horizontal-only version passed while the content
     // area overflowed vertically by 37px on a phone, because the home page
     // recomputed its own height from desktop padding and ignored the bottom rail.
+    //
+    // Checked on every route rather than the home page alone: the person form is
+    // a two-column grid, which is exactly the shape that overflows once the
+    // viewport is narrower than its columns.
     [Theory]
-    [InlineData(390)]
-    [InlineData(768)]
-    [InlineData(1440)]
-    public async Task Shell_DoesNotScroll(int width)
+    [InlineData(390, "")]
+    [InlineData(768, "")]
+    [InlineData(1440, "")]
+    [InlineData(390, "people")]
+    [InlineData(1440, "people")]
+    [InlineData(390, "people/add")]
+    [InlineData(768, "people/add")]
+    [InlineData(1440, "people/add")]
+    [InlineData(390, "settings")]
+    public async Task Shell_DoesNotScroll(int width, string path)
     {
-        var page = await OpenAsync(width, 844);
+        var page = await OpenAsync(width, 844, path);
 
         // Find scroll containers by computed overflow rather than a hardcoded
         // selector list, so a container added later cannot escape the check.
@@ -165,7 +175,7 @@ public class ShellLayoutTests(StaticSiteFixture fixture)
         var offender = result.RootElement.GetProperty("offender").GetString();
 
         Assert.True(overflowBy <= 0,
-            $"Page scrolls by {overflowBy}px at {width}x844. Worst offender: {offender}");
+            $"/{path} scrolls by {overflowBy}px at {width}x844. Worst offender: {offender}");
     }
 
     [Fact]

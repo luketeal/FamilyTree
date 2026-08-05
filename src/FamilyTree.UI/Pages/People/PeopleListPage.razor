@@ -1,0 +1,90 @@
+@page "/people"
+@inject PersonService People
+
+<PageTitle>People — FamilyTree</PageTitle>
+
+@* A tree of any size outgrows the viewport; the list is meant to scroll. *@
+<section class="people" data-scrolls>
+    <header class="people__header">
+        <h1>People</h1>
+        @if (_people is { Count: > 0 })
+        {
+            <a class="btn btn--primary" href="people/add" data-testid="add-person">Add person</a>
+        }
+    </header>
+
+    <ErrorAlert Message="@_error" TestId="people-error" />
+
+    @if (_loading)
+    {
+        <p class="people__status" data-testid="people-loading">Loading…</p>
+    }
+    else if (_people is { Count: 0 })
+    {
+        @* US-052. The first thing a new user sees, so it says what to do rather
+           than reporting that a collection is empty. *@
+        <div class="people__empty" data-testid="people-empty-state">
+            <h2>Add your first person</h2>
+            <p>Your tree is empty. Start with yourself, or someone you remember well.</p>
+            <a class="btn btn--primary" href="people/add" data-testid="add-first-person">Add your first person</a>
+        </div>
+    }
+    else if (_people is not null)
+    {
+        <p class="people__count" data-testid="people-count">@Describe(_people.Count)</p>
+
+        <ul class="people__list" data-testid="people-list">
+            @foreach (var person in _people)
+            {
+                <li class="people__row">
+                    <a class="people__link" href="@($"people/{person.Id}")"
+                       data-testid="@($"person-row-{person.Id}")">
+                        <span class="people__name">@person.DisplayName</span>
+                        <span class="people__meta">
+                            @if (person.LifeSpan.Length > 0)
+                            {
+                                <span class="people__span">@person.LifeSpan</span>
+                            }
+                            @if (person.IsDeceased)
+                            {
+                                <span class="badge">Deceased</span>
+                            }
+                        </span>
+                    </a>
+                </li>
+            }
+        </ul>
+    }
+</section>
+
+@code {
+    private IReadOnlyList<PersonSummaryDto>? _people;
+    private string? _error;
+    private bool _loading = true;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+
+        // One call for the whole list. Reading each person by id would be free
+        // against IndexedDB and ruinous over HTTP, and this is the seam that
+        // would have to survive that swap.
+        var result = await People.GetAllAsync();
+
+        if (result.IsSuccess)
+        {
+            _people = result.Value;
+            _error = null;
+        }
+        else
+        {
+            _error = result.Error;
+        }
+
+        _loading = false;
+    }
+
+    private static string Describe(int count) => count == 1 ? "1 person" : $"{count} people";
+}
