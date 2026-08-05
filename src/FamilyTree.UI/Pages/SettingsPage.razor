@@ -1,0 +1,234 @@
+@page "/settings"
+@inject ITreeDataAdministration TreeData
+@inject TreeStatsService Stats
+@inject TreeDataNotifier Notifier
+
+<PageTitle>Settings — FamilyTree</PageTitle>
+
+<section class="settings">
+    <h1>Settings</h1>
+
+    <div class="settings__card">
+        <h2>Your data</h2>
+        <p class="settings__lede">
+            Everything lives in this browser. Nothing is sent anywhere, which also
+            means this device holds the only copy.
+        </p>
+
+        <dl class="settings__facts">
+            <dt>In this tree</dt>
+            <dd data-testid="settings-stats">@_stats</dd>
+
+            <dt>Storage</dt>
+            <dd data-testid="settings-persistence">@PersistenceLabel</dd>
+        </dl>
+    </div>
+
+    <div class="settings__card">
+        <h2>Sample family</h2>
+        <p class="settings__lede">
+            A demonstration tree containing half-siblings, an adoption, a remarriage
+            after widowhood, an unidentified ancestor, and a relationship the family
+            is unsure about — the cases this app exists to handle.
+        </p>
+
+        <div class="settings__actions">
+            <button type="button" class="btn btn--primary" data-testid="load-sample"
+                    disabled="@_busy" @onclick="() => RequestAsync(DestructiveAction.LoadSample)">
+                Load sample family
+            </button>
+            <button type="button" class="btn btn--secondary" data-testid="clear-data"
+                    disabled="@_busy" @onclick="() => RequestAsync(DestructiveAction.Clear)">
+                Clear everything
+            </button>
+        </div>
+
+        @if (_pending is not null)
+        {
+            @* tabindex allows the panel itself to take focus, so a screen reader
+               announces it on appearance rather than leaving the user unaware
+               that anything changed. Escape cancels, as a dialog should. *@
+            <div class="settings__confirm" role="alertdialog" aria-labelledby="confirm-title"
+                 data-testid="settings-confirm" tabindex="-1" @ref="_confirmPanel"
+                 @onkeydown="OnConfirmKeyDown">
+                <p id="confirm-title" class="settings__confirm-text" data-testid="settings-confirm-text">
+                    @ConfirmPrompt
+                </p>
+                <div class="settings__actions">
+                    <button type="button" class="btn btn--destructive" data-testid="confirm-destructive"
+                            disabled="@_busy" @onclick="ConfirmAsync">
+                        @ConfirmLabel
+                    </button>
+                    <button type="button" class="btn btn--secondary" data-testid="cancel-destructive"
+                            disabled="@_busy" @onclick="Cancel">
+                        Cancel
+                    </button>
+                </div>
+            </div>
+        }
+
+        @if (_message is not null)
+        {
+            <p class="settings__message" data-testid="settings-message">@_message</p>
+        }
+    </div>
+</section>
+
+@code {
+    private enum DestructiveAction
+    {
+        LoadSample,
+        Clear,
+    }
+
+    private TreeStats _stats = TreeStats.Empty;
+    private StorageDurability? _durability;
+    private string? _message;
+    private bool _busy;
+    private DestructiveAction? _pending;
+    private ElementReference _confirmPanel;
+    private bool _focusConfirm;
+
+    private string PersistenceLabel => _durability switch
+    {
+        null => "Checking…",
+        { Supported: false } => "This browser cannot guarantee persistence",
+        { Persistent: true } => "Persistent — the browser will not evict this data automatically",
+        _ => "Best effort — the browser may evict this data under storage pressure",
+    };
+
+    private string ConfirmLabel => _pending switch
+    {
+        DestructiveAction.LoadSample => "Replace my tree",
+        _ => "Delete everything",
+    };
+
+    // Names what is about to be lost rather than asking a generic "are you sure".
+    // There is no backup and no undo yet, so the count is the only warning the
+    // user gets that this is not recoverable.
+    private string ConfirmPrompt
+    {
+        get
+        {
+            var held = $"{Describe(_stats.People, "person", "people")} and {Describe(_stats.Relationships, "relationship", "relationships")}";
+            return _pending switch
+            {
+                DestructiveAction.LoadSample =>
+                    $"Loading the sample family replaces your tree. The {held} in this browser will be permanently deleted, and there is no undo.",
+                _ =>
+                    $"This permanently deletes the {held} in this browser. There is no undo.",
+            };
+        }
+    }
+
+    private static string Describe(int count, string singular, string plural) =>
+        $"{count} {(count == 1 ? singular : plural)}";
+
+    protected override async Task OnInitializedAsync() => await RefreshAsync();
+
+    // Confirmation is only worth the friction when there is something to lose.
+    // On an empty tree both actions are no-ops, so they run straight through.
+    private async Task RequestAsync(DestructiveAction action)
+    {
+        // Re-read rather than trusting the count this page loaded with. Another
+        // tab on the same origin writes to the same database, so a cached zero
+        // would skip the confirmation and wipe work this page never saw.
+        await RefreshStatsAsync();
+
+        // IsEmpty counts phantoms, which the displayed people count excludes. A
+        // tree of nothing but unidentified ancestors displays as empty but is
+        // still data, and the wipe would take it.
+        if (_stats.IsEmpty)
+        {
+            await RunAsync(action);
+            return;
+        }
+
+        _pending = action;
+        _focusConfirm = true;
+        _message = null;
+    }
+
+    private void OnConfirmKeyDown(KeyboardEventArgs args)
+    {
+        if (args.Key == "Escape")
+        {
+            Cancel();
+        }
+    }
+
+    private void Cancel()
+    {
+        _pending = null;
+        _message = "Nothing was changed.";
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_focusConfirm && _pending is not null)
+        {
+            _focusConfirm = false;
+            await _confirmPanel.FocusAsync();
+        }
+    }
+
+    private async Task ConfirmAsync()
+    {
+        if (_pending is not { } action)
+        {
+            return;
+        }
+
+        _pending = null;
+        await RunAsync(action);
+    }
+
+    private async Task RunAsync(DestructiveAction action)
+    {
+        _busy = true;
+        try
+        {
+            if (action == DestructiveAction.LoadSample)
+            {
+                // Replaces rather than merges, in one transaction: loading the
+                // sample twice should give the same tree, not two overlapping
+                // families.
+                await TreeData.LoadSampleFamilyAsync();
+                await AfterChangeAsync("Sample family loaded.");
+            }
+            else
+            {
+                await TreeData.ClearAsync();
+                await AfterChangeAsync("All data cleared.");
+            }
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task AfterChangeAsync(string message)
+    {
+        _message = message;
+        await RefreshAsync();
+        await Notifier.NotifyChangedAsync();
+    }
+
+    private async Task RefreshAsync()
+    {
+        await RefreshStatsAsync();
+        _durability = await TreeData.EnsureDurableAsync();
+    }
+
+    // Split out so a button press can re-check what is stored without also
+    // re-requesting storage persistence from the browser.
+    private async Task RefreshStatsAsync()
+    {
+        var stats = await Stats.GetAsync();
+        if (stats.IsSuccess)
+        {
+            _stats = stats.Value!;
+        }
+    }
+}

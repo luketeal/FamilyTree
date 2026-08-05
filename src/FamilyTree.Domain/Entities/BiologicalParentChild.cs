@@ -26,4 +26,14 @@ public sealed class BiologicalParentChild
     }
 
     public void UpdateCertainty(RelationshipCertainty certainty) => Certainty = certainty;
+
+    /// <summary>Reconstitutes a link from storage, preserving its identity.</summary>
+    public static BiologicalParentChild Rehydrate(
+        Guid id, Guid parentId, Guid childId, RelationshipCertainty certainty) => new()
+        {
+            Id = id,
+            ParentId = parentId,
+            ChildId = childId,
+            Certainty = certainty,
+        };
 }

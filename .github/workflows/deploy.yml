@@ -36,6 +36,7 @@ jobs:
       - name: Unit tests
         run: |
           dotnet test tests/FamilyTree.Domain.Tests -c Release --no-build --verbosity normal
+          dotnet test tests/FamilyTree.Application.Tests -c Release --no-build --verbosity normal
           dotnet test tests/FamilyTree.UI.Tests -c Release --no-build --verbosity normal
 
       # Publishes the app itself, so it must run after the build and before the

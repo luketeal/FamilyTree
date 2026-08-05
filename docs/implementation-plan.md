@@ -163,6 +163,7 @@ Deliberately early — this is the durability mechanism, not a feature. Covers e
 - `Pages/Export/ExportPage.razor`, `Pages/Import/ImportPage.razor` — download via JS interop, upload via `InputFile`, preview pane, conflict radios, summary report
 - "Last exported N days ago" indicator with a stale-backup prompt
 - Evaluate the File System Access API for user-controlled file storage; record the finding inline if it changes the approach
+- Read and validate the stored `schemaVersion` on import — import is the first code to consume a payload it did not write, and so the first place the stamp has to be checked rather than merely written. Until then the Durability Requirement above is only half met: PR 2 stamps the version, nothing reads it
 - GEDCOM deferred to PR 15 — JSON round-trip is what protects the data
 
 E2E: Playwright captures the download, parses it, asserts seeded persons present; a fixture import with Skip produces expected counts.
@@ -193,6 +194,7 @@ Same guards as biological, **no upper cap**; adoption date optional ("Date unkno
 - `MarriageService` — self-reference check, active-duplicate check, overlap warning, end-after-start validation, `SuggestEndDateFromSpouseDeathAsync` (US-026)
 - `StepparentService` — validates the marriage involves a parent of the stepchild
 - Profile: "Marriages / Partnerships" and "Stepchildren"; dialog step 3 extended for marriage fields
+- Extend `TreeStatsService` to count stepparent links — the relationship total omits them by design until this PR, and starts silently under-reporting the moment they are written
 - Extend export coverage
 
 ### PR 10 — Full tree view, focus, and phantom nodes

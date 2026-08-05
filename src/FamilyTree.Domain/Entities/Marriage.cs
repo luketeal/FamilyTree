@@ -47,5 +47,20 @@ public sealed class Marriage
 
     public void UpdateCertainty(RelationshipCertainty certainty) => Certainty = certainty;
 
+    /// <summary>Reconstitutes a marriage from storage, preserving its identity.</summary>
+    public static Marriage Rehydrate(
+        Guid id, Guid spouse1Id, Guid spouse2Id, PartialDate startDate, string? startPlace,
+        PartialDate? endDate, MarriageEndReason? endReason, RelationshipCertainty certainty) => new()
+        {
+            Id = id,
+            Spouse1Id = spouse1Id,
+            Spouse2Id = spouse2Id,
+            StartDate = startDate,
+            StartPlace = startPlace,
+            EndDate = endDate,
+            EndReason = endReason,
+            Certainty = certainty,
+        };
+
     public bool IsOngoing => EndDate is null && EndReason is null;
 }

@@ -3,7 +3,7 @@ using FamilyTree.UI.Layout;
 
 namespace FamilyTree.UI.Tests.Layout;
 
-public class ShellLayoutTests : BunitContext
+public class ShellLayoutTests : ShellTestContext
 {
     [Fact]
     public void IconRail_RendersAllFivePrimaryDestinations()
