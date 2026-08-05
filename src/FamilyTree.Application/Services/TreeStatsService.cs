@@ -5,6 +5,17 @@ namespace FamilyTree.Application.Services;
 
 public sealed record TreeStats(int People, int Relationships)
 {
+    /// <summary>
+    /// Everything currently stored, phantoms included. <see cref="People"/>
+    /// counts only identified people, so a tree holding nothing but unidentified
+    /// ancestors reports zero while still containing records a wipe would
+    /// destroy. Anything deciding whether there is something to lose must ask
+    /// this, not the displayed counts.
+    /// </summary>
+    public int StoredRecords { get; init; }
+
+    public bool IsEmpty => StoredRecords == 0;
+
     public static TreeStats Empty { get; } = new(0, 0);
 
     /// <summary>"12 people · 11 relationships", singular where it should be.</summary>
@@ -40,8 +51,13 @@ public sealed class TreeStatsService(
         // count. Add them here at the same time as the stepparent repository,
         // or this total starts silently under-reporting.
 
+        var relationships = bio.Count + adopt.Count + married.Count;
+
         return Result<TreeStats>.Success(
-            new TreeStats(realPeople, bio.Count + adopt.Count + married.Count));
+            new TreeStats(realPeople, relationships)
+            {
+                StoredRecords = allPeople.Count + relationships,
+            });
     }
 }
 

@@ -139,6 +139,43 @@ public class StorageTests(StaticSiteFixture fixture)
             .ToHaveTextAsync("10 people · 14 relationships");
     }
 
+    // role="alertdialog" claims the panel behaves like a dialog. bUnit cannot
+    // check either half of that: it has no focus model, and FocusAsync is stubbed
+    // JS interop there. Both need a real browser.
+    [Fact]
+    public async Task TheConfirmationTakesFocusWhenItAppears()
+    {
+        var page = await OpenSettingsAsync();
+        await page.GetByTestId("load-sample").ClickAsync();
+        await Assertions.Expect(page.GetByTestId("settings-stats")).ToHaveTextAsync("10 people · 14 relationships");
+
+        await page.GetByTestId("clear-data").ClickAsync();
+        await Assertions.Expect(page.GetByTestId("settings-confirm")).ToBeVisibleAsync();
+
+        var focused = await page.EvaluateAsync<string?>(
+            "() => document.activeElement?.getAttribute('data-testid')");
+
+        Assert.Equal("settings-confirm", focused);
+    }
+
+    [Fact]
+    public async Task EscapeCancelsTheConfirmationAndKeepsTheData()
+    {
+        var page = await OpenSettingsAsync();
+        await page.GetByTestId("load-sample").ClickAsync();
+        await Assertions.Expect(page.GetByTestId("settings-stats")).ToHaveTextAsync("10 people · 14 relationships");
+
+        await page.GetByTestId("clear-data").ClickAsync();
+        await Assertions.Expect(page.GetByTestId("settings-confirm")).ToBeVisibleAsync();
+        await page.Keyboard.PressAsync("Escape");
+
+        await Assertions.Expect(page.GetByTestId("settings-confirm")).Not.ToBeVisibleAsync();
+
+        await page.ReloadAsync(new PageReloadOptions { WaitUntil = WaitUntilState.NetworkIdle });
+        await Assertions.Expect(page.GetByTestId("tree-stats"))
+            .ToHaveTextAsync("10 people · 14 relationships");
+    }
+
     // An empty tree has nothing to lose, so the confirmation would be pure
     // friction. This pins that distinction so it does not drift.
     [Fact]

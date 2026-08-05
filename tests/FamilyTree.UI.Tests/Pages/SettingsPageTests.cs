@@ -167,4 +167,81 @@ public class SettingsPageTests : ShellTestContext
         Assert.Empty(cut.FindAll("[data-testid=settings-confirm]"));
         treeData.Verify(t => t.LoadSampleFamilyAsync(It.IsAny<CancellationToken>()), Times.Once);
     }
+
+    // Another tab writes to the same database. Trusting the count this page
+    // loaded with means a tab opened against an empty tree skips the
+    // confirmation and silently destroys work it never saw.
+    [Fact]
+    public void RechecksStorageBeforeDecidingTheTreeIsEmpty()
+    {
+        var treeData = ReplaceTreeDataWithSpy();
+        var cut = Render<SettingsPage>();
+
+        // Rendered empty; something else populates the tree afterwards.
+        GivenTreeContains(4);
+
+        cut.Find("[data-testid=load-sample]").Click();
+
+        Assert.Contains(
+            "4 people",
+            cut.Find("[data-testid=settings-confirm-text]").TextContent);
+        treeData.Verify(t => t.LoadSampleFamilyAsync(It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    // Phantoms are excluded from the displayed count but not from the wipe, so
+    // a tree of nothing but unidentified ancestors displays as empty while
+    // still holding records a load would destroy.
+    [Fact]
+    public void APhantomOnlyTreeIsNotTreatedAsEmpty()
+    {
+        People.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync([Person.CreatePhantom(), Person.CreatePhantom()]);
+        var treeData = ReplaceTreeDataWithSpy();
+        var cut = Render<SettingsPage>();
+
+        cut.Find("[data-testid=load-sample]").Click();
+
+        Assert.NotEmpty(cut.FindAll("[data-testid=settings-confirm]"));
+        treeData.Verify(t => t.LoadSampleFamilyAsync(It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    // role="alertdialog" is a promise about behaviour, not just a label.
+    [Fact]
+    public void EscapeCancelsTheConfirmation()
+    {
+        GivenTreeContains(3);
+        var treeData = ReplaceTreeDataWithSpy();
+        var cut = Render<SettingsPage>();
+
+        cut.Find("[data-testid=load-sample]").Click();
+        cut.Find("[data-testid=settings-confirm]").KeyDown(Key.Escape);
+
+        Assert.Empty(cut.FindAll("[data-testid=settings-confirm]"));
+        treeData.Verify(t => t.LoadSampleFamilyAsync(It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public void AnUnrelatedKeyDoesNotCancelTheConfirmation()
+    {
+        GivenTreeContains(3);
+        ReplaceTreeDataWithSpy();
+        var cut = Render<SettingsPage>();
+
+        cut.Find("[data-testid=load-sample]").Click();
+        cut.Find("[data-testid=settings-confirm]").KeyDown(Key.Enter);
+
+        Assert.NotEmpty(cut.FindAll("[data-testid=settings-confirm]"));
+    }
+
+    [Fact]
+    public void ConfirmationPanelCanTakeFocus()
+    {
+        GivenTreeContains(3);
+        ReplaceTreeDataWithSpy();
+        var cut = Render<SettingsPage>();
+
+        cut.Find("[data-testid=load-sample]").Click();
+
+        Assert.Equal("-1", cut.Find("[data-testid=settings-confirm]").GetAttribute("tabindex"));
+    }
 }

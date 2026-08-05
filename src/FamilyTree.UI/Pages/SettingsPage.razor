@@ -45,8 +45,12 @@
 
         @if (_pending is not null)
         {
+            @* tabindex allows the panel itself to take focus, so a screen reader
+               announces it on appearance rather than leaving the user unaware
+               that anything changed. Escape cancels, as a dialog should. *@
             <div class="settings__confirm" role="alertdialog" aria-labelledby="confirm-title"
-                 data-testid="settings-confirm">
+                 data-testid="settings-confirm" tabindex="-1" @ref="_confirmPanel"
+                 @onkeydown="OnConfirmKeyDown">
                 <p id="confirm-title" class="settings__confirm-text" data-testid="settings-confirm-text">
                     @ConfirmPrompt
                 </p>
@@ -82,6 +86,8 @@
     private string? _message;
     private bool _busy;
     private DestructiveAction? _pending;
+    private ElementReference _confirmPanel;
+    private bool _focusConfirm;
 
     private string PersistenceLabel => _durability switch
     {
@@ -124,20 +130,46 @@
     // On an empty tree both actions are no-ops, so they run straight through.
     private async Task RequestAsync(DestructiveAction action)
     {
-        if (_stats.People == 0 && _stats.Relationships == 0)
+        // Re-read rather than trusting the count this page loaded with. Another
+        // tab on the same origin writes to the same database, so a cached zero
+        // would skip the confirmation and wipe work this page never saw.
+        await RefreshStatsAsync();
+
+        // IsEmpty counts phantoms, which the displayed people count excludes. A
+        // tree of nothing but unidentified ancestors displays as empty but is
+        // still data, and the wipe would take it.
+        if (_stats.IsEmpty)
         {
             await RunAsync(action);
             return;
         }
 
         _pending = action;
+        _focusConfirm = true;
         _message = null;
+    }
+
+    private void OnConfirmKeyDown(KeyboardEventArgs args)
+    {
+        if (args.Key == "Escape")
+        {
+            Cancel();
+        }
     }
 
     private void Cancel()
     {
         _pending = null;
         _message = "Nothing was changed.";
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_focusConfirm && _pending is not null)
+        {
+            _focusConfirm = false;
+            await _confirmPanel.FocusAsync();
+        }
     }
 
     private async Task ConfirmAsync()
@@ -185,12 +217,18 @@
 
     private async Task RefreshAsync()
     {
+        await RefreshStatsAsync();
+        _durability = await TreeData.EnsureDurableAsync();
+    }
+
+    // Split out so a button press can re-check what is stored without also
+    // re-requesting storage persistence from the browser.
+    private async Task RefreshStatsAsync()
+    {
         var stats = await Stats.GetAsync();
         if (stats.IsSuccess)
         {
             _stats = stats.Value!;
         }
-
-        _durability = await TreeData.EnsureDurableAsync();
     }
 }
