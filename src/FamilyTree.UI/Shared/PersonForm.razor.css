@@ -90,6 +90,18 @@
     flex-wrap: wrap;
 }
 
+.pform__count {
+    margin: 0;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--ink4);
+    text-align: right;
+}
+
+.pform__count--full {
+    color: var(--warn);
+}
+
 @media (max-width: 768px) {
     .pform__grid {
         grid-template-columns: minmax(0, 1fr);

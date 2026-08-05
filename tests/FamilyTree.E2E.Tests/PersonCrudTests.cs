@@ -311,4 +311,72 @@ public class PersonCrudTests(StaticSiteFixture fixture)
         await Assertions.Expect(page.GetByTestId("people-count")).ToHaveTextAsync("10 people");
         await Assertions.Expect(page.GetByTestId("people-list")).Not.ToContainTextAsync("Unknown");
     }
+
+    // US-053: the popover produces a useful record, not just a name.
+    [Fact]
+    public async Task QuickAddStoresTheDatesAndGenderItCollected()
+    {
+        var page = await OpenAsync();
+
+        await page.GetByTestId("add-person-button").ClickAsync();
+        await page.GetByTestId("quick-first-name").FillAsync("Grace");
+        await page.GetByTestId("quick-last-name").FillAsync("Hopper");
+        await page.GetByTestId("quick-birth-year").FillAsync("1906");
+        await page.GetByTestId("quick-death-year").FillAsync("1992");
+        await page.GetByTestId("quick-gender").SelectOptionAsync("Female");
+        await page.GetByTestId("quick-save").ClickAsync();
+
+        await Assertions.Expect(page.GetByTestId("profile-name")).ToHaveTextAsync("Grace Hopper");
+        await Assertions.Expect(page.GetByTestId("profile-birth")).ToContainTextAsync("1906");
+        await Assertions.Expect(page.GetByTestId("profile-death")).ToContainTextAsync("1992");
+        await Assertions.Expect(page.GetByTestId("profile-gender")).ToHaveTextAsync("Female");
+    }
+
+    // Switching to the full form must not cost what has already been typed, or
+    // the escape hatch is worse than never opening the popover.
+    [Fact]
+    public async Task OpeningTheFullFormCarriesOverWhatWasTyped()
+    {
+        var page = await OpenAsync();
+
+        await page.GetByTestId("add-person-button").ClickAsync();
+        await page.GetByTestId("quick-first-name").FillAsync("Grace");
+        await page.GetByTestId("quick-last-name").FillAsync("Hopper");
+        await page.GetByTestId("quick-birth-year").FillAsync("1906");
+        await page.GetByTestId("quick-gender").SelectOptionAsync("Female");
+        await page.GetByTestId("quick-open-full").ClickAsync();
+
+        await Assertions.Expect(page.GetByTestId("input-first-name")).ToHaveValueAsync("Grace");
+        await Assertions.Expect(page.GetByTestId("input-last-name")).ToHaveValueAsync("Hopper");
+        await Assertions.Expect(page.GetByTestId("input-birth-year")).ToHaveValueAsync("1906");
+        await Assertions.Expect(page.GetByTestId("input-gender")).ToHaveValueAsync("Female");
+        // Nothing was saved on the way through.
+        await Assertions.Expect(page.GetByTestId("tree-stats")).ToHaveTextAsync("0 people · 0 relationships");
+    }
+
+    // US-006: a note is research the user typed. Silently dropping its tail at
+    // the storage layer would be data loss, so the limit is visible while typing.
+    [Fact]
+    public async Task NotesShowALiveCharacterCount()
+    {
+        var page = await OpenAsync("people/add");
+
+        await Assertions.Expect(page.GetByTestId("notes-count")).ToHaveTextAsync("0 / 5000");
+
+        var note = new string('x', 42);
+        await page.GetByTestId("input-notes").FillAsync(note);
+
+        await Assertions.Expect(page.GetByTestId("notes-count")).ToHaveTextAsync($"{note.Length} / 5000");
+    }
+
+    [Fact]
+    public async Task NotesCannotExceedTheLimit()
+    {
+        var page = await OpenAsync("people/add");
+
+        await page.GetByTestId("input-notes").FillAsync(new string('x', 5200));
+
+        var length = await page.GetByTestId("input-notes").EvaluateAsync<int>("el => el.value.length");
+        Assert.Equal(5000, length);
+    }
 }

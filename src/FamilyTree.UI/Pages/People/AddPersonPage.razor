@@ -15,6 +15,7 @@
     </header>
 
     <PersonForm @ref="_form"
+                Person="_seed"
                 SubmitLabel="Save person"
                 Error="@_error"
                 Busy="_busy"
@@ -24,8 +25,50 @@
 
 @code {
     private PersonForm? _form;
+    private PersonDetailDto? _seed;
     private string? _error;
     private bool _busy;
+
+    // Carried over from the quick-add popover's "Open full form" (US-053), so
+    // switching to the full form does not cost the user what they already typed.
+    [SupplyParameterFromQuery(Name = "first")] private string? FirstName { get; set; }
+
+    [SupplyParameterFromQuery(Name = "last")] private string? LastName { get; set; }
+
+    [SupplyParameterFromQuery(Name = "born")] private int? BornYear { get; set; }
+
+    [SupplyParameterFromQuery(Name = "died")] private int? DiedYear { get; set; }
+
+    [SupplyParameterFromQuery(Name = "gender")] private string? GenderName { get; set; }
+
+    protected override void OnParametersSet()
+    {
+        if (FirstName is null && LastName is null && BornYear is null && DiedYear is null && GenderName is null)
+        {
+            return;
+        }
+
+        // A DTO purely to seed the form. Nothing is stored until the user saves,
+        // so the id is a throwaway.
+        _seed = new PersonDetailDto(
+            Guid.Empty,
+            FirstName ?? string.Empty,
+            LastName ?? string.Empty,
+            null,
+            SafeYear(BornYear),
+            null,
+            SafeYear(DiedYear),
+            null,
+            Enum.TryParse<Gender>(GenderName, out var gender) ? gender : Gender.Unknown,
+            null,
+            null,
+            false);
+    }
+
+    // A hand-edited query string can carry anything; an out-of-range year must
+    // drop the value rather than throw on the way into the form.
+    private static PartialDate? SafeYear(int? year) =>
+        year is int value && value >= 1 && value <= 9999 ? PartialDate.FromYear(value) : null;
 
     private async Task SaveAsync(PersonService.PersonInput input)
     {

@@ -92,8 +92,15 @@
         <div class="pform__field pform__field--wide">
             <label class="field-label" for="notes">Notes</label>
             <textarea id="notes" class="pform__textarea" rows="4" data-testid="input-notes"
+                      maxlength="@NotesLimit"
                       value="@_model.Notes"
                       @oninput="e => Set(m => m.Notes = e.Value?.ToString())"></textarea>
+            @* Counted rather than silently truncated: a note is research the user
+               typed, and losing the tail of it without saying so is data loss. *@
+            <p class="pform__count @(NotesRemaining <= 0 ? "pform__count--full" : null)"
+               data-testid="notes-count">
+                @(_model.Notes?.Length ?? 0) / @NotesLimit
+            </p>
         </div>
     </div>
 
@@ -182,6 +189,11 @@
             && Gender == other.Gender
             && Notes == other.Notes;
     }
+
+    /// <summary>US-006 caps notes at 5,000 characters.</summary>
+    public const int NotesLimit = 5000;
+
+    private int NotesRemaining => NotesLimit - (_model.Notes?.Length ?? 0);
 
     private Model _model = new();
     private Model _original = new();
