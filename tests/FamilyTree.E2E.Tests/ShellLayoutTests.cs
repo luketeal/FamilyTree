@@ -356,6 +356,40 @@ public class ShellLayoutTests(StaticSiteFixture fixture)
         Assert.Equal("static", position);
     }
 
+    // The overlay is a scroll container, so an absolutely positioned backdrop
+    // scrolls with the panel and is sized to the client box rather than the
+    // scroll height — the tint slides up and the page shows through beneath it.
+    // Scrolling the overlay is what exposes this; a static check passes.
+    [Fact]
+    public async Task TheBackdropStaysPutWhenTheOverlayScrolls()
+    {
+        var page = await OpenAsync(390, 380);
+        await page.GetByTestId("add-person-button").ClickAsync();
+        await Assertions.Expect(page.GetByTestId("quick-add")).ToBeVisibleAsync();
+
+        var covered = await page.EvaluateAsync<string>(@"async () => {
+            const overlay = document.querySelector('[data-overlay]');
+            const backdrop = overlay.querySelector('div');
+
+            overlay.scrollTop = overlay.scrollHeight;
+            await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+
+            const rect = backdrop.getBoundingClientRect();
+            return JSON.stringify({
+                scrolled: overlay.scrollTop > 0,
+                top: Math.round(rect.top),
+                coversToBottom: Math.round(rect.bottom) >= window.innerHeight,
+            });
+        }");
+
+        using var result = JsonDocument.Parse(covered);
+        Assert.True(result.RootElement.GetProperty("scrolled").GetBoolean(),
+            "The overlay did not scroll, so this does not exercise the case.");
+        Assert.Equal(0, result.RootElement.GetProperty("top").GetInt32());
+        Assert.True(result.RootElement.GetProperty("coversToBottom").GetBoolean(),
+            "The backdrop scrolled away from the bottom of the viewport, leaving the page visible behind it.");
+    }
+
     [Fact]
     public async Task Rail_BecomesABottomBarOnSmallScreens()
     {

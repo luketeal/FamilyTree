@@ -19,7 +19,12 @@
 }
 
 .modal__backdrop {
-    position: absolute;
+    /* Fixed, not absolute. The overlay above is a scroll container, and an
+       absolutely positioned child of one scrolls with its content while being
+       sized to the client box — so the tint slid up with the panel and left the
+       page showing through underneath. A backdrop has to stay put and cover
+       everything, which is the viewport's job, not the scroll box's. */
+    position: fixed;
     inset: 0;
     background: rgba(28, 26, 23, 0.35);
 }
