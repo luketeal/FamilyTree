@@ -98,22 +98,16 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - id: deployment
+        # No timeout override here: actions/deploy-pages clamps the input to a
+        # 600000ms maximum and warns that it has done so, so raising it changes
+        # nothing. A deploy that reaches ten minutes will be cancelled, and the
+        # only remedies are outside this file.
+        #
+        # When that happens, do not re-run the job. The Pages deployment ID is
+        # the commit SHA, so a cancelled deployment stays attached to it: the
+        # retry either reports "Deployment cancelled" within seconds, or leaves
+        # the deployment stuck in progress and every later commit is rejected
+        # with "due to in progress deployment. Please cancel <sha> first". That
+        # state clears only by cancelling the deployment in
+        # Settings > Environments > github-pages, or by waiting it out.
         uses: actions/deploy-pages@v4
-        with:
-          # Pages sometimes leaves a deployment queued far longer than the usual
-          # 10-20s; one that was given a second chance went on to succeed after
-          # 5m37s. This asks the action to wait rather than cancel an artifact
-          # that had already built and uploaded cleanly.
-          #
-          # Setting this has not been observed to change the abort time — a run
-          # carrying it still gave up at 10m03s, the untouched default. The input
-          # name and units are right (see the action's own action.yml), so the
-          # reason is unknown and it is left in place as harmless rather than
-          # relied upon. If a deploy times out again, treat it as GitHub Pages
-          # being degraded and not as something this workflow can wait out.
-          #
-          # Re-running a timed-out deploy does not help: the Pages deployment ID
-          # is the commit SHA, so the cancellation sticks to it and the retry
-          # reports "Deployment cancelled" within seconds. Only a new commit
-          # gets a fresh deployment.
-          timeout: 1200000
