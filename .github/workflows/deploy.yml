@@ -100,8 +100,20 @@ jobs:
       - id: deployment
         uses: actions/deploy-pages@v4
         with:
-          # The action's own 10 minute default has now aborted two deploys that
-          # were merely slow: a retry of the first went on to succeed, taking
-          # 5m37s against a usual 10-20s. Pages is occasionally just slow, and
-          # giving up on it fails a build whose artifact was already fine.
+          # Pages sometimes leaves a deployment queued far longer than the usual
+          # 10-20s; one that was given a second chance went on to succeed after
+          # 5m37s. This asks the action to wait rather than cancel an artifact
+          # that had already built and uploaded cleanly.
+          #
+          # Setting this has not been observed to change the abort time — a run
+          # carrying it still gave up at 10m03s, the untouched default. The input
+          # name and units are right (see the action's own action.yml), so the
+          # reason is unknown and it is left in place as harmless rather than
+          # relied upon. If a deploy times out again, treat it as GitHub Pages
+          # being degraded and not as something this workflow can wait out.
+          #
+          # Re-running a timed-out deploy does not help: the Pages deployment ID
+          # is the commit SHA, so the cancellation sticks to it and the retry
+          # reports "Deployment cancelled" within seconds. Only a new commit
+          # gets a fresh deployment.
           timeout: 1200000
