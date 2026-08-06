@@ -5,6 +5,21 @@
     display: grid;
     place-items: start center;
     padding: 72px 16px 16px;
+    /* The overlay scrolls itself. Without this a panel taller than the visible
+       area — which it is on a phone once the keyboard is up — hands the gesture
+       to the page behind, so the app scrolls instead of the dialog.
+       overscroll-behavior stops the gesture chaining onward at either end. */
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+}
+
+/* The keyboard leaves very little height; the 72px offset is a nicety on a
+   roomy screen and wasted space on a cramped one. */
+@media (max-height: 620px) {
+    .quickadd {
+        padding-top: 16px;
+    }
 }
 
 .quickadd__backdrop {

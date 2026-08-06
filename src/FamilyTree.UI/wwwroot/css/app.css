@@ -366,3 +366,22 @@ p {
         height: 44px;
     }
 }
+
+/* While any overlay is open, nothing behind it scrolls. Scrolling the app to
+   reach a dialog is disorienting, and on iOS the document becomes scrollable
+   the moment the keyboard shrinks the visual viewport — so locking the shell's
+   own scroll container is not enough on its own.
+
+   Keyed on [data-overlay] rather than on each overlay's class, so a dialog
+   added later is covered by opting in rather than by remembering to edit this.
+
+   :has() is required. Without it the rules simply do not apply and the
+   behaviour is what it was before — background scrolling, not a broken page. */
+html:has([data-overlay]),
+body:has([data-overlay]) {
+    overflow: hidden;
+}
+
+.shell:has([data-overlay]) .shell__content {
+    overflow: hidden;
+}

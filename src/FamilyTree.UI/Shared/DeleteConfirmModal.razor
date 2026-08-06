@@ -4,7 +4,7 @@
 
 @if (Visible)
 {
-    <div class="modal" data-testid="delete-modal">
+    <div class="modal" data-testid="delete-modal" data-overlay>
         <div class="modal__backdrop" @onclick="() => Cancel.InvokeAsync()"></div>
         <div class="modal__panel" role="alertdialog" aria-modal="true" aria-labelledby="@_titleId"
              tabindex="-1" @ref="_panel" @onkeydown="OnKeyDown">

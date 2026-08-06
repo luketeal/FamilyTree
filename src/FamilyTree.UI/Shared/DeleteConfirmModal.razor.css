@@ -5,6 +5,11 @@
     display: grid;
     place-items: center;
     padding: 16px;
+    /* Same reasoning as the quick-add overlay: the dialog owns its scroll, so a
+       tall panel never hands the gesture to the page behind it. */
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
 }
 
 .modal__backdrop {

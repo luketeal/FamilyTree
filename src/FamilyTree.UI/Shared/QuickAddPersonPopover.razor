@@ -10,7 +10,7 @@
 
 @if (Visible)
 {
-    <div class="quickadd" data-testid="quick-add">
+    <div class="quickadd" data-testid="quick-add" data-overlay>
         <div class="quickadd__backdrop" @onclick="CloseAsync"></div>
         <div class="quickadd__panel" role="dialog" aria-modal="true" aria-labelledby="@_titleId"
              tabindex="-1" @ref="_panel" @onkeydown="OnKeyDown">

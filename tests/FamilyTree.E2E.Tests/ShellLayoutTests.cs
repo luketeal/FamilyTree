@@ -220,6 +220,69 @@ public class ShellLayoutTests(StaticSiteFixture fixture)
             + $"the page sideways on focus. Smallest: {offender}");
     }
 
+    // Scrolling the app behind a dialog to reach the dialog is disorienting, and
+    // on iOS the document becomes scrollable the moment the keyboard shrinks the
+    // visual viewport. 380px of height stands in for that: it is shorter than
+    // the popover, which is precisely when the gesture used to chain through.
+    [Fact]
+    public async Task AnOpenOverlayLocksTheScrollBehindIt()
+    {
+        var page = await OpenAsync(390, 380);
+        await page.GetByTestId("add-person-button").ClickAsync();
+        await Assertions.Expect(page.GetByTestId("quick-add")).ToBeVisibleAsync();
+
+        var locked = await page.EvaluateAsync<string>(@"() => JSON.stringify({
+            html: getComputedStyle(document.documentElement).overflowY,
+            body: getComputedStyle(document.body).overflowY,
+            content: getComputedStyle(document.querySelector('.shell__content')).overflowY,
+        })");
+
+        using var result = JsonDocument.Parse(locked);
+        Assert.Equal("hidden", result.RootElement.GetProperty("html").GetString());
+        Assert.Equal("hidden", result.RootElement.GetProperty("body").GetString());
+        Assert.Equal("hidden", result.RootElement.GetProperty("content").GetString());
+    }
+
+    // The lock has to lift, or closing the dialog leaves the app unscrollable.
+    [Fact]
+    public async Task ClosingTheOverlayRestoresScrolling()
+    {
+        var page = await OpenAsync(390, 380);
+        await page.GetByTestId("add-person-button").ClickAsync();
+        await Assertions.Expect(page.GetByTestId("quick-add")).ToBeVisibleAsync();
+
+        await page.Keyboard.PressAsync("Escape");
+        await Assertions.Expect(page.GetByTestId("quick-add")).ToBeHiddenAsync();
+
+        var content = await page.EvaluateAsync<string>(
+            "() => getComputedStyle(document.querySelector('.shell__content')).overflowY");
+
+        Assert.Equal("auto", content);
+    }
+
+    // The overlay must be able to scroll itself, or a panel taller than the
+    // screen simply cannot be reached once the background is locked.
+    [Fact]
+    public async Task AnOverlayTallerThanTheScreenScrollsItself()
+    {
+        var page = await OpenAsync(390, 380);
+        await page.GetByTestId("add-person-button").ClickAsync();
+        await Assertions.Expect(page.GetByTestId("quick-add")).ToBeVisibleAsync();
+
+        var overlay = await page.GetByTestId("quick-add").EvaluateAsync<string>(
+            @"el => JSON.stringify({
+                overflow: getComputedStyle(el).overflowY,
+                chaining: getComputedStyle(el).overscrollBehaviorY,
+                scrollable: el.scrollHeight > el.clientHeight,
+            })");
+
+        using var result = JsonDocument.Parse(overlay);
+        Assert.Equal("auto", result.RootElement.GetProperty("overflow").GetString());
+        Assert.Equal("contain", result.RootElement.GetProperty("chaining").GetString());
+        Assert.True(result.RootElement.GetProperty("scrollable").GetBoolean(),
+            "The overlay is not taller than this viewport, so it does not exercise the case.");
+    }
+
     [Fact]
     public async Task Rail_BecomesABottomBarOnSmallScreens()
     {
