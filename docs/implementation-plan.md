@@ -208,6 +208,7 @@ Same guards as biological, **no upper cap**; adoption date optional ("Date unkno
 - `MarriageService` — self-reference check, active-duplicate check, overlap warning, end-after-start validation, `SuggestEndDateFromSpouseDeathAsync` (US-026)
 - `StepparentService` — validates the marriage involves a parent of the stepchild
 - Profile: "Marriages / Partnerships" and "Stepchildren"; dialog step 3 extended for marriage fields
+- Give `TreeStatsService` a cached read invalidated by `TreeDataNotifier`, before a third component subscribes. Each subscriber currently reads all four repositories in full, so every save costs one complete read of the store per listener — free against IndexedDB, four HTTP round trips each once the seam is swapped, which is the pattern the service's own docstring exists to watch for
 - Extend `TreeStatsService` to count stepparent links — the relationship total omits them by design until this PR, and starts silently under-reporting the moment they are written
 - Extend export coverage
 
