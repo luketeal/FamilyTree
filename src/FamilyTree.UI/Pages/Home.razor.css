@@ -35,3 +35,8 @@
     color: var(--ink4);
     margin-bottom: 0;
 }
+
+.home__loading {
+    font-size: 13px;
+    color: var(--ink3);
+}

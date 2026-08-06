@@ -199,4 +199,42 @@ public class PersonServiceTests
         Assert.True(result.IsSuccess);
         Assert.True(captured!.IsPhantom);
     }
+
+    // US-006's 5,000-character cap has to be a rule here, not just a maxlength
+    // on one textarea: an import or a future API client never touches that
+    // attribute, and the browser is the only copy of the data.
+    [Fact]
+    public async Task RejectsPerson_WhenNotesExceedTheLimit()
+    {
+        var input = ValidInput() with { Notes = new string('x', PersonService.NotesLimit + 1) };
+
+        var result = await CreateService().CreateAsync(input);
+
+        Assert.False(result.IsSuccess);
+        Assert.Contains("5,000", result.Error);
+    }
+
+    [Fact]
+    public async Task AcceptsPerson_WhenNotesAreExactlyAtTheLimit()
+    {
+        var input = ValidInput() with { Notes = new string('x', PersonService.NotesLimit) };
+
+        var result = await CreateService().CreateAsync(input);
+
+        Assert.True(result.IsSuccess);
+    }
+
+    // Update runs the same validation as create, or an edit becomes a way past
+    // the rule.
+    [Fact]
+    public async Task RejectsUpdate_WhenNotesExceedTheLimit()
+    {
+        var service = CreateService();
+        var created = await service.CreateAsync(ValidInput());
+        var tooLong = ValidInput() with { Notes = new string('x', PersonService.NotesLimit + 1) };
+
+        var result = await service.UpdateAsync(created.Value!.Id, tooLong);
+
+        Assert.False(result.IsSuccess);
+    }
 }

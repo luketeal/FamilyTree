@@ -9,15 +9,18 @@
 <div class="pdate">
     <label class="field-label" for="@_yearId">@Label</label>
     <div class="pdate__row">
+        @* Deliberately no min/max. Those put the field under native constraint
+           validation, which refuses to submit the enclosing form — so Blazor
+           never runs, nothing renders, and the save button reads as dead. The
+           range is enforced below instead, where the app can say something. *@
         <div class="input pdate__year">
             <input id="@_yearId"
                    type="number"
                    inputmode="numeric"
-                   min="1"
-                   max="@MaxYear"
                    placeholder="Year"
                    value="@_year"
                    data-testid="@TestId"
+                   aria-invalid="@(_error is not null)"
                    @oninput="OnYearInput" />
         </div>
 
@@ -29,6 +32,11 @@
             <span>Approximate</span>
         </label>
     </div>
+
+    @if (_error is not null)
+    {
+        <p class="pdate__error" data-testid="@($"error-{TestId}")">@_error</p>
+    }
 </div>
 
 @code {
@@ -36,6 +44,16 @@
 
     private int? _year;
     private bool _isApproximate;
+    private string? _error;
+
+    /// <summary>
+    /// Set once the parameter has been read, so later renders do not overwrite
+    /// what the user is typing. Without it, clearing the year emits null, the
+    /// parent re-renders, and the circa flag is re-seeded from that null —
+    /// silently discarding a precision judgement because a neighbouring field
+    /// was being corrected.
+    /// </summary>
+    private bool _seeded;
 
     // A year beyond next year is a typo rather than a record. Kept generous
     // rather than clamped to today so a birth recorded slightly ahead of the
@@ -48,17 +66,37 @@
 
     [Parameter] public EventCallback<PartialDate?> ValueChanged { get; set; }
 
+    /// <summary>
+    /// Raised whenever the entered year becomes valid or invalid, so the form
+    /// hosting this control can refuse to submit while it is out of range.
+    /// </summary>
+    [Parameter] public EventCallback<bool> InvalidChanged { get; set; }
+
     [Parameter] public string TestId { get; set; } = "partial-date";
 
     protected override void OnParametersSet()
     {
+        if (_seeded)
+        {
+            return;
+        }
+
+        _seeded = true;
         _year = Value?.Year;
         _isApproximate = Value?.IsApproximate ?? false;
     }
 
     private async Task OnYearInput(ChangeEventArgs args)
     {
-        _year = int.TryParse(args.Value?.ToString(), out var parsed) ? parsed : null;
+        var raw = args.Value?.ToString();
+        _year = int.TryParse(raw, out var parsed) ? parsed : null;
+
+        // Distinguish "nothing entered" from "entered something impossible".
+        // An empty box is a perfectly good answer; 30000 is a typo.
+        _error = string.IsNullOrWhiteSpace(raw) || InRange(_year)
+            ? null
+            : $"Year must be between 1 and {MaxYear}.";
+
         await EmitAsync();
     }
 
@@ -68,15 +106,19 @@
         await EmitAsync();
     }
 
+    private static bool InRange(int? year) => year is int value && value >= 1 && value <= MaxYear;
+
     // An out-of-range year emits null rather than a PartialDate the domain would
-    // reject: the control's job is to produce a valid value or none at all.
+    // reject. The error above is what tells the user; the null keeps an invalid
+    // value out of the model.
     private async Task EmitAsync()
     {
-        PartialDate? next = _year is int year && year >= 1 && year <= MaxYear
-            ? PartialDate.FromYear(year, _isApproximate)
+        PartialDate? next = InRange(_year)
+            ? PartialDate.FromYear(_year!.Value, _isApproximate)
             : null;
 
         Value = next;
         await ValueChanged.InvokeAsync(next);
+        await InvalidChanged.InvokeAsync(_error is not null);
     }
 }

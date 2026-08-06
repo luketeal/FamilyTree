@@ -42,3 +42,9 @@
     font-size: 11px;
     color: var(--ink4);
 }
+
+.pdate__error {
+    margin: 0;
+    font-size: 11px;
+    color: var(--err);
+}

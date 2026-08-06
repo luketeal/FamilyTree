@@ -62,7 +62,8 @@
         <div class="pform__field">
             <PartialDateInput Label="Born" TestId="input-birth-year"
                               Value="_model.BirthDate"
-                              ValueChanged="v => Set(m => m.BirthDate = v)" />
+                              ValueChanged="v => Set(m => m.BirthDate = v)"
+                              InvalidChanged="v => _birthYearInvalid = v" />
         </div>
 
         <div class="pform__field">
@@ -77,7 +78,8 @@
         <div class="pform__field">
             <PartialDateInput Label="Died" TestId="input-death-year"
                               Value="_model.DeathDate"
-                              ValueChanged="v => Set(m => m.DeathDate = v)" />
+                              ValueChanged="v => Set(m => m.DeathDate = v)"
+                              InvalidChanged="v => _deathYearInvalid = v" />
         </div>
 
         <div class="pform__field">
@@ -190,8 +192,12 @@
             && Notes == other.Notes;
     }
 
-    /// <summary>US-006 caps notes at 5,000 characters.</summary>
-    public const int NotesLimit = 5000;
+    /// <summary>
+    /// US-006 caps notes at 5,000 characters. The rule itself lives in
+    /// PersonService — this is only the maxlength and counter, which are UX
+    /// rather than enforcement.
+    /// </summary>
+    public const int NotesLimit = PersonService.NotesLimit;
 
     private int NotesRemaining => NotesLimit - (_model.Notes?.Length ?? 0);
 
@@ -199,6 +205,8 @@
     private Model _original = new();
     private string? _firstNameError;
     private string? _lastNameError;
+    private bool _birthYearInvalid;
+    private bool _deathYearInvalid;
 
     [Parameter] public PersonDetailDto? Person { get; set; }
 
@@ -267,6 +275,14 @@
         _lastNameError = string.IsNullOrWhiteSpace(_model.LastName) ? "Last name is required." : null;
 
         if (_firstNameError is not null || _lastNameError is not null)
+        {
+            return;
+        }
+
+        // The date controls render their own messages, so there is nothing to
+        // add here — but the form must still refuse to submit, or an
+        // out-of-range year would be silently dropped from the saved record.
+        if (_birthYearInvalid || _deathYearInvalid)
         {
             return;
         }

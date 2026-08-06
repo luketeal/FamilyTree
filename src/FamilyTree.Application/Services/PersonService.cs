@@ -11,6 +11,14 @@ namespace FamilyTree.Application.Services;
 /// </summary>
 public sealed class PersonService(IPersonRepository people)
 {
+    /// <summary>
+    /// US-006 caps notes at 5,000 characters. Enforced here rather than by the
+    /// textarea's maxlength alone: anything reaching this service another way —
+    /// a paste handler, an import, a future FamilyTree.Storage.Api client — never
+    /// passes through that attribute.
+    /// </summary>
+    public const int NotesLimit = 5000;
+
     public sealed record PersonInput(
         string FirstName,
         string LastName,
@@ -136,6 +144,11 @@ public sealed class PersonService(IPersonRepository people)
             && input.DeathDate.CompareTo(input.BirthDate) < 0)
         {
             return "Death date cannot be before birth date.";
+        }
+
+        if (input.Notes is { Length: > NotesLimit })
+        {
+            return $"Notes cannot be longer than {NotesLimit:N0} characters.";
         }
 
         return null;

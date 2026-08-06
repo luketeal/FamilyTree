@@ -421,4 +421,102 @@ public class PersonCrudTests(StaticSiteFixture fixture)
 
         await Assertions.Expect(page.GetByTestId("quick-add")).ToBeVisibleAsync();
     }
+
+    // An out-of-range year must be rejected by the app, not by the browser.
+    // Native min/max blocks the form submit before Blazor sees it, so nothing
+    // renders and the button reads as dead.
+    [Fact]
+    public async Task AnOutOfRangeYearIsRejectedWithAnInAppMessage()
+    {
+        var page = await OpenAsync("people/add");
+
+        await FillPersonAsync(page, "Ada", "Lovelace", "30000");
+        await page.GetByTestId("save-person").ClickAsync();
+
+        await Assertions.Expect(page.GetByTestId("error-input-birth-year")).ToBeVisibleAsync();
+
+        await page.GotoAsync(fixture.BaseUrl + "people", new PageGotoOptions
+        {
+            WaitUntil = WaitUntilState.NetworkIdle,
+        });
+        await Assertions.Expect(page.GetByTestId("people-empty-state")).ToBeVisibleAsync();
+    }
+
+    [Fact]
+    public async Task CorrectingAnOutOfRangeYearLetsTheSaveThrough()
+    {
+        var page = await OpenAsync("people/add");
+
+        await FillPersonAsync(page, "Ada", "Lovelace", "30000");
+        await page.GetByTestId("save-person").ClickAsync();
+        await Assertions.Expect(page.GetByTestId("error-input-birth-year")).ToBeVisibleAsync();
+
+        await page.GetByTestId("input-birth-year").FillAsync("1815");
+        await page.GetByTestId("save-person").ClickAsync();
+
+        await Assertions.Expect(page.GetByTestId("profile-name")).ToHaveTextAsync("Ada Lovelace");
+    }
+
+    [Fact]
+    public async Task QuickAddRejectsAnOutOfRangeYearWithAnInAppMessage()
+    {
+        var page = await OpenAsync();
+
+        await page.GetByTestId("add-person-button").ClickAsync();
+        await page.GetByTestId("quick-first-name").FillAsync("Grace");
+        await page.GetByTestId("quick-last-name").FillAsync("Hopper");
+        await page.GetByTestId("quick-birth-year").FillAsync("30000");
+        await page.GetByTestId("quick-save").ClickAsync();
+
+        await Assertions.Expect(page.GetByTestId("quick-add-error")).ToBeVisibleAsync();
+        await Assertions.Expect(page.GetByTestId("tree-stats")).ToHaveTextAsync("0 people · 0 relationships");
+    }
+
+    // Correcting a neighbouring field must not throw away the user's precision
+    // judgement. Clearing the year emptied the whole PartialDate, and the circa
+    // flag was re-seeded from it.
+    [Fact]
+    public async Task ApproximateSurvivesClearingAndRetypingTheYear()
+    {
+        var page = await OpenAsync("people/add");
+        await FillPersonAsync(page, "Ada", "Lovelace", "1815");
+
+        await page.GetByTestId("input-birth-year-approx").CheckAsync();
+        await page.GetByTestId("input-birth-year").FillAsync(string.Empty);
+        await page.GetByTestId("input-birth-year").FillAsync("1820");
+
+        await Assertions.Expect(page.GetByTestId("input-birth-year-approx")).ToBeCheckedAsync();
+
+        await page.GetByTestId("save-person").ClickAsync();
+        await Assertions.Expect(page.GetByTestId("profile-birth")).ToContainTextAsync("c. 1820");
+    }
+
+    // The 5,000-character cap has to be a rule, not just a maxlength attribute:
+    // anything reaching the service another way — a paste handler, an import, a
+    // future API client — bypasses the textarea entirely.
+    [Fact]
+    public async Task NotesBeyondTheLimitAreRejectedEvenWhenTheAttributeIsBypassed()
+    {
+        var page = await OpenAsync("people/add");
+        await FillPersonAsync(page, "Ada", "Lovelace");
+
+        // Sets the value past maxlength and raises the event Blazor listens for.
+        await page.EvaluateAsync(@"() => {
+            const el = document.querySelector('[data-testid=input-notes]');
+            const setter = Object.getOwnPropertyDescriptor(
+                window.HTMLTextAreaElement.prototype, 'value').set;
+            setter.call(el, 'x'.repeat(9000));
+            el.dispatchEvent(new Event('input', { bubbles: true }));
+        }");
+
+        await page.GetByTestId("save-person").ClickAsync();
+
+        await Assertions.Expect(page.GetByTestId("form-error")).ToBeVisibleAsync();
+
+        await page.GotoAsync(fixture.BaseUrl + "people", new PageGotoOptions
+        {
+            WaitUntil = WaitUntilState.NetworkIdle,
+        });
+        await Assertions.Expect(page.GetByTestId("people-empty-state")).ToBeVisibleAsync();
+    }
 }

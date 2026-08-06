@@ -49,7 +49,7 @@
                     <div class="quickadd__field">
                         <label class="field-label" for="quick-born">Born</label>
                         <div class="input">
-                            <input id="quick-born" type="number" inputmode="numeric" min="1" max="@MaxYear"
+                            <input id="quick-born" type="number" inputmode="numeric"
                                    placeholder="Year" data-testid="quick-birth-year"
                                    value="@_birthYear"
                                    @oninput="e => _birthYear = Parse(e.Value)" />
@@ -59,7 +59,7 @@
                     <div class="quickadd__field">
                         <label class="field-label" for="quick-died">Died</label>
                         <div class="input">
-                            <input id="quick-died" type="number" inputmode="numeric" min="1" max="@MaxYear"
+                            <input id="quick-died" type="number" inputmode="numeric"
                                    placeholder="Year" data-testid="quick-death-year"
                                    value="@_deathYear"
                                    @oninput="e => _deathYear = Parse(e.Value)" />
@@ -119,10 +119,14 @@
 
     private static int MaxYear => DateTime.UtcNow.Year + 1;
 
+    // Keeps whatever was typed, valid or not. Discarding an out-of-range year
+    // here would silently drop a date the user believes they entered; SaveAsync
+    // reports it instead.
     private static int? Parse(object? value) =>
-        int.TryParse(value?.ToString(), out var parsed) && parsed >= 1 && parsed <= MaxYear
-            ? parsed
-            : null;
+        int.TryParse(value?.ToString(), out var parsed) ? parsed : null;
+
+    private static bool OutOfRange(int? year) =>
+        year is int value && (value < 1 || value > MaxYear);
 
     private static string Humanise(Gender gender) => gender switch
     {
@@ -241,6 +245,14 @@
         if (string.IsNullOrWhiteSpace(_firstName) || string.IsNullOrWhiteSpace(_lastName))
         {
             _error = "First and last name are both required.";
+            return;
+        }
+
+        // No min/max on the inputs, so this is the only thing standing between a
+        // typo and a saved record with the date quietly missing.
+        if (OutOfRange(_birthYear) || OutOfRange(_deathYear))
+        {
+            _error = $"Years must be between 1 and {MaxYear}.";
             return;
         }
 

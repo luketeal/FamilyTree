@@ -6,7 +6,13 @@
 <PageTitle>FamilyTree</PageTitle>
 
 <section class="home">
-    @if (_stats.IsEmpty)
+    @* Nothing until the first read returns. _stats starts empty, so rendering
+       eagerly flashes "your tree is empty" at a user who has a tree. *@
+    @if (!_loaded)
+    {
+        <p class="home__loading" data-testid="home-loading">Loading…</p>
+    }
+    else if (_stats.IsEmpty)
     {
         <div class="home__empty" data-testid="home-empty-state">
             <h1>Add your first person</h1>
@@ -29,6 +35,7 @@
 
 @code {
     private TreeStats _stats = TreeStats.Empty;
+    private bool _loaded;
 
     protected override async Task OnInitializedAsync()
     {
@@ -42,8 +49,10 @@
         if (result.IsSuccess)
         {
             _stats = result.Value!;
-            await InvokeAsync(StateHasChanged);
         }
+
+        _loaded = true;
+        await InvokeAsync(StateHasChanged);
     }
 
     public void Dispose() => Notifier.Changed -= RefreshAsync;
