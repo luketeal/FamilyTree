@@ -283,6 +283,79 @@ public class ShellLayoutTests(StaticSiteFixture fixture)
             "The overlay is not taller than this viewport, so it does not exercise the case.");
     }
 
+    // The CSS-only lock was not enough on a real phone: with the keyboard up,
+    // iOS shrinks the visual viewport while position:fixed keeps measuring the
+    // layout viewport, so the overlay extended off screen and reaching it meant
+    // panning the whole app. The JS pins the body and sizes the overlay to the
+    // visual viewport instead.
+    //
+    // Headless Chromium has no soft keyboard, so the shrink itself cannot be
+    // reproduced here. What is assertable is that the interop ran at all — the
+    // body is pinned and the overlay carries an explicit pixel height rather
+    // than the layout-viewport fallback. A silently broken module would leave
+    // both untouched, which is the regression worth catching.
+    [Fact]
+    public async Task OpeningAnOverlayPinsTheBodyAndSizesToTheVisualViewport()
+    {
+        var page = await OpenAsync(390, 620);
+        await page.GetByTestId("add-person-button").ClickAsync();
+        await Assertions.Expect(page.GetByTestId("quick-add")).ToBeVisibleAsync();
+
+        var state = await page.EvaluateAsync<string>(@"() => {
+            const overlay = document.querySelector('[data-overlay]');
+            return JSON.stringify({
+                bodyPosition: getComputedStyle(document.body).position,
+                inlineHeight: overlay.style.height,
+                matchesViewport:
+                    Math.abs(parseFloat(overlay.style.height) - window.visualViewport.height) < 1,
+            });
+        }");
+
+        using var result = JsonDocument.Parse(state);
+        Assert.Equal("fixed", result.RootElement.GetProperty("bodyPosition").GetString());
+        Assert.NotEqual(string.Empty, result.RootElement.GetProperty("inlineHeight").GetString());
+        Assert.True(result.RootElement.GetProperty("matchesViewport").GetBoolean(),
+            "The overlay is not sized to the visual viewport, so the tracker did not run.");
+    }
+
+    // If the pin outlived the dialog the app would be frozen, which is a worse
+    // bug than the one being fixed.
+    [Fact]
+    public async Task ClosingAnOverlayUnpinsTheBody()
+    {
+        var page = await OpenAsync(390, 620);
+        await page.GetByTestId("add-person-button").ClickAsync();
+        await Assertions.Expect(page.GetByTestId("quick-add")).ToBeVisibleAsync();
+
+        await page.Keyboard.PressAsync("Escape");
+        await Assertions.Expect(page.GetByTestId("quick-add")).ToBeHiddenAsync();
+
+        var position = await page.EvaluateAsync<string>(
+            "() => getComputedStyle(document.body).position");
+
+        Assert.Equal("static", position);
+    }
+
+    // Saving navigates, which disposes the popover without another render. The
+    // release therefore has to happen on disposal too, or the app is left pinned
+    // on the page the user just landed on.
+    [Fact]
+    public async Task AnOverlayThatClosesByNavigatingStillUnpinsTheBody()
+    {
+        var page = await OpenAsync(390, 620);
+        await page.GetByTestId("add-person-button").ClickAsync();
+        await page.GetByTestId("quick-first-name").FillAsync("Grace");
+        await page.GetByTestId("quick-last-name").FillAsync("Hopper");
+        await page.GetByTestId("quick-save").ClickAsync();
+
+        await Assertions.Expect(page.GetByTestId("profile-name")).ToHaveTextAsync("Grace Hopper");
+
+        var position = await page.EvaluateAsync<string>(
+            "() => getComputedStyle(document.body).position");
+
+        Assert.Equal("static", position);
+    }
+
     [Fact]
     public async Task Rail_BecomesABottomBarOnSmallScreens()
     {

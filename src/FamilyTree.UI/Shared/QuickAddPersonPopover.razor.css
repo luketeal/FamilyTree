@@ -1,6 +1,12 @@
 .quickadd {
     position: fixed;
-    inset: 0;
+    /* Not `inset: 0`: the viewport tracker sets height and top, and a pinned
+       bottom would win over height and put the overlay back to layout-viewport
+       size. 100dvh is the pre-JS and no-VisualViewport fallback. */
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 100dvh;
     z-index: 45;
     display: grid;
     place-items: start center;

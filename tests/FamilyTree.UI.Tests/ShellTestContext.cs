@@ -1,6 +1,7 @@
 using Bunit;
 using FamilyTree.Application.Services;
 using FamilyTree.Domain.Repositories;
+using FamilyTree.UI.Shared;
 using Microsoft.Extensions.DependencyInjection;
 using Moq;
 
@@ -43,6 +44,10 @@ public abstract class ShellTestContext : BunitContext
         // so shell tests now need both even when asserting only on markup.
         Services.AddSingleton<PersonService>();
         Services.AddSingleton<ToastService>();
+        // A double rather than the real interop: the overlays only ask it to pin
+        // the page, and the JS module behind it is covered end to end in
+        // FamilyTree.E2E.Tests.
+        Services.AddSingleton(new Mock<IOverlayInterop>().Object);
         // A no-op double: the layout only asks whether storage is durable, and
         // the real IndexedDB call is covered end to end in FamilyTree.E2E.Tests.
         var treeData = new Mock<ITreeDataAdministration>();

@@ -2,6 +2,8 @@
 @inject TreeDataNotifier Notifier
 @inject ToastService Toasts
 @inject NavigationManager Nav
+@inject IOverlayInterop Overlay
+@implements IAsyncDisposable
 
 @* US-053. Adding a person from wherever you already are, without losing your
    place. Deliberately the shortest set of fields that still produces a useful
@@ -10,7 +12,7 @@
 
 @if (Visible)
 {
-    <div class="quickadd" data-testid="quick-add" data-overlay>
+    <div class="quickadd" data-testid="quick-add" data-overlay @ref="_overlay">
         <div class="quickadd__backdrop" @onclick="CloseAsync"></div>
         <div class="quickadd__panel" role="dialog" aria-modal="true" aria-labelledby="@_titleId"
              tabindex="-1" @ref="_panel" @onkeydown="OnKeyDown">
@@ -96,6 +98,7 @@
 
 @code {
     private readonly string _titleId = $"quickadd-{Guid.NewGuid():N}";
+    private ElementReference _overlay;
     private ElementReference _panel;
     private ElementReference _firstInput;
     private bool _wasVisible;
@@ -151,11 +154,33 @@
         if (Visible && !_wasVisible)
         {
             _wasVisible = true;
+            // Before focus: focusing raises the keyboard, and the overlay has to
+            // already be tracking the viewport when it shrinks.
+            await Overlay.OpenAsync(_overlay);
             await _firstInput.FocusAsync();
         }
-        else if (!Visible)
+        else if (!Visible && _wasVisible)
         {
             _wasVisible = false;
+            await Overlay.CloseAsync(_overlay);
+        }
+    }
+
+    // Closing by navigation destroys the component without a further render, so
+    // the page would stay pinned unless the lock is released here too.
+    public async ValueTask DisposeAsync()
+    {
+        if (_wasVisible)
+        {
+            _wasVisible = false;
+            try
+            {
+                await Overlay.CloseAsync(_overlay);
+            }
+            catch (JSDisconnectedException)
+            {
+                // The page is going away; the lock goes with it.
+            }
         }
     }
 

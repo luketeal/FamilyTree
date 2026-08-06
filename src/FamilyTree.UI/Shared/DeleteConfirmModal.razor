@@ -2,9 +2,12 @@
    PR 13. The prompt therefore names who is being deleted rather than asking a
    generic "are you sure", the same rule the Settings wipe follows. *@
 
+@inject IOverlayInterop Overlay
+@implements IAsyncDisposable
+
 @if (Visible)
 {
-    <div class="modal" data-testid="delete-modal" data-overlay>
+    <div class="modal" data-testid="delete-modal" data-overlay @ref="_overlay">
         <div class="modal__backdrop" @onclick="() => Cancel.InvokeAsync()"></div>
         <div class="modal__panel" role="alertdialog" aria-modal="true" aria-labelledby="@_titleId"
              tabindex="-1" @ref="_panel" @onkeydown="OnKeyDown">
@@ -28,6 +31,7 @@
 
 @code {
     private readonly string _titleId = $"delete-title-{Guid.NewGuid():N}";
+    private ElementReference _overlay;
     private ElementReference _panel;
     private bool _wasVisible;
 
@@ -57,11 +61,31 @@
         if (Visible && !_wasVisible)
         {
             _wasVisible = true;
+            await Overlay.OpenAsync(_overlay);
             await _panel.FocusAsync();
         }
-        else if (!Visible)
+        else if (!Visible && _wasVisible)
         {
             _wasVisible = false;
+            await Overlay.CloseAsync(_overlay);
+        }
+    }
+
+    // Confirming a delete navigates away, destroying this component without a
+    // further render — the lock has to be released here or the page stays pinned.
+    public async ValueTask DisposeAsync()
+    {
+        if (_wasVisible)
+        {
+            _wasVisible = false;
+            try
+            {
+                await Overlay.CloseAsync(_overlay);
+            }
+            catch (JSDisconnectedException)
+            {
+                // The page is going away; the lock goes with it.
+            }
         }
     }
 }
