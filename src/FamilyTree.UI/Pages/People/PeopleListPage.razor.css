@@ -1,5 +1,6 @@
 .people {
-    max-width: 720px;
+    max-width: 840px;
+    margin-inline: auto;
 }
 
 .people__header {

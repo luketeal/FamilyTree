@@ -1,5 +1,6 @@
 .profile {
-    max-width: 720px;
+    max-width: 840px;
+    margin-inline: auto;
 }
 
 .profile--panel {

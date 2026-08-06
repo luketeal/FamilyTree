@@ -94,3 +94,11 @@
     text-decoration: underline;
     cursor: pointer;
 }
+
+/* Same 16px iOS-zoom floor as the main form; scoped specificity means it has
+   to be restated here rather than inherited from app.css. */
+@media (max-width: 768px) {
+    .quickadd__select {
+        font-size: 16px;
+    }
+}

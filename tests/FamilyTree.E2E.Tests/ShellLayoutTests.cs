@@ -178,6 +178,48 @@ public class ShellLayoutTests(StaticSiteFixture fixture)
             $"/{path} scrolls by {overflowBy}px at {width}x844. Worst offender: {offender}");
     }
 
+    // iOS Safari zooms the visual viewport when a focused control renders below
+    // 16px, and the zoomed page then scrolls sideways — a form that should only
+    // move vertically ends up needing horizontal panning between fields.
+    //
+    // Headless Chromium has no focus-zoom behaviour, so neither a screenshot nor
+    // the overflow test above can reproduce the symptom. The computed font size
+    // is the only part that can be pinned here, which is exactly why it is
+    // pinned: the bug reached a real phone through a fully green suite.
+    [Theory]
+    [InlineData("people/add")]
+    [InlineData("settings")]
+    public async Task FormControls_AreLargeEnoughToNotTriggerIosZoom(string path)
+    {
+        var page = await OpenAsync(390, 844, path);
+
+        var smallest = await page.EvaluateAsync<string>(@"() => {
+            const controls = [...document.querySelectorAll('input, select, textarea')]
+                .filter(el => el.type !== 'checkbox' && el.type !== 'radio' && !el.disabled);
+
+            let worst = null, worstSize = Infinity;
+            for (const el of controls) {
+                const size = parseFloat(getComputedStyle(el).fontSize);
+                if (size < worstSize) { worstSize = size; worst = el; }
+            }
+
+            return JSON.stringify({
+                size: worst ? worstSize : 16,
+                offender: worst
+                    ? `${worst.tagName.toLowerCase()}[data-testid=${worst.dataset.testid ?? worst.id ?? '?'}]`
+                    : 'none',
+            });
+        }");
+
+        using var result = JsonDocument.Parse(smallest);
+        var size = result.RootElement.GetProperty("size").GetDouble();
+        var offender = result.RootElement.GetProperty("offender").GetString();
+
+        Assert.True(size >= 16,
+            $"/{path} has a form control at {size}px, which makes iOS Safari zoom and scroll "
+            + $"the page sideways on focus. Smallest: {offender}");
+    }
+
     [Fact]
     public async Task Rail_BecomesABottomBarOnSmallScreens()
     {

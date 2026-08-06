@@ -103,6 +103,14 @@
 }
 
 @media (max-width: 768px) {
+    /* Scoped CSS adds an attribute selector, so these outrank the bare
+       element rules in app.css and have to repeat the 16px iOS-zoom floor
+       rather than inherit it. */
+    .pform__textarea,
+    .pform__select {
+        font-size: 16px;
+    }
+
     .pform__grid {
         grid-template-columns: minmax(0, 1fr);
     }

@@ -197,13 +197,13 @@ p {
     display: flex;
     align-items: center;
     gap: 6px;
-    height: 34px;
-    padding: 0 10px;
+    height: 38px;
+    padding: 0 12px;
     background: var(--paper);
     border: 1px solid var(--line2);
     border-radius: var(--radius-md);
     font-family: var(--font-ui);
-    font-size: 13px;
+    font-size: 14px;
     color: var(--ink);
     transition: border-color 0.12s, box-shadow 0.12s;
 }
@@ -314,7 +314,8 @@ p {
    scoped CSS is per-component, and duplicating it into both would let the two
    pages drift apart. */
 .person-edit {
-    max-width: 720px;
+    max-width: 840px;
+    margin-inline: auto;
 }
 
 .person-edit__header {
@@ -338,4 +339,30 @@ p {
 .person-edit__status {
     font-size: 13px;
     color: var(--ink3);
+}
+
+/* iOS Safari zooms the visual viewport whenever a focused form control renders
+   below 16px, and the zoomed page is then wider than the screen — which is why
+   tapping a field left the user scrolling sideways through a form that should
+   only ever scroll vertically. 16px is the threshold, not a preference.
+   maximum-scale=1 would also stop it, by disabling pinch-zoom entirely; that
+   trades an annoyance for an accessibility regression.
+
+   Note this is invisible to the E2E suite: headless Chromium has no
+   focus-zoom behaviour to reproduce, so only the computed font-size can be
+   asserted, not the symptom. FormControls_AreLargeEnoughToNotTriggerIosZoom
+   in ShellLayoutTests pins the value. */
+@media (max-width: 768px) {
+    .input,
+    .input input,
+    .input select,
+    .input textarea,
+    textarea,
+    select {
+        font-size: 16px;
+    }
+
+    .input {
+        height: 44px;
+    }
 }
