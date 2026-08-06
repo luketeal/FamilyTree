@@ -12,10 +12,16 @@
 
 @if (Visible)
 {
-    <div class="quickadd" data-testid="quick-add" data-overlay @ref="_overlay">
-        <div class="quickadd__backdrop" @onclick="CloseAsync"></div>
+    @* The tint lives on this element rather than a separate backdrop: a
+       background paints on the box and cannot scroll away from it, and this box
+       is tracked to the visual viewport, so the two always coincide exactly. A
+       position:fixed backdrop is pinned to the *layout* viewport instead, which
+       leaves a strip of undimmed page whenever the keyboard offsets the two. *@
+    <div class="quickadd" data-testid="quick-add" data-overlay @ref="_overlay"
+         @onclick="CloseAsync">
         <div class="quickadd__panel" role="dialog" aria-modal="true" aria-labelledby="@_titleId"
-             tabindex="-1" @ref="_panel" @onkeydown="OnKeyDown">
+             tabindex="-1" @ref="_panel" @onkeydown="OnKeyDown"
+             @onclick:stopPropagation="true">
             <h2 id="@_titleId" class="quickadd__title">Add person</h2>
 
             <ErrorAlert Message="@_error" TestId="quick-add-error" />

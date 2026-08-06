@@ -127,17 +127,22 @@ public class ScreenshotCapture(StaticSiteFixture fixture)
             FullPage = true,
         });
 
-        await page.GotoAsync(fixture.BaseUrl + "people", new PageGotoOptions
+        // The popover is a desktop control. Below the 768px breakpoint the same
+        // button goes to the full form, which the capture above already covers.
+        if (width > 768)
         {
-            WaitUntil = WaitUntilState.NetworkIdle,
-        });
-        await page.GetByTestId("add-person-button").ClickAsync();
-        await Assertions.Expect(page.GetByTestId("quick-add")).ToBeVisibleAsync();
-        await page.ScreenshotAsync(new PageScreenshotOptions
-        {
-            Path = Path.Combine(OutputDirectory, $"quick-add-{name}.png"),
-            FullPage = true,
-        });
+            await page.GotoAsync(fixture.BaseUrl + "people", new PageGotoOptions
+            {
+                WaitUntil = WaitUntilState.NetworkIdle,
+            });
+            await page.GetByTestId("add-person-button").ClickAsync();
+            await Assertions.Expect(page.GetByTestId("quick-add")).ToBeVisibleAsync();
+            await page.ScreenshotAsync(new PageScreenshotOptions
+            {
+                Path = Path.Combine(OutputDirectory, $"quick-add-{name}.png"),
+                FullPage = true,
+            });
+        }
     }
 
     // The one appearance check worth asserting: if the design tokens fail to

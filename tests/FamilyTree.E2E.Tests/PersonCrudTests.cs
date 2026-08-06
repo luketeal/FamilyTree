@@ -379,4 +379,46 @@ public class PersonCrudTests(StaticSiteFixture fixture)
         var length = await page.GetByTestId("input-notes").EvaluateAsync<int>("el => el.value.length");
         Assert.Equal(5000, length);
     }
+
+    // On a narrow screen the top-bar action goes to the full form rather than
+    // opening a popover. With the keyboard up there is not enough height for the
+    // popover to fit, so it could only scroll — a dialog scrolling inside a
+    // shrunken viewport over a pinned body. The form is an ordinary page.
+    [Fact]
+    public async Task OnANarrowScreenAddPersonGoesStraightToTheFullForm()
+    {
+        var context = await fixture.Browser.NewContextAsync(new BrowserNewContextOptions
+        {
+            ViewportSize = new ViewportSize { Width = 390, Height = 844 },
+        });
+        var page = await context.NewPageAsync();
+        await page.GotoAsync(fixture.BaseUrl + "settings", new PageGotoOptions
+        {
+            WaitUntil = WaitUntilState.NetworkIdle,
+        });
+
+        await page.GetByTestId("add-person-button").ClickAsync();
+
+        await Assertions.Expect(page.GetByTestId("input-first-name")).ToBeVisibleAsync();
+        await Assertions.Expect(page.GetByTestId("quick-add")).ToBeHiddenAsync();
+    }
+
+    // The popover still earns its place where there is room for it.
+    [Fact]
+    public async Task OnAWideScreenAddPersonStillOpensThePopover()
+    {
+        var context = await fixture.Browser.NewContextAsync(new BrowserNewContextOptions
+        {
+            ViewportSize = new ViewportSize { Width = 1440, Height = 900 },
+        });
+        var page = await context.NewPageAsync();
+        await page.GotoAsync(fixture.BaseUrl + "settings", new PageGotoOptions
+        {
+            WaitUntil = WaitUntilState.NetworkIdle,
+        });
+
+        await page.GetByTestId("add-person-button").ClickAsync();
+
+        await Assertions.Expect(page.GetByTestId("quick-add")).ToBeVisibleAsync();
+    }
 }

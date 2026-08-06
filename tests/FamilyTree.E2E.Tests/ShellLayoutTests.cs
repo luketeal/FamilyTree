@@ -227,7 +227,7 @@ public class ShellLayoutTests(StaticSiteFixture fixture)
     [Fact]
     public async Task AnOpenOverlayLocksTheScrollBehindIt()
     {
-        var page = await OpenAsync(390, 380);
+        var page = await OpenAsync(900, 380);
         await page.GetByTestId("add-person-button").ClickAsync();
         await Assertions.Expect(page.GetByTestId("quick-add")).ToBeVisibleAsync();
 
@@ -247,7 +247,7 @@ public class ShellLayoutTests(StaticSiteFixture fixture)
     [Fact]
     public async Task ClosingTheOverlayRestoresScrolling()
     {
-        var page = await OpenAsync(390, 380);
+        var page = await OpenAsync(900, 380);
         await page.GetByTestId("add-person-button").ClickAsync();
         await Assertions.Expect(page.GetByTestId("quick-add")).ToBeVisibleAsync();
 
@@ -265,7 +265,7 @@ public class ShellLayoutTests(StaticSiteFixture fixture)
     [Fact]
     public async Task AnOverlayTallerThanTheScreenScrollsItself()
     {
-        var page = await OpenAsync(390, 380);
+        var page = await OpenAsync(900, 380);
         await page.GetByTestId("add-person-button").ClickAsync();
         await Assertions.Expect(page.GetByTestId("quick-add")).ToBeVisibleAsync();
 
@@ -283,6 +283,10 @@ public class ShellLayoutTests(StaticSiteFixture fixture)
             "The overlay is not taller than this viewport, so it does not exercise the case.");
     }
 
+    // 900px wide, not 390: below the 768px breakpoint the top-bar action goes to
+    // the full form instead of the popover, so a narrow viewport would not open
+    // an overlay at all. The short height is what makes the overlay scroll.
+    //
     // The CSS-only lock was not enough on a real phone: with the keyboard up,
     // iOS shrinks the visual viewport while position:fixed keeps measuring the
     // layout viewport, so the overlay extended off screen and reaching it meant
@@ -297,7 +301,7 @@ public class ShellLayoutTests(StaticSiteFixture fixture)
     [Fact]
     public async Task OpeningAnOverlayPinsTheBodyAndSizesToTheVisualViewport()
     {
-        var page = await OpenAsync(390, 620);
+        var page = await OpenAsync(900, 620);
         await page.GetByTestId("add-person-button").ClickAsync();
         await Assertions.Expect(page.GetByTestId("quick-add")).ToBeVisibleAsync();
 
@@ -323,7 +327,7 @@ public class ShellLayoutTests(StaticSiteFixture fixture)
     [Fact]
     public async Task ClosingAnOverlayUnpinsTheBody()
     {
-        var page = await OpenAsync(390, 620);
+        var page = await OpenAsync(900, 620);
         await page.GetByTestId("add-person-button").ClickAsync();
         await Assertions.Expect(page.GetByTestId("quick-add")).ToBeVisibleAsync();
 
@@ -342,7 +346,7 @@ public class ShellLayoutTests(StaticSiteFixture fixture)
     [Fact]
     public async Task AnOverlayThatClosesByNavigatingStillUnpinsTheBody()
     {
-        var page = await OpenAsync(390, 620);
+        var page = await OpenAsync(900, 620);
         await page.GetByTestId("add-person-button").ClickAsync();
         await page.GetByTestId("quick-first-name").FillAsync("Grace");
         await page.GetByTestId("quick-last-name").FillAsync("Hopper");
@@ -356,38 +360,67 @@ public class ShellLayoutTests(StaticSiteFixture fixture)
         Assert.Equal("static", position);
     }
 
-    // The overlay is a scroll container, so an absolutely positioned backdrop
-    // scrolls with the panel and is sized to the client box rather than the
-    // scroll height — the tint slides up and the page shows through beneath it.
-    // Scrolling the overlay is what exposes this; a static check passes.
+    // The tint has to cover exactly what the user can see. A separate
+    // position:fixed backdrop is pinned to the layout viewport while the overlay
+    // tracks the visual viewport, and the keyboard pulls those apart — leaving a
+    // strip of undimmed page. Painting it on the overlay makes them the same box
+    // by construction. Scrolling first, because unscrolled a broken tint looks
+    // correct.
     [Fact]
-    public async Task TheBackdropStaysPutWhenTheOverlayScrolls()
+    public async Task TheTintCoversTheOverlayEvenWhenItScrolls()
     {
-        var page = await OpenAsync(390, 380);
+        var page = await OpenAsync(900, 380);
         await page.GetByTestId("add-person-button").ClickAsync();
         await Assertions.Expect(page.GetByTestId("quick-add")).ToBeVisibleAsync();
 
-        var covered = await page.EvaluateAsync<string>(@"async () => {
+        var measured = await page.EvaluateAsync<string>(@"async () => {
             const overlay = document.querySelector('[data-overlay]');
-            const backdrop = overlay.querySelector('div');
-
             overlay.scrollTop = overlay.scrollHeight;
             await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
 
-            const rect = backdrop.getBoundingClientRect();
+            const rect = overlay.getBoundingClientRect();
             return JSON.stringify({
                 scrolled: overlay.scrollTop > 0,
+                tinted: getComputedStyle(overlay).backgroundColor,
                 top: Math.round(rect.top),
                 coversToBottom: Math.round(rect.bottom) >= window.innerHeight,
             });
         }");
 
-        using var result = JsonDocument.Parse(covered);
+        using var result = JsonDocument.Parse(measured);
         Assert.True(result.RootElement.GetProperty("scrolled").GetBoolean(),
             "The overlay did not scroll, so this does not exercise the case.");
+        Assert.NotEqual("rgba(0, 0, 0, 0)", result.RootElement.GetProperty("tinted").GetString());
         Assert.Equal(0, result.RootElement.GetProperty("top").GetInt32());
         Assert.True(result.RootElement.GetProperty("coversToBottom").GetBoolean(),
-            "The backdrop scrolled away from the bottom of the viewport, leaving the page visible behind it.");
+            "The tinted box does not reach the bottom of the viewport, so page shows through beneath it.");
+    }
+
+    // Clicking the tint still dismisses, now that it is the overlay itself
+    // rather than a dedicated backdrop element.
+    [Fact]
+    public async Task ClickingOutsideThePanelClosesTheOverlay()
+    {
+        var page = await OpenAsync(1440, 900);
+        await page.GetByTestId("add-person-button").ClickAsync();
+        await Assertions.Expect(page.GetByTestId("quick-add")).ToBeVisibleAsync();
+
+        // Bottom-left of the overlay: tinted area, well clear of the panel.
+        await page.Mouse.ClickAsync(20, 860);
+
+        await Assertions.Expect(page.GetByTestId("quick-add")).ToBeHiddenAsync();
+    }
+
+    [Fact]
+    public async Task ClickingInsideThePanelDoesNotCloseTheOverlay()
+    {
+        var page = await OpenAsync(1440, 900);
+        await page.GetByTestId("add-person-button").ClickAsync();
+        await Assertions.Expect(page.GetByTestId("quick-add")).ToBeVisibleAsync();
+
+        await page.GetByTestId("quick-add").Locator(".quickadd__title").ClickAsync();
+
+        await Assertions.Expect(page.GetByTestId("quick-add")).ToBeVisibleAsync();
     }
 
     [Fact]

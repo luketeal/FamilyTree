@@ -48,6 +48,8 @@ public abstract class ShellTestContext : BunitContext
         // the page, and the JS module behind it is covered end to end in
         // FamilyTree.E2E.Tests.
         Services.AddSingleton(new Mock<IOverlayInterop>().Object);
+        // Defaults to the roomy layout; tests that care set their own double.
+        Services.AddSingleton(new Mock<IViewportInterop>().Object);
         // A no-op double: the layout only asks whether storage is durable, and
         // the real IndexedDB call is covered end to end in FamilyTree.E2E.Tests.
         var treeData = new Mock<ITreeDataAdministration>();

@@ -4,6 +4,7 @@
 @inject TreeStatsService Stats
 @inject TreeDataNotifier Notifier
 @inject NavigationManager Nav
+@inject IViewportInterop Viewport
 
 <header class="topbar">
     <div class="topbar__brand" data-testid="app-logo">
@@ -31,7 +32,7 @@
             </svg>
         </button>
         <button type="button" class="btn btn--primary" data-testid="add-person-button"
-                @onclick="() => _quickAdding = true">
+                @onclick="AddPersonAsync">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
                  stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M12 5v14M5 12h14"></path>
@@ -42,12 +43,39 @@
 </header>
 
 @* Quick add rather than a navigation (US-053): the point of a top-bar action is
-   that it does not cost you your place. *@
+   that it does not cost you your place. Narrow screens go to the full form
+   instead — see AddPersonAsync. *@
 <QuickAddPersonPopover @bind-Visible="_quickAdding" Added="OnQuickAdded" />
 
 @code {
     private TreeStats _stats = TreeStats.Empty;
     private bool _quickAdding;
+
+    /// <summary>
+    /// A popover on a roomy screen, the full form on a narrow one.
+    /// </summary>
+    /// <remarks>
+    /// The popover exists so adding someone does not cost you your place, which
+    /// is a desktop concern: on a phone the app is one full-screen view anyway,
+    /// and pushing a form is the platform's own idiom for this.
+    ///
+    /// It is also the honest answer to a layout that cannot work. With the
+    /// keyboard up there is roughly 380px of usable height and the popover needs
+    /// about 450px, so it can only scroll — a scrolling dialog, inside a shrunken
+    /// visual viewport, above a pinned body. The full form is an ordinary page
+    /// with none of those mechanisms, so the whole class of problem goes away
+    /// rather than being managed.
+    /// </remarks>
+    private async Task AddPersonAsync()
+    {
+        if (await Viewport.IsNarrowAsync())
+        {
+            Nav.NavigateTo("people/add");
+            return;
+        }
+
+        _quickAdding = true;
+    }
 
     private void OnQuickAdded(PersonDetailDto person) => Nav.NavigateTo($"people/{person.Id}");
 

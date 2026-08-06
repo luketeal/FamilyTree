@@ -18,6 +18,8 @@ builder.Services.AddScoped<TreeDataNotifier>();
 builder.Services.AddScoped<ToastService>();
 builder.Services.AddScoped<OverlayInterop>();
 builder.Services.AddScoped<IOverlayInterop>(sp => sp.GetRequiredService<OverlayInterop>());
+builder.Services.AddScoped<ViewportInterop>();
+builder.Services.AddScoped<IViewportInterop>(sp => sp.GetRequiredService<ViewportInterop>());
 
 // Persistent storage is requested from MainLayout on first render rather than
 // here. JS interop needs the Blazor runtime to be up, which RunAsync starts —

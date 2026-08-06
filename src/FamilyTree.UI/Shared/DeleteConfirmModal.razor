@@ -7,10 +7,11 @@
 
 @if (Visible)
 {
-    <div class="modal" data-testid="delete-modal" data-overlay @ref="_overlay">
-        <div class="modal__backdrop" @onclick="() => Cancel.InvokeAsync()"></div>
+    <div class="modal" data-testid="delete-modal" data-overlay @ref="_overlay"
+         @onclick="() => Cancel.InvokeAsync()">
         <div class="modal__panel" role="alertdialog" aria-modal="true" aria-labelledby="@_titleId"
-             tabindex="-1" @ref="_panel" @onkeydown="OnKeyDown">
+             tabindex="-1" @ref="_panel" @onkeydown="OnKeyDown"
+             @onclick:stopPropagation="true">
             <h2 id="@_titleId" class="modal__title">Delete @Name?</h2>
             <p class="modal__body" data-testid="delete-modal-body">
                 This permanently removes @Name from your tree. There is no undo.
