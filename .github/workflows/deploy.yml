@@ -11,12 +11,6 @@ env:
   DOTNET_NOLOGO: true
   DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
 
-# Pages has a single deployment target, so every run shares one queue rather
-# than one per ref: two refs deploying concurrently would race for the site.
-concurrency:
-  group: github-pages
-  cancel-in-progress: false
-
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -88,6 +82,14 @@ jobs:
     needs: build
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
+    # Scoped to this job rather than the whole workflow. Pages has a single
+    # deployment target so deploys must still serialise, but a build does not
+    # touch Pages at all — holding the group for its whole run only blocked
+    # other work. A pull_request run, which never reaches this job, was
+    # observed sitting queued for 13 minutes behind a deploy.
+    concurrency:
+      group: github-pages
+      cancel-in-progress: false
     permissions:
       pages: write
       id-token: write
@@ -97,3 +99,9 @@ jobs:
     steps:
       - id: deployment
         uses: actions/deploy-pages@v4
+        with:
+          # The action's own 10 minute default has now aborted two deploys that
+          # were merely slow: a retry of the first went on to succeed, taking
+          # 5m37s against a usual 10-20s. Pages is occasionally just slow, and
+          # giving up on it fails a build whose artifact was already fine.
+          timeout: 1200000
