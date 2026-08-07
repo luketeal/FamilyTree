@@ -1,14 +1,59 @@
 @page "/"
+@implements IDisposable
+@inject TreeStatsService Stats
+@inject TreeDataNotifier Notifier
 
 <PageTitle>FamilyTree</PageTitle>
 
 <section class="home">
-    <div class="home__empty" data-testid="home-empty-state">
-        <h1>Add your first person</h1>
-        <p>Your tree is empty. Start by adding yourself or someone you remember well.</p>
-        <button type="button" class="btn btn--primary" disabled>
-            Add person
-        </button>
-        <p class="home__hint">The Add Person flow lands in the next PR.</p>
-    </div>
+    @* Nothing until the first read returns. _stats starts empty, so rendering
+       eagerly flashes "your tree is empty" at a user who has a tree. *@
+    @if (!_loaded)
+    {
+        <p class="home__loading" data-testid="home-loading">Loading…</p>
+    }
+    else if (_stats.IsEmpty)
+    {
+        <div class="home__empty" data-testid="home-empty-state">
+            <h1>Add your first person</h1>
+            <p>Your tree is empty. Start by adding yourself or someone you remember well.</p>
+            <a class="btn btn--primary" href="people/add" data-testid="home-add-person">Add person</a>
+        </div>
+    }
+    else
+    {
+        @* The tree itself lands in PR 10, after the visualization spike. Until
+           then this says what is stored rather than pretending to draw it. *@
+        <div class="home__placeholder" data-testid="home-tree-placeholder">
+            <h1>Your tree</h1>
+            <p>@_stats.ToString() recorded.</p>
+            <p class="home__hint">The tree view arrives once the visualization spike is settled. Until then, browse from People.</p>
+            <a class="btn btn--secondary" href="people" data-testid="home-browse-people">Browse people</a>
+        </div>
+    }
 </section>
+
+@code {
+    private TreeStats _stats = TreeStats.Empty;
+    private bool _loaded;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Notifier.Changed += RefreshAsync;
+        await RefreshAsync();
+    }
+
+    private async Task RefreshAsync()
+    {
+        var result = await Stats.GetAsync();
+        if (result.IsSuccess)
+        {
+            _stats = result.Value!;
+        }
+
+        _loaded = true;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose() => Notifier.Changed -= RefreshAsync;
+}

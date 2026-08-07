@@ -1,0 +1,193 @@
+@page "/people/{Id:guid}"
+@inject PersonService People
+@inject TreeDataNotifier Notifier
+@inject ToastService Toasts
+@inject NavigationManager Nav
+
+<PageTitle>@(_person?.DisplayName ?? "Person") — FamilyTree</PageTitle>
+
+@* Also the tree's 360px right panel (PR 10). Panel mode drops the page chrome
+   and tightens the layout; everything below it is shared, so the two views
+   cannot drift apart. *@
+<section class="profile @(Panel ? "profile--panel" : null)" data-scrolls>
+    @if (_loading)
+    {
+        <p class="profile__status" data-testid="profile-loading">Loading…</p>
+    }
+    else if (_person is null)
+    {
+        <ErrorAlert Message="@(_error ?? "That person no longer exists.")" TestId="profile-missing" />
+        <a class="btn btn--secondary" href="people">Back to people</a>
+    }
+    else
+    {
+        <header class="profile__header">
+            <div class="profile__identity">
+                <h1 class="profile__name" data-testid="profile-name">@_person.DisplayName</h1>
+                <div class="profile__facts">
+                    @if (_person.IsDeceased)
+                    {
+                        <span class="badge badge--coral" data-testid="profile-deceased">Deceased</span>
+                    }
+                    @if (AgeLabel is not null)
+                    {
+                        <span class="profile__age" data-testid="profile-age">@AgeLabel</span>
+                    }
+                </div>
+            </div>
+
+            @if (!Panel)
+            {
+                <div class="profile__actions">
+                    <a class="btn btn--secondary" href="@($"people/{Id}/edit")" data-testid="edit-person">Edit</a>
+                    <button type="button" class="btn btn--destructive" data-testid="delete-person"
+                            @onclick="() => _confirmingDelete = true">
+                        Delete
+                    </button>
+                </div>
+            }
+        </header>
+
+        <ErrorAlert Message="@_error" TestId="profile-error" />
+
+        <dl class="profile__details" data-testid="profile-details">
+            @if (_person.BirthDate is not null || _person.BirthPlace is not null)
+            {
+                <dt>Born</dt>
+                <dd data-testid="profile-birth">@Describe(_person.BirthDate, _person.BirthPlace)</dd>
+            }
+            @if (_person.DeathDate is not null || _person.DeathPlace is not null)
+            {
+                <dt>Died</dt>
+                <dd data-testid="profile-death">@Describe(_person.DeathDate, _person.DeathPlace)</dd>
+            }
+            @if (_person.Gender != Gender.Unknown)
+            {
+                <dt>Gender</dt>
+                <dd data-testid="profile-gender">@Humanise(_person.Gender)</dd>
+            }
+            @if (!string.IsNullOrWhiteSpace(_person.Notes))
+            {
+                <dt>Notes</dt>
+                <dd class="profile__notes" data-testid="profile-notes">@_person.Notes</dd>
+            }
+        </dl>
+
+        @* Relationship sections are stubs until PRs 7–9. They are rendered
+           rather than omitted so the profile's shape is reviewable now, and so
+           the empty states get designed before there is data to hide them. *@
+        <div class="profile__relations">
+            @foreach (var stub in RelationshipStubs)
+            {
+                <section class="profile__relation" data-testid="@($"relation-{stub.TestId}")">
+                    <h2>@stub.Title</h2>
+                    <p class="profile__relation-empty">@stub.Pending</p>
+                </section>
+            }
+        </div>
+    }
+</section>
+
+<DeleteConfirmModal Visible="_confirmingDelete"
+                    Name="@_person?.DisplayName"
+                    Busy="_busy"
+                    Confirm="DeleteAsync"
+                    Cancel="() => _confirmingDelete = false" />
+
+@code {
+    private sealed record RelationSection(string TestId, string Title, string Pending);
+
+    private static readonly RelationSection[] RelationshipStubs =
+    [
+        new("parents", "Parents", "Biological parents arrive with relationships."),
+        new("children", "Children", "Children arrive with relationships."),
+        new("siblings", "Siblings", "Siblings are derived from shared parents."),
+        new("marriages", "Marriages and partnerships", "Marriages arrive with relationships."),
+    ];
+
+    private PersonDetailDto? _person;
+    private string? _error;
+    private bool _loading = true;
+    private bool _busy;
+    private bool _confirmingDelete;
+
+    [Parameter] public Guid Id { get; set; }
+
+    /// <summary>Renders as the tree's side panel rather than a full page (PR 10).</summary>
+    [Parameter] public bool Panel { get; set; }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _loading = true;
+        var result = await People.GetAsync(Id);
+
+        if (result.IsSuccess)
+        {
+            _person = result.Value;
+            _error = null;
+        }
+        else
+        {
+            _person = null;
+            _error = result.Error;
+        }
+
+        _loading = false;
+    }
+
+    /// <summary>
+    /// "~72 years" where either date is approximate or lacks a month — the record
+    /// does not support a precise age, and rounding one into existence would be
+    /// inventing information.
+    /// </summary>
+    private string? AgeLabel => _person?.Age is not ({ } years, var approximate) ? null
+        : $"{(approximate ? "~" : string.Empty)}{years} {(years == 1 ? "year" : "years")}";
+
+    private static string Describe(PartialDate? date, string? place)
+    {
+        var parts = new List<string>(2);
+        if (date is not null)
+        {
+            parts.Add(date.ToString());
+        }
+
+        if (!string.IsNullOrWhiteSpace(place))
+        {
+            parts.Add(place);
+        }
+
+        return string.Join(" · ", parts);
+    }
+
+    private static string Humanise(Gender gender) => gender switch
+    {
+        Gender.NonBinary => "Non-binary",
+        _ => gender.ToString(),
+    };
+
+    private async Task DeleteAsync()
+    {
+        _busy = true;
+        try
+        {
+            var name = _person?.DisplayName;
+            var result = await People.DeleteAsync(Id);
+
+            if (!result.IsSuccess)
+            {
+                _error = result.Error;
+                _confirmingDelete = false;
+                return;
+            }
+
+            _confirmingDelete = false;
+            await Notifier.NotifyChangedAsync();
+            Toasts.Show($"{name} deleted.");
+            Nav.NavigateTo("people");
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}

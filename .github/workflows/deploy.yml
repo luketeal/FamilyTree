@@ -11,12 +11,6 @@ env:
   DOTNET_NOLOGO: true
   DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
 
-# Pages has a single deployment target, so every run shares one queue rather
-# than one per ref: two refs deploying concurrently would race for the site.
-concurrency:
-  group: github-pages
-  cancel-in-progress: false
-
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -88,6 +82,14 @@ jobs:
     needs: build
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
+    # Scoped to this job rather than the whole workflow. Pages has a single
+    # deployment target so deploys must still serialise, but a build does not
+    # touch Pages at all — holding the group for its whole run only blocked
+    # other work. A pull_request run, which never reaches this job, was
+    # observed sitting queued for 13 minutes behind a deploy.
+    concurrency:
+      group: github-pages
+      cancel-in-progress: false
     permissions:
       pages: write
       id-token: write
@@ -96,4 +98,16 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - id: deployment
+        # No timeout override here: actions/deploy-pages clamps the input to a
+        # 600000ms maximum and warns that it has done so, so raising it changes
+        # nothing. A deploy that reaches ten minutes will be cancelled, and the
+        # only remedies are outside this file.
+        #
+        # When that happens, do not re-run the job. The Pages deployment ID is
+        # the commit SHA, so a cancelled deployment stays attached to it: the
+        # retry either reports "Deployment cancelled" within seconds, or leaves
+        # the deployment stuck in progress and every later commit is rejected
+        # with "due to in progress deployment. Please cancel <sha> first". That
+        # state clears only by cancelling the deployment in
+        # Settings > Environments > github-pages, or by waiting it out.
         uses: actions/deploy-pages@v4

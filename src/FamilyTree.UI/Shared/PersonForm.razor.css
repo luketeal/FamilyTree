@@ -1,0 +1,128 @@
+.pform {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+}
+
+.pform__grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+}
+
+.pform__field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+}
+
+.pform__field--wide {
+    grid-column: 1 / -1;
+}
+
+.pform__select {
+    flex: 1;
+    border: 0;
+    outline: 0;
+    background: transparent;
+    font: inherit;
+    color: inherit;
+    min-width: 0;
+    cursor: pointer;
+}
+
+.pform__textarea {
+    width: 100%;
+    padding: 8px 10px;
+    background: var(--paper);
+    border: 1px solid var(--line2);
+    border-radius: var(--radius-md);
+    font-family: var(--font-ui);
+    font-size: 13px;
+    color: var(--ink);
+    resize: vertical;
+    transition: border-color 0.12s, box-shadow 0.12s;
+}
+
+.pform__textarea:focus {
+    outline: 0;
+    border-color: var(--coral);
+    box-shadow: 0 0 0 3px var(--coral-bg);
+}
+
+.pform__error {
+    margin: 0;
+    font-size: 11px;
+    color: var(--err);
+}
+
+.pform__hint {
+    margin: 0;
+    font-size: 11px;
+    color: var(--ink4);
+}
+
+.pform__footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    padding-top: 4px;
+    border-top: 1px solid var(--hairline);
+}
+
+.pform__state {
+    min-height: 20px;
+    display: flex;
+    align-items: center;
+}
+
+.pform__dirty {
+    font-size: 12px;
+    color: var(--warn);
+}
+
+.pform__actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.pform__count {
+    margin: 0;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--ink4);
+    text-align: right;
+}
+
+.pform__count--full {
+    color: var(--warn);
+}
+
+@media (max-width: 768px) {
+    /* Scoped CSS adds an attribute selector, so these outrank the bare
+       element rules in app.css and have to repeat the 16px iOS-zoom floor
+       rather than inherit it. */
+    .pform__textarea,
+    .pform__select {
+        font-size: 16px;
+    }
+
+    .pform__grid {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    /* Actions ahead of the status line on a narrow screen, so the primary
+       button is not pushed below the fold by a message. */
+    .pform__footer {
+        flex-direction: column-reverse;
+        align-items: stretch;
+    }
+
+    .pform__actions .btn {
+        flex: 1;
+    }
+}

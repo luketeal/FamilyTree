@@ -1,0 +1,98 @@
+.people {
+    max-width: 840px;
+    margin-inline: auto;
+}
+
+.people__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 12px;
+}
+
+.people__header h1 {
+    margin: 0;
+}
+
+.people__count {
+    margin: 0 0 10px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--ink3);
+}
+
+.people__status {
+    font-size: 13px;
+    color: var(--ink3);
+}
+
+.people__empty {
+    padding: 32px 24px;
+    border: 1px dashed var(--line2);
+    border-radius: var(--radius-lg);
+    background: var(--paper2);
+    text-align: center;
+}
+
+.people__empty h2 {
+    margin: 0 0 6px;
+    font-family: var(--font-serif);
+    font-size: 20px;
+}
+
+.people__empty p {
+    margin: 0 0 16px;
+    font-size: 13px;
+    color: var(--ink3);
+}
+
+.people__list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-lg);
+    background: var(--paper);
+    overflow: hidden;
+}
+
+.people__row + .people__row {
+    border-top: 1px solid var(--hairline);
+}
+
+.people__link {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px 14px;
+    text-decoration: none;
+    color: var(--ink);
+}
+
+.people__link:hover {
+    background: var(--paper2);
+}
+
+.people__name {
+    font-size: 14px;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.people__meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: none;
+}
+
+.people__span {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--ink3);
+}

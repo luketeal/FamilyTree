@@ -1,0 +1,66 @@
+@* A person reference wherever one appears outside a list row: relationship
+   sections, search results, the tree's side panel. Four variants matching the
+   relationship kinds, so the type of a link is legible without reading a label.
+
+   Phantom is not a relationship kind but a person kind — an ancestor known to
+   exist and not identified (US-041, US-054) — and reads as an empty slot rather
+   than a name. *@
+
+@if (Href is null)
+{
+    <span class="chip chip--@Variant.ToString().ToLowerInvariant()" data-testid="@TestId" title="@Title">
+        @Body
+    </span>
+}
+else
+{
+    <a class="chip chip--@Variant.ToString().ToLowerInvariant()" href="@Href" data-testid="@TestId" title="@Title">
+        @Body
+    </a>
+}
+
+@code {
+    public enum ChipVariant
+    {
+        Biological,
+        Adoptive,
+        Marriage,
+        Phantom,
+    }
+
+    [Parameter] public ChipVariant Variant { get; set; } = ChipVariant.Biological;
+
+    [Parameter] public string? Name { get; set; }
+
+    [Parameter] public string? Detail { get; set; }
+
+    [Parameter] public string? Href { get; set; }
+
+    [Parameter] public string TestId { get; set; } = "person-chip";
+
+    private string Label => Variant == ChipVariant.Phantom
+        ? (string.IsNullOrWhiteSpace(Name) ? "Unknown" : Name)
+        : (Name ?? string.Empty);
+
+    private string Title => Variant switch
+    {
+        ChipVariant.Adoptive => $"{Label} — adoptive",
+        ChipVariant.Marriage => $"{Label} — marriage or partnership",
+        ChipVariant.Phantom => "Unidentified person",
+        _ => Label,
+    };
+
+    private RenderFragment Body => @<text>
+        <span class="chip__name">@Label</span>
+        @if (Variant == ChipVariant.Adoptive)
+        {
+            @* Adoptive links carry "(A)" as well as a distinct style, so the
+               distinction survives for anyone who cannot rely on colour. *@
+            <span class="chip__mark" aria-label="adoptive">(A)</span>
+        }
+        @if (!string.IsNullOrWhiteSpace(Detail))
+        {
+            <span class="chip__detail">@Detail</span>
+        }
+    </text>;
+}

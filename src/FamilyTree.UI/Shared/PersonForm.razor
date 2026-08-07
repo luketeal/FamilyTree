@@ -1,0 +1,301 @@
+@* The single person form, used by both Add and Edit so validation lives in one
+   place. The service validates too — this is not the only guard — but a round
+   trip to storage is the wrong way to learn a required field is blank. *@
+
+<form class="pform" @onsubmit="SubmitAsync" @onsubmit:preventDefault>
+    <ErrorAlert Message="@Error" Kind="ErrorAlert.AlertKind.Error" TestId="form-error" />
+
+    <div class="pform__grid">
+        <div class="pform__field">
+            <label class="field-label field-label--required" for="first-name">First name</label>
+            <div class="input">
+                <input id="first-name" type="text" autocomplete="off" data-testid="input-first-name"
+                       value="@_model.FirstName"
+                       aria-invalid="@(_firstNameError is not null)"
+                       aria-describedby="@(_firstNameError is null ? null : "first-name-error")"
+                       @oninput="e => Set(m => m.FirstName = e.Value?.ToString() ?? string.Empty)" />
+            </div>
+            @if (_firstNameError is not null)
+            {
+                <p id="first-name-error" class="pform__error" data-testid="error-first-name">@_firstNameError</p>
+            }
+        </div>
+
+        <div class="pform__field">
+            <label class="field-label field-label--required" for="last-name">Last name</label>
+            <div class="input">
+                <input id="last-name" type="text" autocomplete="off" data-testid="input-last-name"
+                       value="@_model.LastName"
+                       aria-invalid="@(_lastNameError is not null)"
+                       aria-describedby="@(_lastNameError is null ? null : "last-name-error")"
+                       @oninput="e => Set(m => m.LastName = e.Value?.ToString() ?? string.Empty)" />
+            </div>
+            @if (_lastNameError is not null)
+            {
+                <p id="last-name-error" class="pform__error" data-testid="error-last-name">@_lastNameError</p>
+            }
+        </div>
+
+        <div class="pform__field">
+            <label class="field-label" for="birth-surname">Birth surname</label>
+            <div class="input">
+                <input id="birth-surname" type="text" autocomplete="off" data-testid="input-birth-surname"
+                       value="@_model.BirthSurname"
+                       @oninput="e => Set(m => m.BirthSurname = e.Value?.ToString())" />
+            </div>
+            <p class="pform__hint">Shown as "(née …)" where the surname changed.</p>
+        </div>
+
+        <div class="pform__field">
+            <label class="field-label" for="gender">Gender</label>
+            <div class="input">
+                <select id="gender" class="pform__select" data-testid="input-gender"
+                        @onchange="OnGenderChanged">
+                    @foreach (var value in Enum.GetValues<Gender>())
+                    {
+                        <option value="@value" selected="@(_model.Gender == value)">@Humanise(value)</option>
+                    }
+                </select>
+            </div>
+        </div>
+
+        <div class="pform__field">
+            <PartialDateInput Label="Born" TestId="input-birth-year"
+                              Value="_model.BirthDate"
+                              ValueChanged="v => Set(m => m.BirthDate = v)"
+                              InvalidChanged="v => _birthYearInvalid = v" />
+        </div>
+
+        <div class="pform__field">
+            <label class="field-label" for="birth-place">Birth place</label>
+            <div class="input">
+                <input id="birth-place" type="text" autocomplete="off" data-testid="input-birth-place"
+                       value="@_model.BirthPlace"
+                       @oninput="e => Set(m => m.BirthPlace = e.Value?.ToString())" />
+            </div>
+        </div>
+
+        <div class="pform__field">
+            <PartialDateInput Label="Died" TestId="input-death-year"
+                              Value="_model.DeathDate"
+                              ValueChanged="v => Set(m => m.DeathDate = v)"
+                              InvalidChanged="v => _deathYearInvalid = v" />
+        </div>
+
+        <div class="pform__field">
+            <label class="field-label" for="death-place">Death place</label>
+            <div class="input">
+                <input id="death-place" type="text" autocomplete="off" data-testid="input-death-place"
+                       value="@_model.DeathPlace"
+                       @oninput="e => Set(m => m.DeathPlace = e.Value?.ToString())" />
+            </div>
+        </div>
+
+        <div class="pform__field pform__field--wide">
+            <label class="field-label" for="notes">Notes</label>
+            <textarea id="notes" class="pform__textarea" rows="4" data-testid="input-notes"
+                      maxlength="@NotesLimit"
+                      value="@_model.Notes"
+                      @oninput="e => Set(m => m.Notes = e.Value?.ToString())"></textarea>
+            @* Counted rather than silently truncated: a note is research the user
+               typed, and losing the tail of it without saying so is data loss. *@
+            <p class="pform__count @(NotesRemaining <= 0 ? "pform__count--full" : null)"
+               data-testid="notes-count">
+                @(_model.Notes?.Length ?? 0) / @NotesLimit
+            </p>
+        </div>
+    </div>
+
+    <div class="pform__footer">
+        <div class="pform__state">
+            @if (IsDirty)
+            {
+                <span class="pform__dirty" data-testid="unsaved-indicator">Unsaved changes</span>
+            }
+        </div>
+
+        <div class="pform__actions">
+            <button type="button" class="btn btn--ghost" data-testid="cancel-person" disabled="@Busy"
+                    @onclick="() => Cancel.InvokeAsync()">
+                Cancel
+            </button>
+            <button type="submit" class="btn btn--primary" data-testid="save-person" disabled="@Busy">
+                @SubmitLabel
+            </button>
+        </div>
+    </div>
+</form>
+
+@code {
+    /// <summary>
+    /// Mutable working copy. PersonInput is a record built only at submit time,
+    /// so a half-typed form never has to be a valid domain input.
+    /// </summary>
+    public sealed class Model
+    {
+        public string FirstName { get; set; } = string.Empty;
+        public string LastName { get; set; } = string.Empty;
+        public string? BirthSurname { get; set; }
+        public PartialDate? BirthDate { get; set; }
+        public string? BirthPlace { get; set; }
+        public PartialDate? DeathDate { get; set; }
+        public string? DeathPlace { get; set; }
+        public Gender Gender { get; set; } = Gender.Unknown;
+        public string? Notes { get; set; }
+
+        public PersonService.PersonInput ToInput() => new(
+            FirstName.Trim(),
+            LastName.Trim(),
+            string.IsNullOrWhiteSpace(BirthSurname) ? null : BirthSurname.Trim(),
+            BirthDate,
+            string.IsNullOrWhiteSpace(BirthPlace) ? null : BirthPlace.Trim(),
+            DeathDate,
+            string.IsNullOrWhiteSpace(DeathPlace) ? null : DeathPlace.Trim(),
+            Gender,
+            string.IsNullOrWhiteSpace(Notes) ? null : Notes.Trim());
+
+        public Model Clone() => new()
+        {
+            FirstName = FirstName,
+            LastName = LastName,
+            BirthSurname = BirthSurname,
+            BirthDate = BirthDate,
+            BirthPlace = BirthPlace,
+            DeathDate = DeathDate,
+            DeathPlace = DeathPlace,
+            Gender = Gender,
+            Notes = Notes,
+        };
+
+        public static Model From(PersonDetailDto person) => new()
+        {
+            FirstName = person.FirstName,
+            LastName = person.LastName,
+            BirthSurname = person.BirthSurname,
+            BirthDate = person.BirthDate,
+            BirthPlace = person.BirthPlace,
+            DeathDate = person.DeathDate,
+            DeathPlace = person.DeathPlace,
+            Gender = person.Gender,
+            Notes = person.Notes,
+        };
+
+        public bool Matches(Model other) =>
+            FirstName == other.FirstName
+            && LastName == other.LastName
+            && BirthSurname == other.BirthSurname
+            && Equals(BirthDate, other.BirthDate)
+            && BirthPlace == other.BirthPlace
+            && Equals(DeathDate, other.DeathDate)
+            && DeathPlace == other.DeathPlace
+            && Gender == other.Gender
+            && Notes == other.Notes;
+    }
+
+    /// <summary>
+    /// US-006 caps notes at 5,000 characters. The rule itself lives in
+    /// PersonService — this is only the maxlength and counter, which are UX
+    /// rather than enforcement.
+    /// </summary>
+    public const int NotesLimit = PersonService.NotesLimit;
+
+    private int NotesRemaining => NotesLimit - (_model.Notes?.Length ?? 0);
+
+    private Model _model = new();
+    private Model _original = new();
+    private string? _firstNameError;
+    private string? _lastNameError;
+    private bool _birthYearInvalid;
+    private bool _deathYearInvalid;
+
+    [Parameter] public PersonDetailDto? Person { get; set; }
+
+    [Parameter] public string SubmitLabel { get; set; } = "Save";
+
+    [Parameter] public string? Error { get; set; }
+
+    [Parameter] public bool Busy { get; set; }
+
+    [Parameter] public EventCallback<PersonService.PersonInput> Submit { get; set; }
+
+    [Parameter] public EventCallback Cancel { get; set; }
+
+    /// <summary>
+    /// Whether anything has been edited. Exposed so a page can warn before
+    /// navigating away — the browser is the only copy, so a discarded form is a
+    /// real loss rather than a re-fetch.
+    /// </summary>
+    public bool IsDirty => !_model.Matches(_original);
+
+    protected override void OnParametersSet()
+    {
+        // Only seed from the parameter once. Re-seeding on every parameter set
+        // would discard whatever the user has typed each time the parent
+        // re-renders, which it does on every keystroke through Set.
+        if (_seeded)
+        {
+            return;
+        }
+
+        _seeded = true;
+        _model = Person is null ? new Model() : Model.From(Person);
+        _original = _model.Clone();
+    }
+
+    private bool _seeded;
+
+    private void Set(Action<Model> mutate)
+    {
+        mutate(_model);
+
+        // Clear an error as soon as the field it belongs to is corrected, rather
+        // than making the user submit again to find out.
+        if (_firstNameError is not null && !string.IsNullOrWhiteSpace(_model.FirstName))
+        {
+            _firstNameError = null;
+        }
+
+        if (_lastNameError is not null && !string.IsNullOrWhiteSpace(_model.LastName))
+        {
+            _lastNameError = null;
+        }
+    }
+
+    private void OnGenderChanged(ChangeEventArgs args)
+    {
+        if (Enum.TryParse<Gender>(args.Value?.ToString(), out var gender))
+        {
+            Set(m => m.Gender = gender);
+        }
+    }
+
+    private async Task SubmitAsync()
+    {
+        _firstNameError = string.IsNullOrWhiteSpace(_model.FirstName) ? "First name is required." : null;
+        _lastNameError = string.IsNullOrWhiteSpace(_model.LastName) ? "Last name is required." : null;
+
+        if (_firstNameError is not null || _lastNameError is not null)
+        {
+            return;
+        }
+
+        // The date controls render their own messages, so there is nothing to
+        // add here — but the form must still refuse to submit, or an
+        // out-of-range year would be silently dropped from the saved record.
+        if (_birthYearInvalid || _deathYearInvalid)
+        {
+            return;
+        }
+
+        await Submit.InvokeAsync(_model.ToInput());
+    }
+
+    /// <summary>Called by the page after a successful save so the form stops reporting unsaved changes.</summary>
+    public void MarkSaved() => _original = _model.Clone();
+
+    private static string Humanise(Gender gender) => gender switch
+    {
+        Gender.NonBinary => "Non-binary",
+        _ => gender.ToString(),
+    };
+}

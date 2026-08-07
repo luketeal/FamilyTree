@@ -1,0 +1,120 @@
+.quickadd {
+    position: fixed;
+    /* Not `inset: 0`: the viewport tracker sets height and top, and a pinned
+       bottom would win over height and put the overlay back to layout-viewport
+       size. 100dvh is the pre-JS and no-VisualViewport fallback. */
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 100dvh;
+    z-index: 45;
+    display: grid;
+    place-items: start center;
+    padding: 72px 16px 16px;
+    /* The overlay scrolls itself. Without this a panel taller than the visible
+       area — which it is on a phone once the keyboard is up — hands the gesture
+       to the page behind, so the app scrolls instead of the dialog.
+       overscroll-behavior stops the gesture chaining onward at either end. */
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    background: rgba(28, 26, 23, 0.25);
+}
+
+/* The keyboard leaves very little height; the 72px offset is a nicety on a
+   roomy screen and wasted space on a cramped one. */
+@media (max-height: 620px) {
+    .quickadd {
+        padding-top: 16px;
+    }
+}
+
+.quickadd__panel {
+    position: relative;
+    width: min(380px, 100%);
+    padding: 18px;
+    background: var(--paper);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-pop);
+}
+
+.quickadd__title {
+    margin: 0 0 12px;
+    font-family: var(--font-serif);
+    font-size: 17px;
+    color: var(--ink);
+}
+
+.quickadd__form {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.quickadd__field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.quickadd__actions {
+    display: flex;
+    gap: 8px;
+}
+
+.quickadd__hint {
+    margin: 0;
+    font-size: 11px;
+    color: var(--ink4);
+}
+
+.quickadd__pair {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+}
+
+.quickadd__select {
+    flex: 1;
+    border: 0;
+    outline: 0;
+    background: transparent;
+    font: inherit;
+    color: inherit;
+    min-width: 0;
+    cursor: pointer;
+}
+
+.quickadd__pair input[type="number"] {
+    -moz-appearance: textfield;
+    appearance: textfield;
+}
+
+.quickadd__pair input[type="number"]::-webkit-outer-spin-button,
+.quickadd__pair input[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+/* A link in behaviour, a button in semantics: it navigates, but only after
+   collecting what has been typed. */
+.quickadd__full {
+    align-self: flex-start;
+    padding: 0;
+    border: 0;
+    background: none;
+    font-family: var(--font-ui);
+    font-size: 12px;
+    color: var(--coral);
+    text-decoration: underline;
+    cursor: pointer;
+}
+
+/* Same 16px iOS-zoom floor as the main form; scoped specificity means it has
+   to be restated here rather than inherited from app.css. */
+@media (max-width: 768px) {
+    .quickadd__select {
+        font-size: 16px;
+    }
+}

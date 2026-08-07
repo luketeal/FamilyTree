@@ -11,6 +11,30 @@ namespace FamilyTree.Application.Services;
 /// </summary>
 public sealed class PersonService(IPersonRepository people)
 {
+    /// <summary>
+    /// US-006 caps notes at 5,000 characters. Enforced here rather than by the
+    /// textarea's maxlength alone: anything reaching this service another way —
+    /// a paste handler, an import, a future FamilyTree.Storage.Api client — never
+    /// passes through that attribute.
+    /// </summary>
+    public const int NotesLimit = 5000;
+
+    /// <summary>
+    /// The newest year that can be a record rather than a typo. Generous by one
+    /// year rather than clamped to today, so a birth entered slightly ahead of
+    /// the clock is not rejected over a time zone.
+    /// </summary>
+    /// <remarks>
+    /// Lives here because this is the only place every write passes through. The
+    /// rule previously existed only in the UI — once in the date control, once in
+    /// the quick-add popover, and once more in the page that seeds the form from
+    /// a query string. Three copies drifted: the seeding copy allowed anything up
+    /// to 9999, so a year the control had just rejected could be carried into the
+    /// form by "Open full form" and saved. A future FamilyTree.Storage.Api or an
+    /// import would have inherited no bound at all.
+    /// </remarks>
+    public static int MaxYear => DateTime.UtcNow.Year + 1;
+
     public sealed record PersonInput(
         string FirstName,
         string LastName,
@@ -138,8 +162,29 @@ public sealed class PersonService(IPersonRepository people)
             return "Death date cannot be before birth date.";
         }
 
+        // PartialDate already refuses anything outside 1..9999, so only the upper
+        // bound is reachable through the domain type. The lower bound is kept so
+        // the rule reads as the whole rule rather than half of one.
+        if (OutOfRange(input.BirthDate))
+        {
+            return $"Birth year must be between 1 and {MaxYear}.";
+        }
+
+        if (OutOfRange(input.DeathDate))
+        {
+            return $"Death year must be between 1 and {MaxYear}.";
+        }
+
+        if (input.Notes is { Length: > NotesLimit })
+        {
+            return $"Notes cannot be longer than {NotesLimit:N0} characters.";
+        }
+
         return null;
     }
+
+    private static bool OutOfRange(PartialDate? date) =>
+        date is not null && (date.Year < 1 || date.Year > MaxYear);
 
     /// <summary>
     /// Warns rather than blocks. Two cousins genuinely can share a name and a

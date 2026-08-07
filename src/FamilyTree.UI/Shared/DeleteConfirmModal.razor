@@ -1,0 +1,95 @@
+@* Deleting a person is unrecoverable: there is no export yet and Undo lands in
+   PR 13. The prompt therefore names who is being deleted rather than asking a
+   generic "are you sure", the same rule the Settings wipe follows. *@
+
+@inject IOverlayInterop Overlay
+@implements IAsyncDisposable
+
+@if (Visible)
+{
+    <div class="modal" data-testid="delete-modal" data-overlay @ref="_overlay"
+         @onclick="() => Cancel.InvokeAsync()">
+        <div class="modal__panel" role="alertdialog" aria-modal="true" aria-labelledby="@_titleId"
+             tabindex="-1" @ref="_panel" @onkeydown="OnKeyDown"
+             @onclick:stopPropagation="true">
+            <h2 id="@_titleId" class="modal__title">Delete @Name?</h2>
+            <p class="modal__body" data-testid="delete-modal-body">
+                This permanently removes @Name from your tree. There is no undo.
+            </p>
+            <div class="modal__actions">
+                <button type="button" class="btn btn--destructive" data-testid="confirm-delete"
+                        disabled="@Busy" @onclick="() => Confirm.InvokeAsync()">
+                    Delete
+                </button>
+                <button type="button" class="btn btn--secondary" data-testid="cancel-delete"
+                        disabled="@Busy" @onclick="() => Cancel.InvokeAsync()">
+                    Cancel
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private readonly string _titleId = $"delete-title-{Guid.NewGuid():N}";
+    private ElementReference _overlay;
+    private ElementReference _panel;
+    private bool _wasVisible;
+
+    [Parameter] public bool Visible { get; set; }
+
+    [Parameter] public string? Name { get; set; }
+
+    [Parameter] public bool Busy { get; set; }
+
+    [Parameter] public EventCallback Confirm { get; set; }
+
+    [Parameter] public EventCallback Cancel { get; set; }
+
+    // Awaited rather than dropped: the returned task was being discarded, so an
+    // exception in the caller's handler went unobserved and the re-render could
+    // race the cancel.
+    private async Task OnKeyDown(KeyboardEventArgs args)
+    {
+        if (args.Key == "Escape")
+        {
+            await Cancel.InvokeAsync();
+        }
+    }
+
+    // Focus moves to the panel as it opens so a screen reader announces it and a
+    // keyboard user is already inside the dialog. Guarded on the transition so
+    // later renders do not steal focus back from the buttons.
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (Visible && !_wasVisible)
+        {
+            _wasVisible = true;
+            await Overlay.OpenAsync(_overlay);
+            await _panel.FocusAsync();
+        }
+        else if (!Visible && _wasVisible)
+        {
+            _wasVisible = false;
+            await Overlay.CloseAsync(_overlay);
+        }
+    }
+
+    // Confirming a delete navigates away, destroying this component without a
+    // further render — the lock has to be released here or the page stays pinned.
+    public async ValueTask DisposeAsync()
+    {
+        if (_wasVisible)
+        {
+            _wasVisible = false;
+            try
+            {
+                await Overlay.CloseAsync(_overlay);
+            }
+            catch (JSDisconnectedException)
+            {
+                // The page is going away; the lock goes with it.
+            }
+        }
+    }
+}

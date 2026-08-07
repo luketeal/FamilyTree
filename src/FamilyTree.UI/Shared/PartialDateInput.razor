@@ -1,0 +1,139 @@
+@* Year-only stub. PR 6 extends this in place to Year → Month → Day → Circa;
+   the parameter contract is already PartialDate? so that change does not reach
+   the pages using it.
+
+   A genealogy record frequently knows the year and nothing else, so an ordinary
+   <input type="date"> is the wrong control: it would force a month and day the
+   source never recorded. PartialDate carries the precision explicitly. *@
+
+<div class="pdate">
+    <label class="field-label" for="@_yearId">@Label</label>
+    <div class="pdate__row">
+        @* Deliberately no min/max. Those put the field under native constraint
+           validation, which refuses to submit the enclosing form — so Blazor
+           never runs, nothing renders, and the save button reads as dead. The
+           range is enforced below instead, where the app can say something. *@
+        <div class="input pdate__year">
+            <input id="@_yearId"
+                   type="number"
+                   inputmode="numeric"
+                   placeholder="Year"
+                   value="@_year"
+                   data-testid="@TestId"
+                   aria-invalid="@(_error is not null)"
+                   @oninput="OnYearInput" />
+        </div>
+
+        <label class="pdate__circa">
+            <input type="checkbox"
+                   checked="@_isApproximate"
+                   data-testid="@($"{TestId}-approx")"
+                   @onchange="OnApproximateChanged" />
+            <span>Approximate</span>
+        </label>
+    </div>
+
+    @if (_error is not null)
+    {
+        <p class="pdate__error" data-testid="@($"error-{TestId}")">@_error</p>
+    }
+</div>
+
+@code {
+    private readonly string _yearId = $"pdate-{Guid.NewGuid():N}";
+
+    private int? _year;
+    private bool _isApproximate;
+    private string? _error;
+
+    /// <summary>
+    /// Set once the parameter has been read, so later renders do not overwrite
+    /// what the user is typing. Without it, clearing the year emits null, the
+    /// parent re-renders, and the circa flag is re-seeded from that null —
+    /// silently discarding a precision judgement because a neighbouring field
+    /// was being corrected.
+    /// </summary>
+    private bool _seeded;
+
+    // Deliberately not a local constant. This rule had three UI copies and they
+    // drifted — the seeding path allowed up to 9999 while this one allowed up to
+    // next year, which is how an out-of-range year reached storage.
+    private static int MaxYear => PersonService.MaxYear;
+
+    [Parameter] public string Label { get; set; } = "Year";
+
+    [Parameter] public PartialDate? Value { get; set; }
+
+    [Parameter] public EventCallback<PartialDate?> ValueChanged { get; set; }
+
+    /// <summary>
+    /// Raised whenever the entered year becomes valid or invalid, so the form
+    /// hosting this control can refuse to submit while it is out of range.
+    /// </summary>
+    [Parameter] public EventCallback<bool> InvalidChanged { get; set; }
+
+    [Parameter] public string TestId { get; set; } = "partial-date";
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_seeded)
+        {
+            return;
+        }
+
+        _seeded = true;
+        _year = Value?.Year;
+        _isApproximate = Value?.IsApproximate ?? false;
+
+        // A seeded year is judged exactly like a typed one. Validity used to be
+        // computed only in OnYearInput, so a year that arrived from the
+        // carry-over query string was never judged at all: it seeded a
+        // valid-looking PartialDate, left InvalidChanged false, and saved. The
+        // same year typed into this box was rejected — the two paths disagreed
+        // about the same value in the same form.
+        _error = _year is null || InRange(_year)
+            ? null
+            : $"Year must be between 1 and {MaxYear}.";
+
+        if (_error is not null)
+        {
+            await InvalidChanged.InvokeAsync(true);
+        }
+    }
+
+    private async Task OnYearInput(ChangeEventArgs args)
+    {
+        var raw = args.Value?.ToString();
+        _year = int.TryParse(raw, out var parsed) ? parsed : null;
+
+        // Distinguish "nothing entered" from "entered something impossible".
+        // An empty box is a perfectly good answer; 30000 is a typo.
+        _error = string.IsNullOrWhiteSpace(raw) || InRange(_year)
+            ? null
+            : $"Year must be between 1 and {MaxYear}.";
+
+        await EmitAsync();
+    }
+
+    private async Task OnApproximateChanged(ChangeEventArgs args)
+    {
+        _isApproximate = args.Value is true;
+        await EmitAsync();
+    }
+
+    private static bool InRange(int? year) => year is int value && value >= 1 && value <= MaxYear;
+
+    // An out-of-range year emits null rather than a PartialDate the domain would
+    // reject. The error above is what tells the user; the null keeps an invalid
+    // value out of the model.
+    private async Task EmitAsync()
+    {
+        PartialDate? next = InRange(_year)
+            ? PartialDate.FromYear(_year!.Value, _isApproximate)
+            : null;
+
+        Value = next;
+        await ValueChanged.InvokeAsync(next);
+        await InvalidChanged.InvokeAsync(_error is not null);
+    }
+}

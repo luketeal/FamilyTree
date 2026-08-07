@@ -1,0 +1,130 @@
+.profile {
+    max-width: 840px;
+    margin-inline: auto;
+}
+
+.profile--panel {
+    max-width: 360px;
+}
+
+.profile__status {
+    font-size: 13px;
+    color: var(--ink3);
+}
+
+.profile__header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 16px;
+}
+
+.profile__identity {
+    min-width: 0;
+}
+
+.profile__name {
+    margin: 0 0 6px;
+    font-size: 24px;
+}
+
+.profile__facts {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.profile__age {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--ink3);
+}
+
+.profile__actions {
+    display: flex;
+    gap: 8px;
+    flex: none;
+}
+
+.profile__details {
+    display: grid;
+    grid-template-columns: 120px minmax(0, 1fr);
+    gap: 8px 16px;
+    margin: 0 0 24px;
+    padding: 16px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-lg);
+    background: var(--paper);
+}
+
+.profile__details:empty {
+    display: none;
+}
+
+.profile__details dt {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--ink3);
+    letter-spacing: 0.1px;
+    padding-top: 2px;
+}
+
+.profile__details dd {
+    margin: 0;
+    font-size: 13px;
+    color: var(--ink);
+    min-width: 0;
+}
+
+.profile__notes {
+    white-space: pre-wrap;
+}
+
+.profile__relations {
+    display: grid;
+    gap: 12px;
+}
+
+.profile__relation {
+    padding: 14px 16px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-lg);
+    background: var(--paper);
+}
+
+.profile__relation h2 {
+    margin: 0 0 4px;
+    font-family: var(--font-ui);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--ink2);
+    letter-spacing: 0.1px;
+}
+
+.profile__relation-empty {
+    margin: 0;
+    font-size: 12px;
+    color: var(--ink4);
+}
+
+@media (max-width: 768px) {
+    .profile__details {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 2px 0;
+    }
+
+    .profile__details dd {
+        margin-bottom: 10px;
+    }
+
+    .profile__actions {
+        width: 100%;
+    }
+
+    .profile__actions .btn {
+        flex: 1;
+    }
+}

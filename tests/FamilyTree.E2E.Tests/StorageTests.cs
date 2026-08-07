@@ -167,6 +167,10 @@ public class StorageTests(StaticSiteFixture fixture)
 
         await page.GetByTestId("clear-data").ClickAsync();
         await Assertions.Expect(page.GetByTestId("settings-confirm")).ToBeVisibleAsync();
+        // Same race as the quick-add Escape tests: the key is handled on the
+        // panel, which is not focused until OnAfterRenderAsync has finished its
+        // interop round trips.
+        await Assertions.Expect(page.GetByTestId("settings-confirm")).ToBeFocusedAsync();
         await page.Keyboard.PressAsync("Escape");
 
         await Assertions.Expect(page.GetByTestId("settings-confirm")).Not.ToBeVisibleAsync();

@@ -107,6 +107,14 @@ The reasoning is that the cost curve is asymmetric. Shell responsiveness is chea
 
 ## PR Sequence
 
+**One PR open at a time.** The deploy workflow publishes to GitHub Pages from
+any branch, so concurrent PRs overwrite each other's deployment and there is no
+longer a single answer to "what does the live site do right now". Reviewing a
+change in the browser is the point of the demo-first ordering, so the sequence
+below is worked one entry at a time even where the dependency graph would allow
+parallelism. Only relax this if the workflow is changed to give PR builds their
+own preview URL.
+
 ### PR 1 — WASM app, shared RCL, and GitHub Pages deployment
 **Stories:** None (foundation)
 
@@ -135,7 +143,13 @@ The reasoning is that the cost curve is asymmetric. Shell responsiveness is chea
 - Tests: `Application.Tests` (circular checker — no cycle, direct, indirect, disconnected root; `PersonService` rules) and `Storage.Tests` (round-trip per entity type; `PartialDate` precision and `IsApproximate` preserved).
 
 ### PR 3 — Tree visualization spike and ADR-005
-**Stories:** None (spike) — runs in parallel with PRs 4–9
+**Stories:** None (spike) — **deferred until after PR 4**
+
+> Has no code dependency on PRs 4–9 and could be built at any point, but is
+> **not run concurrently with them**. The deploy workflow publishes to GitHub
+> Pages from any branch, so two open PRs contend for the live site and
+> "check the deployed version" stops having a single answer. Sequence it into
+> a gap when nothing else is awaiting review — it only blocks PR 10.
 
 The project's largest unknown, resolved before the tree is built. Evaluate against: DAG rendering (a person may have both biological and adoptive parents — a directed acyclic graph, not a strict tree), pan/zoom, five distinct edge styles, nodes ~172×70px, performance at ~500 nodes, phantom node styling, mini-map.
 
@@ -173,6 +187,8 @@ E2E: Playwright captures the download, parses it, asserts seeded persons present
 
 Extends `PartialDateInput.razor` in place. Year → Month → Day → Circa; clearing month clears day; converts to/from `PartialDate?` only on `ValueChanged`. Tests cover each precision level, circa, and cascade clearing.
 
+- Change the seed contract from `PartialDate?` to raw text while reshaping this control. `PartialDate` cannot hold a year outside 1..9999, so a value the user typed but which the type cannot represent is unrepresentable in the seed path *by construction* — the carry-over from quick add currently reports that it dropped such a year rather than preserving it. Raw text in, parsed on emit, is the same fix that resolved the quick-add `int?` case: a type that cannot express "typed something invalid" forces the caller to guess, and the guess is what loses data. Worth doing here rather than separately, because this PR already changes the control's parameter contract.
+
 ### PR 7 — Biological relationships
 **Stories:** US-007 – US-013, US-037, US-039 (bio), US-051
 
@@ -194,6 +210,7 @@ Same guards as biological, **no upper cap**; adoption date optional ("Date unkno
 - `MarriageService` — self-reference check, active-duplicate check, overlap warning, end-after-start validation, `SuggestEndDateFromSpouseDeathAsync` (US-026)
 - `StepparentService` — validates the marriage involves a parent of the stepchild
 - Profile: "Marriages / Partnerships" and "Stepchildren"; dialog step 3 extended for marriage fields
+- Give `TreeStatsService` a cached read invalidated by `TreeDataNotifier`, before a third component subscribes. Each subscriber currently reads all four repositories in full, so every save costs one complete read of the store per listener — free against IndexedDB, four HTTP round trips each once the seam is swapped, which is the pattern the service's own docstring exists to watch for
 - Extend `TreeStatsService` to count stepparent links — the relationship total omits them by design until this PR, and starts silently under-reporting the moment they are written
 - Extend export coverage
 
@@ -257,7 +274,9 @@ PR 1 (RCL + WASM app + GH Pages CI)   ← live URL
   │                        ├─ PR 13 (undo + certainty UI)
   │                        └─ PR 10 (tree) ← also needs PR 3
   │                                  └─ PR 11 (pedigree + descendant)
-  └─ PR 3 (viz spike → ADR-005) ── parallel with PRs 4–9
+  └─ PR 3 (viz spike → ADR-005) ── no code dependency, but not run
+                                   concurrently: one Pages deployment,
+                                   one PR under review at a time
 
 PR 14 (photos, ADR-006) and PR 15 (GEDCOM + print PDF) after PR 5
 PR 16 (feedback hardening) after the rest is deployed

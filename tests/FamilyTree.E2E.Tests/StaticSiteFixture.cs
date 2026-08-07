@@ -29,6 +29,13 @@ public sealed class StaticSiteFixture : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
+        // Playwright's 5s default is tight here: every test boots the whole
+        // WebAssembly runtime from scratch, and under the load of the full suite
+        // that occasionally overruns — surfacing as a different test timing out
+        // on each run rather than a consistent failure. The assertions
+        // themselves are unchanged; only the patience is.
+        Assertions.SetDefaultExpectTimeout(15_000);
+
         _rootDirectory = await PublishAppAsync();
         ApplyGitHubPagesTransforms(_rootDirectory);
 

@@ -69,11 +69,25 @@ public sealed class TreeDataNotifier
 {
     public event Func<Task>? Changed;
 
+    /// <summary>
+    /// Awaits every subscriber, not just the last one.
+    /// </summary>
+    /// <remarks>
+    /// Invoking a multicast Func&lt;Task&gt; directly returns only the final
+    /// delegate's task, so every earlier subscriber becomes fire-and-forget and
+    /// an exception inside one is never observed. That was harmless while the
+    /// top bar was the only listener and stopped being so the moment a second
+    /// component subscribed.
+    /// </remarks>
     public async Task NotifyChangedAsync()
     {
-        if (Changed is not null)
+        if (Changed is null)
         {
-            await Changed.Invoke();
+            return;
         }
+
+        await Task.WhenAll(Changed.GetInvocationList()
+            .Cast<Func<Task>>()
+            .Select(handler => handler()));
     }
 }

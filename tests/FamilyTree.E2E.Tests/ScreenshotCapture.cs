@@ -76,6 +76,75 @@ public class ScreenshotCapture(StaticSiteFixture fixture)
         });
     }
 
+    // The person flow is the first screen a user actually fills in, and forms
+    // are where a two-column grid on a phone goes wrong quietly.
+    [Theory]
+    [InlineData("desktop", 1440, 900)]
+    [InlineData("mobile", 390, 844)]
+    public async Task CapturePersonFlow(string name, int width, int height)
+    {
+        Directory.CreateDirectory(OutputDirectory);
+
+        var context = await fixture.Browser.NewContextAsync(new BrowserNewContextOptions
+        {
+            ViewportSize = new ViewportSize { Width = width, Height = height },
+        });
+        var page = await context.NewPageAsync();
+
+        await page.GotoAsync(fixture.BaseUrl + "people", new PageGotoOptions
+        {
+            WaitUntil = WaitUntilState.NetworkIdle,
+        });
+        await Assertions.Expect(page.GetByTestId("people-empty-state")).ToBeVisibleAsync();
+        await page.ScreenshotAsync(new PageScreenshotOptions
+        {
+            Path = Path.Combine(OutputDirectory, $"people-empty-{name}.png"),
+            FullPage = true,
+        });
+
+        await page.GotoAsync(fixture.BaseUrl + "people/add", new PageGotoOptions
+        {
+            WaitUntil = WaitUntilState.NetworkIdle,
+        });
+        await page.GetByTestId("input-first-name").FillAsync("Ada");
+        await page.GetByTestId("input-last-name").FillAsync("Lovelace");
+        await page.GetByTestId("input-birth-surname").FillAsync("Byron");
+        await page.GetByTestId("input-birth-year").FillAsync("1815");
+        await page.GetByTestId("input-birth-place").FillAsync("London, England");
+        await page.GetByTestId("input-death-year").FillAsync("1852");
+        await page.GetByTestId("input-notes").FillAsync("Wrote the first algorithm intended for a machine.");
+        await page.ScreenshotAsync(new PageScreenshotOptions
+        {
+            Path = Path.Combine(OutputDirectory, $"person-form-{name}.png"),
+            FullPage = true,
+        });
+
+        await page.GetByTestId("save-person").ClickAsync();
+        await Assertions.Expect(page.GetByTestId("profile-name")).ToBeVisibleAsync();
+        await page.ScreenshotAsync(new PageScreenshotOptions
+        {
+            Path = Path.Combine(OutputDirectory, $"person-profile-{name}.png"),
+            FullPage = true,
+        });
+
+        // The popover is a desktop control. Below the 768px breakpoint the same
+        // button goes to the full form, which the capture above already covers.
+        if (width > 768)
+        {
+            await page.GotoAsync(fixture.BaseUrl + "people", new PageGotoOptions
+            {
+                WaitUntil = WaitUntilState.NetworkIdle,
+            });
+            await page.GetByTestId("add-person-button").ClickAsync();
+            await Assertions.Expect(page.GetByTestId("quick-add")).ToBeVisibleAsync();
+            await page.ScreenshotAsync(new PageScreenshotOptions
+            {
+                Path = Path.Combine(OutputDirectory, $"quick-add-{name}.png"),
+                FullPage = true,
+            });
+        }
+    }
+
     // The one appearance check worth asserting: if the design tokens fail to
     // resolve, every component silently falls back to browser defaults.
     [Fact]

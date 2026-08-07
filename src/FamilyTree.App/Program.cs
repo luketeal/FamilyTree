@@ -1,6 +1,7 @@
 using FamilyTree.App;
 using FamilyTree.Application.Services;
 using FamilyTree.Storage.Browser;
+using FamilyTree.UI.Shared;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
 
@@ -14,6 +15,11 @@ builder.Services.AddScoped<PersonService>();
 builder.Services.AddScoped<CircularReferenceChecker>();
 builder.Services.AddScoped<TreeStatsService>();
 builder.Services.AddScoped<TreeDataNotifier>();
+builder.Services.AddScoped<ToastService>();
+builder.Services.AddScoped<OverlayInterop>();
+builder.Services.AddScoped<IOverlayInterop>(sp => sp.GetRequiredService<OverlayInterop>());
+builder.Services.AddScoped<ViewportInterop>();
+builder.Services.AddScoped<IViewportInterop>(sp => sp.GetRequiredService<ViewportInterop>());
 
 // Persistent storage is requested from MainLayout on first render rather than
 // here. JS interop needs the Blazor runtime to be up, which RunAsync starts —

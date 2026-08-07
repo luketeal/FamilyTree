@@ -1,8 +1,10 @@
-@* Top bar (52px). Search, Undo, and Add Person are placeholder markup —
-   wired up in later PRs (12 for search, 13 for Undo, 3 for Add Person). *@
+@* Top bar (52px). Search and Undo are still placeholder markup — wired up in
+   PR 12 and PR 13 respectively. *@
 @implements IDisposable
 @inject TreeStatsService Stats
 @inject TreeDataNotifier Notifier
+@inject NavigationManager Nav
+@inject IViewportInterop Viewport
 
 <header class="topbar">
     <div class="topbar__brand" data-testid="app-logo">
@@ -29,7 +31,8 @@
                 <path d="M5 10h9a5 5 0 0 1 5 5v0a5 5 0 0 1-5 5h-3"></path>
             </svg>
         </button>
-        <button type="button" class="btn btn--primary" data-testid="add-person-button" disabled>
+        <button type="button" class="btn btn--primary" data-testid="add-person-button"
+                @onclick="AddPersonAsync">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
                  stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M12 5v14M5 12h14"></path>
@@ -39,8 +42,42 @@
     </div>
 </header>
 
+@* Quick add rather than a navigation (US-053): the point of a top-bar action is
+   that it does not cost you your place. Narrow screens go to the full form
+   instead — see AddPersonAsync. *@
+<QuickAddPersonPopover @bind-Visible="_quickAdding" Added="OnQuickAdded" />
+
 @code {
     private TreeStats _stats = TreeStats.Empty;
+    private bool _quickAdding;
+
+    /// <summary>
+    /// A popover on a roomy screen, the full form on a narrow one.
+    /// </summary>
+    /// <remarks>
+    /// The popover exists so adding someone does not cost you your place, which
+    /// is a desktop concern: on a phone the app is one full-screen view anyway,
+    /// and pushing a form is the platform's own idiom for this.
+    ///
+    /// It is also the honest answer to a layout that cannot work. With the
+    /// keyboard up there is roughly 380px of usable height and the popover needs
+    /// about 450px, so it can only scroll — a scrolling dialog, inside a shrunken
+    /// visual viewport, above a pinned body. The full form is an ordinary page
+    /// with none of those mechanisms, so the whole class of problem goes away
+    /// rather than being managed.
+    /// </remarks>
+    private async Task AddPersonAsync()
+    {
+        if (await Viewport.IsNarrowAsync())
+        {
+            Nav.NavigateTo("people/add");
+            return;
+        }
+
+        _quickAdding = true;
+    }
+
+    private void OnQuickAdded(PersonDetailDto person) => Nav.NavigateTo($"people/{person.Id}");
 
     protected override async Task OnInitializedAsync()
     {

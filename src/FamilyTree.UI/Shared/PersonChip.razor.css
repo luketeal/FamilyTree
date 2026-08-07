@@ -1,0 +1,62 @@
+.chip {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 6px;
+    max-width: 100%;
+    padding: 4px 10px;
+    border: 1px solid var(--line2);
+    border-radius: 999px;
+    background: var(--paper);
+    font-family: var(--font-ui);
+    font-size: 12px;
+    color: var(--ink);
+    text-decoration: none;
+    line-height: 1.4;
+}
+
+a.chip:hover {
+    border-color: var(--ink4);
+}
+
+.chip__name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.chip__mark {
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--teal);
+}
+
+.chip__detail {
+    font-size: 11px;
+    color: var(--ink3);
+    white-space: nowrap;
+}
+
+.chip--biological {
+    border-color: var(--line2);
+}
+
+.chip--adoptive {
+    border-style: dashed;
+    border-color: var(--teal-line);
+    background: var(--teal-bg);
+}
+
+.chip--marriage {
+    border-color: var(--coral-line);
+    background: var(--coral-bg);
+}
+
+/* A placeholder for someone not yet identified reads as an empty slot: muted,
+   italic, and visibly not a real name. */
+.chip--phantom {
+    border-style: dashed;
+    border-color: var(--ink5);
+    background: transparent;
+    color: var(--ink4);
+    font-style: italic;
+}

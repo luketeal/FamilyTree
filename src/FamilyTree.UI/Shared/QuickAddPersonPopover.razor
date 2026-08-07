@@ -1,0 +1,321 @@
+@inject PersonService People
+@inject TreeDataNotifier Notifier
+@inject ToastService Toasts
+@inject NavigationManager Nav
+@inject IOverlayInterop Overlay
+@implements IAsyncDisposable
+
+@* US-053. Adding a person from wherever you already are, without losing your
+   place. Deliberately the shortest set of fields that still produces a useful
+   record — anything more belongs on the full form, which is one link away and
+   carries across whatever has already been typed. *@
+
+@if (Visible)
+{
+    @* The tint lives on this element rather than a separate backdrop: a
+       background paints on the box and cannot scroll away from it, and this box
+       is tracked to the visual viewport, so the two always coincide exactly. A
+       position:fixed backdrop is pinned to the *layout* viewport instead, which
+       leaves a strip of undimmed page whenever the keyboard offsets the two. *@
+    <div class="quickadd" data-testid="quick-add" data-overlay @ref="_overlay"
+         @onclick="CloseAsync">
+        <div class="quickadd__panel" role="dialog" aria-modal="true" aria-labelledby="@_titleId"
+             tabindex="-1" @ref="_panel" @onkeydown="OnKeyDown"
+             @onclick:stopPropagation="true">
+            <h2 id="@_titleId" class="quickadd__title">Add person</h2>
+
+            <ErrorAlert Message="@_error" TestId="quick-add-error" />
+
+            <form class="quickadd__form" @onsubmit="SaveAsync" @onsubmit:preventDefault>
+                <div class="quickadd__field">
+                    <label class="field-label field-label--required" for="quick-first">First name</label>
+                    <div class="input">
+                        <input id="quick-first" type="text" autocomplete="off" data-testid="quick-first-name"
+                               value="@_firstName" @ref="_firstInput"
+                               @oninput="e => _firstName = e.Value?.ToString() ?? string.Empty" />
+                    </div>
+                </div>
+
+                <div class="quickadd__field">
+                    <label class="field-label field-label--required" for="quick-last">Last name</label>
+                    <div class="input">
+                        <input id="quick-last" type="text" autocomplete="off" data-testid="quick-last-name"
+                               value="@_lastName"
+                               @oninput="e => _lastName = e.Value?.ToString() ?? string.Empty" />
+                    </div>
+                </div>
+
+                <div class="quickadd__pair">
+                    <div class="quickadd__field">
+                        <label class="field-label" for="quick-born">Born</label>
+                        <div class="input">
+                            <input id="quick-born" type="number" inputmode="numeric"
+                                   placeholder="Year" data-testid="quick-birth-year"
+                                   value="@_birthYearText"
+                                   @oninput="e => _birthYearText = e.Value?.ToString() ?? string.Empty" />
+                        </div>
+                    </div>
+
+                    <div class="quickadd__field">
+                        <label class="field-label" for="quick-died">Died</label>
+                        <div class="input">
+                            <input id="quick-died" type="number" inputmode="numeric"
+                                   placeholder="Year" data-testid="quick-death-year"
+                                   value="@_deathYearText"
+                                   @oninput="e => _deathYearText = e.Value?.ToString() ?? string.Empty" />
+                        </div>
+                    </div>
+                </div>
+
+                <div class="quickadd__field">
+                    <label class="field-label" for="quick-gender">Gender</label>
+                    <div class="input">
+                        <select id="quick-gender" class="quickadd__select" data-testid="quick-gender"
+                                @onchange="OnGenderChanged">
+                            @foreach (var value in Enum.GetValues<Gender>())
+                            {
+                                <option value="@value" selected="@(_gender == value)">@Humanise(value)</option>
+                            }
+                        </select>
+                    </div>
+                </div>
+
+                <div class="quickadd__actions">
+                    <button type="submit" class="btn btn--primary" data-testid="quick-save" disabled="@_busy">
+                        Add
+                    </button>
+                    <button type="button" class="btn btn--ghost" data-testid="quick-cancel" disabled="@_busy"
+                            @onclick="CloseAsync">
+                        Cancel
+                    </button>
+                </div>
+
+                @* Carries what has been typed across rather than making the user
+                   retype it — otherwise the escape hatch costs more than
+                   starting on the full form would have. *@
+                <button type="button" class="quickadd__full" data-testid="quick-open-full"
+                        @onclick="OpenFullFormAsync">
+                    Open full form
+                </button>
+            </form>
+        </div>
+    </div>
+}
+
+@code {
+    private readonly string _titleId = $"quickadd-{Guid.NewGuid():N}";
+    private ElementReference _overlay;
+    private ElementReference _panel;
+    private ElementReference _firstInput;
+    private bool _wasVisible;
+
+    private string _firstName = string.Empty;
+    private string _lastName = string.Empty;
+    private string _birthYearText = string.Empty;
+    private string _deathYearText = string.Empty;
+    private Gender _gender = Gender.Unknown;
+    private string? _error;
+    private bool _busy;
+
+    // Shared with PartialDateInput and enforced by PersonService, rather than a
+    // third copy of the same number.
+    private static int MaxYear => PersonService.MaxYear;
+
+    /// <summary>
+    /// Reasons from the raw text, the way PartialDateInput does, rather than
+    /// from a nullable int.
+    /// </summary>
+    /// <remarks>
+    /// A nullable int cannot distinguish "left blank" from "typed something that
+    /// does not parse" — int.TryParse fails on anything past Int32.MaxValue and
+    /// yields the same null as an empty box. Reading that as "no year given"
+    /// waved an eleven-digit typo straight through and saved the person with the
+    /// date silently missing, which is the failure this validation exists to
+    /// prevent. An empty box is still a perfectly good answer.
+    /// </remarks>
+    private static bool TryReadYear(string text, out int? year)
+    {
+        year = null;
+
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return true;
+        }
+
+        if (!int.TryParse(text, out var parsed) || parsed < 1 || parsed > MaxYear)
+        {
+            return false;
+        }
+
+        year = parsed;
+        return true;
+    }
+
+    private static string Humanise(Gender gender) => gender switch
+    {
+        Gender.NonBinary => "Non-binary",
+        _ => gender.ToString(),
+    };
+
+    private void OnGenderChanged(ChangeEventArgs args)
+    {
+        if (Enum.TryParse<Gender>(args.Value?.ToString(), out var gender))
+        {
+            _gender = gender;
+        }
+    }
+
+    [Parameter] public bool Visible { get; set; }
+
+    [Parameter] public EventCallback<bool> VisibleChanged { get; set; }
+
+    /// <summary>Raised with the new person so a caller can navigate to them.</summary>
+    [Parameter] public EventCallback<PersonDetailDto> Added { get; set; }
+
+    // async Task rather than void with a discarded task: Blazor awaits this and
+    // re-renders once it completes, and an exception inside it is observed
+    // rather than swallowed. Discarding it let the render race the close.
+    private async Task OnKeyDown(KeyboardEventArgs args)
+    {
+        if (args.Key == "Escape")
+        {
+            await CloseAsync();
+        }
+    }
+
+    // Focus goes to the first field rather than the panel: this control exists to
+    // be typed into immediately, so landing anywhere else costs a keystroke.
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (Visible && !_wasVisible)
+        {
+            _wasVisible = true;
+            // Before focus: focusing raises the keyboard, and the overlay has to
+            // already be tracking the viewport when it shrinks.
+            await Overlay.OpenAsync(_overlay);
+            await _firstInput.FocusAsync();
+        }
+        else if (!Visible && _wasVisible)
+        {
+            _wasVisible = false;
+            await Overlay.CloseAsync(_overlay);
+        }
+    }
+
+    // Closing by navigation destroys the component without a further render, so
+    // the page would stay pinned unless the lock is released here too.
+    public async ValueTask DisposeAsync()
+    {
+        if (_wasVisible)
+        {
+            _wasVisible = false;
+            try
+            {
+                await Overlay.CloseAsync(_overlay);
+            }
+            catch (JSDisconnectedException)
+            {
+                // The page is going away; the lock goes with it.
+            }
+        }
+    }
+
+    private async Task CloseAsync()
+    {
+        _firstName = string.Empty;
+        _lastName = string.Empty;
+        _birthYearText = string.Empty;
+        _deathYearText = string.Empty;
+        _gender = Gender.Unknown;
+        _error = null;
+        Visible = false;
+        await VisibleChanged.InvokeAsync(false);
+    }
+
+    private async Task OpenFullFormAsync()
+    {
+        var query = new List<string>(4);
+        if (!string.IsNullOrWhiteSpace(_firstName))
+        {
+            query.Add($"first={Uri.EscapeDataString(_firstName.Trim())}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(_lastName))
+        {
+            query.Add($"last={Uri.EscapeDataString(_lastName.Trim())}");
+        }
+
+        // Carries anything that parses, in range or not, so the full form shows
+        // its own error rather than the value disappearing on the way over.
+        if (int.TryParse(_birthYearText, out var born))
+        {
+            query.Add($"born={born}");
+        }
+
+        if (int.TryParse(_deathYearText, out var died))
+        {
+            query.Add($"died={died}");
+        }
+
+        if (_gender != Gender.Unknown)
+        {
+            query.Add($"gender={_gender}");
+        }
+
+        var url = query.Count == 0 ? "people/add" : $"people/add?{string.Join('&', query)}";
+
+        await CloseAsync();
+        Nav.NavigateTo(url);
+    }
+
+    private async Task SaveAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_firstName) || string.IsNullOrWhiteSpace(_lastName))
+        {
+            _error = "First and last name are both required.";
+            return;
+        }
+
+        // No min/max on the inputs, so this is the only thing standing between a
+        // typo and a saved record with the date quietly missing.
+        if (!TryReadYear(_birthYearText, out var birthYear)
+            || !TryReadYear(_deathYearText, out var deathYear))
+        {
+            _error = $"Years must be between 1 and {MaxYear}.";
+            return;
+        }
+
+        _busy = true;
+        try
+        {
+            var result = await People.CreateAsync(new PersonService.PersonInput(
+                _firstName.Trim(),
+                _lastName.Trim(),
+                BirthDate: birthYear is int born ? PartialDate.FromYear(born) : null,
+                DeathDate: deathYear is int died ? PartialDate.FromYear(died) : null,
+                Gender: _gender));
+
+            if (!result.IsSuccess)
+            {
+                _error = result.Error;
+                return;
+            }
+
+            await Notifier.NotifyChangedAsync();
+            Toasts.Show($"{result.Value!.DisplayName} saved.");
+
+            if (result.IsWarning)
+            {
+                Toasts.Show(result.Warning!, ToastLevel.Warning);
+            }
+
+            var added = result.Value!;
+            await CloseAsync();
+            await Added.InvokeAsync(added);
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}

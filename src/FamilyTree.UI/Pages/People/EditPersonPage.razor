@@ -1,0 +1,94 @@
+@page "/people/{Id:guid}/edit"
+@inject PersonService People
+@inject TreeDataNotifier Notifier
+@inject ToastService Toasts
+@inject NavigationManager Nav
+
+<PageTitle>@(_person is null ? "Edit person" : $"Edit {_person.DisplayName}") — FamilyTree</PageTitle>
+
+<section class="person-edit" data-scrolls>
+    <header class="person-edit__header">
+        <h1>Edit person</h1>
+        <a class="person-edit__back" href="@($"people/{Id}")">Back to profile</a>
+    </header>
+
+    @if (_loading)
+    {
+        <p class="person-edit__status" data-testid="edit-loading">Loading…</p>
+    }
+    else if (_person is null)
+    {
+        <ErrorAlert Message="@(_error ?? "That person no longer exists.")" TestId="edit-missing" />
+        <a class="btn btn--secondary" href="people">Back to people</a>
+    }
+    else
+    {
+        <PersonForm @ref="_form"
+                    Person="_person"
+                    SubmitLabel="Save changes"
+                    Error="@_error"
+                    Busy="_busy"
+                    Submit="SaveAsync"
+                    Cancel="GoBack" />
+    }
+</section>
+
+@code {
+    private PersonForm? _form;
+    private PersonDetailDto? _person;
+    private string? _error;
+    private bool _busy;
+    private bool _loading = true;
+
+    [Parameter] public Guid Id { get; set; }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _loading = true;
+        var result = await People.GetAsync(Id);
+
+        if (result.IsSuccess)
+        {
+            _person = result.Value;
+            _error = null;
+        }
+        else
+        {
+            _person = null;
+            _error = result.Error;
+        }
+
+        _loading = false;
+    }
+
+    private async Task SaveAsync(PersonService.PersonInput input)
+    {
+        _busy = true;
+        try
+        {
+            var result = await People.UpdateAsync(Id, input);
+
+            if (!result.IsSuccess)
+            {
+                _error = result.Error;
+                return;
+            }
+
+            _error = null;
+
+            // Before navigating, so the form stops reporting unsaved changes
+            // even if the navigation is cancelled.
+            _form?.MarkSaved();
+            await Notifier.NotifyChangedAsync();
+
+            Toasts.Show($"{result.Value!.DisplayName} updated.");
+            Nav.NavigateTo($"people/{Id}");
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private void GoBack() => Nav.NavigateTo($"people/{Id}");
+}
