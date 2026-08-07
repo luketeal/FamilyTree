@@ -13,12 +13,23 @@
 
 .shell__main {
     display: grid;
-    grid-template-rows: var(--topbar-height) 1fr;
+    /* Three rows: bar, backup reminder, page. The middle row must be `auto` and
+       the page must be the `1fr` one, or the reminder becomes the thing that
+       absorbs the leftover height — a one-line warning rendered 306px tall on
+       Settings, because the page beneath it is short and something has to take
+       the space. Measured, not guessed: BackupReminderIsOnlyAsTallAsItsContent
+       in the E2E suite pins it. */
+    grid-template-rows: var(--topbar-height) auto minmax(0, 1fr);
     min-width: 0;
     min-height: 0;
 }
 
 .shell__content {
+    /* Explicit, so the page stays in the 1fr row whether or not the reminder
+       rendered anything into the one above it. Without the reminder there are
+       only two in-flow children, and auto-placement would drop the page into
+       the `auto` track. */
+    grid-row: 3;
     overflow: auto;
     padding: 24px;
     background: var(--paper);

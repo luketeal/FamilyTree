@@ -5,8 +5,12 @@ namespace FamilyTree.UI.Tests.Layout;
 
 public class ShellLayoutTests : ShellTestContext
 {
+    // Export joins the five destinations in the mid-fidelity mockups, which were
+    // drawn before export existed. It is the backup mechanism for an app whose
+    // data lives in exactly one browser, and reaching it only through Settings
+    // made it something a user had to already know about.
     [Fact]
-    public void IconRail_RendersAllFivePrimaryDestinations()
+    public void IconRail_RendersEveryPrimaryDestination()
     {
         var cut = Render<IconRail>();
 
@@ -15,7 +19,7 @@ public class ShellLayoutTests : ShellTestContext
             .ToArray();
 
         Assert.Equal(
-            ["nav-tree", "nav-people", "nav-relate", "nav-import", "nav-settings"],
+            ["nav-tree", "nav-people", "nav-relate", "nav-export", "nav-import", "nav-settings"],
             testIds);
     }
 

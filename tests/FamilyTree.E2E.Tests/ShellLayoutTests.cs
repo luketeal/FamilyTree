@@ -552,6 +552,89 @@ public class ShellLayoutTests(StaticSiteFixture fixture)
             "The bottom rail has been pushed below the fold.");
     }
 
+    // The rail went from five destinations to six when Export was added, and on a
+    // phone it is a bottom bar splitting the viewport width between them. Six
+    // labels across 390px is the point at which that stops fitting, and the
+    // symptom is a rail item wider than its share rather than a page that
+    // scrolls — so the horizontal-overflow test would not see it.
+    [Fact]
+    public async Task RailItemsFitAcrossTheBottomBarOnAPhone()
+    {
+        var page = await OpenAsync(390, 844);
+
+        var measured = await page.EvaluateAsync<string>(@"() => {
+            const items = [...document.querySelectorAll('.rail__item')];
+            const rail = document.querySelector('.rail').getBoundingClientRect();
+            let clipped = null, worst = 0;
+            for (const el of items) {
+                const label = el.querySelector('.rail__label');
+                // scrollWidth beyond clientWidth means the label is being cut off
+                // rather than merely tight.
+                const over = label.scrollWidth - label.clientWidth;
+                if (over > worst) { worst = over; clipped = label.textContent.trim(); }
+            }
+            return JSON.stringify({
+                count: items.length,
+                widest: Math.round(Math.max(...items.map(el => el.getBoundingClientRect().width))),
+                share: Math.round(rail.width / items.length),
+                clippedBy: worst,
+                clipped: clipped ?? 'none',
+            });
+        }");
+
+        using var result = JsonDocument.Parse(measured);
+        var count = result.RootElement.GetProperty("count").GetInt32();
+        var clippedBy = result.RootElement.GetProperty("clippedBy").GetDouble();
+        var clipped = result.RootElement.GetProperty("clipped").GetString();
+
+        Assert.Equal(6, count);
+        Assert.True(clippedBy <= 0,
+            $"The rail label \"{clipped}\" is clipped by {clippedBy}px at 390px wide.");
+    }
+
+    // The reminder must be sized by its own content. It sits in its own grid
+    // row, and if that row is the flexible one the reminder becomes whatever is
+    // left of the viewport after the page below it — 306px of amber on Settings,
+    // measured, because a short page leaves a lot over. Nothing else catches
+    // this: the shell still fits, nothing scrolls, and every other assertion in
+    // this file passes while a one-line warning fills a third of the screen.
+    //
+    // Asserted as "the same height on a short page and a long one" rather than
+    // against a pixel budget, because that is precisely the difference between
+    // being sized by content and being sized by leftovers — and it needs no
+    // magic number that a copy change would invalidate.
+    [Theory]
+    [InlineData(1440, 900)]
+    [InlineData(390, 844)]
+    public async Task BackupReminderIsTheSameHeightWhateverIsBeneathIt(int width, int height)
+    {
+        var page = await OpenAsync(width, height, "settings");
+        await page.GetByTestId("load-sample").ClickAsync();
+        await Assertions.Expect(page.GetByTestId("backup-reminder")).ToBeVisibleAsync();
+
+        const string measure =
+            "() => Math.round(document.querySelector('[data-testid=backup-reminder]')"
+            + ".getBoundingClientRect().height)";
+
+        // Settings is short enough to leave free space over; the people list is
+        // taller than the viewport and leaves none.
+        var onShortPage = await page.EvaluateAsync<int>(measure);
+
+        await page.GetByTestId("nav-people").ClickAsync();
+        await Assertions.Expect(page.GetByTestId("people-list")).ToBeVisibleAsync();
+        var onLongPage = await page.EvaluateAsync<int>(measure);
+
+        Assert.True(onShortPage == onLongPage,
+            $"The backup reminder is {onShortPage}px tall over a short page and {onLongPage}px "
+            + $"over a long one at {width}x{height}, so its height comes from the leftover "
+            + "space rather than from its own content.");
+
+        // A backstop for the case where it is consistently enormous, which the
+        // comparison above would call a pass.
+        Assert.True(onShortPage <= height / 4,
+            $"The backup reminder is {onShortPage}px tall in a {height}px viewport.");
+    }
+
     // The reminder belongs above the page, not over it or beneath it.
     [Fact]
     public async Task TheBackupReminderSitsBetweenTheTopBarAndThePage()

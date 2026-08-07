@@ -47,6 +47,21 @@
                 <span class="rail__label">Relate</span>
             </NavLink>
         </li>
+        @* Export sits in the rail rather than only behind Settings: it is the
+           backup mechanism for an app whose data lives in one browser, and a
+           backup nobody can find is not one. Paired with Import, arrows
+           mirroring each other. This takes the rail past the five destinations
+           in the mid-fidelity mockups, which were drawn before export existed. *@
+        <li>
+            <NavLink class="rail__item" href="export" data-testid="nav-export" title="Export">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
+                     stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 4v12M7 11l5 5 5-5"></path>
+                    <path d="M5 20h14"></path>
+                </svg>
+                <span class="rail__label">Export</span>
+            </NavLink>
+        </li>
         <li>
             <NavLink class="rail__item" href="import" data-testid="nav-import" title="Import">
                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
