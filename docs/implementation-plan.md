@@ -187,6 +187,8 @@ E2E: Playwright captures the download, parses it, asserts seeded persons present
 
 Extends `PartialDateInput.razor` in place. Year → Month → Day → Circa; clearing month clears day; converts to/from `PartialDate?` only on `ValueChanged`. Tests cover each precision level, circa, and cascade clearing.
 
+- Change the seed contract from `PartialDate?` to raw text while reshaping this control. `PartialDate` cannot hold a year outside 1..9999, so a value the user typed but which the type cannot represent is unrepresentable in the seed path *by construction* — the carry-over from quick add currently reports that it dropped such a year rather than preserving it. Raw text in, parsed on emit, is the same fix that resolved the quick-add `int?` case: a type that cannot express "typed something invalid" forces the caller to guess, and the guess is what loses data. Worth doing here rather than separately, because this PR already changes the control's parameter contract.
+
 ### PR 7 — Biological relationships
 **Stories:** US-007 – US-013, US-037, US-039 (bio), US-051
 
