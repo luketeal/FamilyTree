@@ -55,10 +55,10 @@
     /// </summary>
     private bool _seeded;
 
-    // A year beyond next year is a typo rather than a record. Kept generous
-    // rather than clamped to today so a birth recorded slightly ahead of the
-    // clock does not get rejected over a time zone.
-    private static int MaxYear => DateTime.UtcNow.Year + 1;
+    // Deliberately not a local constant. This rule had three UI copies and they
+    // drifted — the seeding path allowed up to 9999 while this one allowed up to
+    // next year, which is how an out-of-range year reached storage.
+    private static int MaxYear => PersonService.MaxYear;
 
     [Parameter] public string Label { get; set; } = "Year";
 
@@ -74,7 +74,7 @@
 
     [Parameter] public string TestId { get; set; } = "partial-date";
 
-    protected override void OnParametersSet()
+    protected override async Task OnParametersSetAsync()
     {
         if (_seeded)
         {
@@ -84,6 +84,21 @@
         _seeded = true;
         _year = Value?.Year;
         _isApproximate = Value?.IsApproximate ?? false;
+
+        // A seeded year is judged exactly like a typed one. Validity used to be
+        // computed only in OnYearInput, so a year that arrived from the
+        // carry-over query string was never judged at all: it seeded a
+        // valid-looking PartialDate, left InvalidChanged false, and saved. The
+        // same year typed into this box was rejected — the two paths disagreed
+        // about the same value in the same form.
+        _error = _year is null || InRange(_year)
+            ? null
+            : $"Year must be between 1 and {MaxYear}.";
+
+        if (_error is not null)
+        {
+            await InvalidChanged.InvokeAsync(true);
+        }
     }
 
     private async Task OnYearInput(ChangeEventArgs args)

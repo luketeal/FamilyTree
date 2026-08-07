@@ -230,6 +230,11 @@ public class PersonCrudTests(StaticSiteFixture fixture)
 
         await page.GetByTestId("add-person-button").ClickAsync();
         await page.GetByTestId("quick-first-name").FillAsync("Grace");
+        // OnKeyDown is bound to the panel, and focus only reaches it after three
+        // interop round trips. Pressing Escape before that sends the key to
+        // <body>, where nothing handles it — which is why this flaked under
+        // full-suite load and passed in isolation.
+        await Assertions.Expect(page.GetByTestId("quick-first-name")).ToBeFocusedAsync();
         await page.Keyboard.PressAsync("Escape");
 
         await Assertions.Expect(page.GetByTestId("quick-add")).ToBeHiddenAsync();
@@ -352,6 +357,48 @@ public class PersonCrudTests(StaticSiteFixture fixture)
         await Assertions.Expect(page.GetByTestId("input-gender")).ToHaveValueAsync("Female");
         // Nothing was saved on the way through.
         await Assertions.Expect(page.GetByTestId("tree-stats")).ToHaveTextAsync("0 people · 0 relationships");
+    }
+
+    // The escape hatch must not launder a value past the rule that just caught
+    // it. The same year, in the same form, has to get the same answer whether it
+    // was typed there or carried over — it did not, because the seeding path had
+    // its own looser copy of the range and the control only judged keystrokes.
+    [Fact]
+    public async Task AYearQuickAddRejectsIsStillRejectedAfterOpeningTheFullForm()
+    {
+        var page = await OpenAsync();
+
+        await page.GetByTestId("add-person-button").ClickAsync();
+        await page.GetByTestId("quick-first-name").FillAsync("Carry");
+        await page.GetByTestId("quick-last-name").FillAsync("Over");
+        await page.GetByTestId("quick-birth-year").FillAsync("5000");
+        await page.GetByTestId("quick-open-full").ClickAsync();
+
+        // Carried across rather than dropped, and judged on arrival.
+        await Assertions.Expect(page.GetByTestId("input-birth-year")).ToHaveValueAsync("5000");
+        await Assertions.Expect(page.GetByTestId("error-input-birth-year")).ToBeVisibleAsync();
+
+        await page.GetByTestId("save-person").ClickAsync();
+
+        await Assertions.Expect(page.GetByTestId("tree-stats")).ToHaveTextAsync("0 people · 0 relationships");
+    }
+
+    // PartialDate cannot hold a year past 9999, so this one genuinely cannot be
+    // carried. Emptying the field without a word told the user it had been
+    // accepted — the same silent loss as saving it wrongly, in the other
+    // direction.
+    [Fact]
+    public async Task AYearTooLargeToCarryOverIsReportedRatherThanDropped()
+    {
+        var page = await OpenAsync();
+
+        await page.GetByTestId("add-person-button").ClickAsync();
+        await page.GetByTestId("quick-first-name").FillAsync("Carry");
+        await page.GetByTestId("quick-last-name").FillAsync("Over");
+        await page.GetByTestId("quick-birth-year").FillAsync("30000");
+        await page.GetByTestId("quick-open-full").ClickAsync();
+
+        await Assertions.Expect(page.GetByTestId("form-error")).ToContainTextAsync("30000");
     }
 
     // US-006: a note is research the user typed. Silently dropping its tail at

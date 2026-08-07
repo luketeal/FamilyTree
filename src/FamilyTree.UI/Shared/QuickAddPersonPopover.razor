@@ -117,7 +117,9 @@
     private string? _error;
     private bool _busy;
 
-    private static int MaxYear => DateTime.UtcNow.Year + 1;
+    // Shared with PartialDateInput and enforced by PersonService, rather than a
+    // third copy of the same number.
+    private static int MaxYear => PersonService.MaxYear;
 
     /// <summary>
     /// Reasons from the raw text, the way PartialDateInput does, rather than

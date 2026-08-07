@@ -250,6 +250,7 @@ public class ShellLayoutTests(StaticSiteFixture fixture)
         var page = await OpenAsync(900, 380);
         await page.GetByTestId("add-person-button").ClickAsync();
         await Assertions.Expect(page.GetByTestId("quick-add")).ToBeVisibleAsync();
+        await Assertions.Expect(page.GetByTestId("quick-first-name")).ToBeFocusedAsync();
 
         await page.Keyboard.PressAsync("Escape");
         await Assertions.Expect(page.GetByTestId("quick-add")).ToBeHiddenAsync();
@@ -330,6 +331,7 @@ public class ShellLayoutTests(StaticSiteFixture fixture)
         var page = await OpenAsync(900, 620);
         await page.GetByTestId("add-person-button").ClickAsync();
         await Assertions.Expect(page.GetByTestId("quick-add")).ToBeVisibleAsync();
+        await Assertions.Expect(page.GetByTestId("quick-first-name")).ToBeFocusedAsync();
 
         await page.Keyboard.PressAsync("Escape");
         await Assertions.Expect(page.GetByTestId("quick-add")).ToBeHiddenAsync();

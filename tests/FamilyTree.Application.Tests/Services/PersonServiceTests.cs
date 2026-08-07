@@ -237,4 +237,52 @@ public class PersonServiceTests
 
         Assert.False(result.IsSuccess);
     }
+
+    // The year range was a UI rule in three places and none of them was here, so
+    // whichever copy a write happened to pass through decided the answer. A year
+    // seeded into the form from a query string passed the loosest copy and was
+    // stored. This is the one place every write goes through.
+    [Fact]
+    public async Task RejectsPerson_WhenBirthYearIsBeyondNextYear()
+    {
+        var input = ValidInput() with { BirthDate = PartialDate.FromYear(PersonService.MaxYear + 1) };
+
+        var result = await CreateService().CreateAsync(input);
+
+        Assert.False(result.IsSuccess);
+    }
+
+    [Fact]
+    public async Task RejectsPerson_WhenDeathYearIsBeyondNextYear()
+    {
+        var input = ValidInput() with { DeathDate = PartialDate.FromYear(PersonService.MaxYear + 1) };
+
+        var result = await CreateService().CreateAsync(input);
+
+        Assert.False(result.IsSuccess);
+    }
+
+    // Next year is deliberately still allowed, so a birth entered slightly ahead
+    // of the clock is not rejected over a time zone.
+    [Fact]
+    public async Task AcceptsPerson_WhenBirthYearIsExactlyNextYear()
+    {
+        var input = ValidInput() with { BirthDate = PartialDate.FromYear(PersonService.MaxYear) };
+
+        var result = await CreateService().CreateAsync(input);
+
+        Assert.True(result.IsSuccess);
+    }
+
+    [Fact]
+    public async Task RejectsUpdate_WhenBirthYearIsBeyondNextYear()
+    {
+        var service = CreateService();
+        var created = await service.CreateAsync(ValidInput());
+        var future = ValidInput() with { BirthDate = PartialDate.FromYear(PersonService.MaxYear + 1) };
+
+        var result = await service.UpdateAsync(created.Value!.Id, future);
+
+        Assert.False(result.IsSuccess);
+    }
 }

@@ -63,12 +63,44 @@
             null,
             null,
             false);
+
+        _error = UnrepresentableYearMessage();
     }
 
-    // A hand-edited query string can carry anything; an out-of-range year must
-    // drop the value rather than throw on the way into the form.
+    /// <summary>
+    /// Guards only what <see cref="PartialDate"/> can physically hold, so a
+    /// hand-edited query string cannot throw on the way into the form.
+    /// </summary>
+    /// <remarks>
+    /// This deliberately no longer decides whether a year is <em>acceptable</em>
+    /// — that rule lives in PartialDateInput and PersonService. It used to allow
+    /// anything up to 9999 while the rest of the app stopped at next year, so
+    /// years in the gap were seeded as valid, never judged, and saved.
+    /// </remarks>
     private static PartialDate? SafeYear(int? year) =>
         year is int value && value >= 1 && value <= 9999 ? PartialDate.FromYear(value) : null;
+
+    // Anything PartialDate cannot hold is gone from the field, so say so.
+    // Emptying the box silently told the user the year had been accepted when it
+    // had been discarded — the same silent-loss class as saving it wrongly.
+    private string? UnrepresentableYearMessage()
+    {
+        var dropped = new List<string>(2);
+
+        if (BornYear is not null && SafeYear(BornYear) is null)
+        {
+            dropped.Add($"birth year {BornYear}");
+        }
+
+        if (DiedYear is not null && SafeYear(DiedYear) is null)
+        {
+            dropped.Add($"death year {DiedYear}");
+        }
+
+        return dropped.Count == 0
+            ? null
+            : $"Could not carry over the {string.Join(" or the ", dropped)} — a year must be between 1 and 9999.";
+    }
 
     private async Task SaveAsync(PersonService.PersonInput input)
     {
