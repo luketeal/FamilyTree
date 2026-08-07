@@ -18,6 +18,7 @@ builder.Services.AddScoped<TreeDataNotifier>();
 builder.Services.AddScoped<ToastService>();
 builder.Services.AddScoped<ExportService>();
 builder.Services.AddScoped<ImportService>();
+builder.Services.AddScoped<BackupTracker>();
 // Injected rather than reached for statically, so "how old is this backup" is
 // testable without waiting a week for it to become true.
 builder.Services.AddSingleton(TimeProvider.System);

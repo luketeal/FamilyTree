@@ -54,7 +54,7 @@ The browser is the only copy of the user's data. Genealogy data can represent ye
 - `navigator.storage.persist()` is called at startup so the origin is exempt from routine eviction
 - Export and import land **early** (PR 5), before most features — until they exist, every user is one cache-clear from total loss
 - Every later PR that adds a persisted shape extends export coverage in the same PR
-- The UI surfaces "last exported N days ago" and prompts when stale
+- The UI surfaces "last exported N days ago", and prompts whenever the tree has changed since that export. The trigger is unsaved work rather than elapsed time: a timer nags somebody who exported and then did nothing, and stays silent for somebody who exported and then entered fifty people
 - A `schemaVersion` is stamped on the stored payload so a shape change detects and migrates (or safely resets) rather than crashing
 - The File System Access API was evaluated in PR 5 and rejected: it is Chromium-only, so a picker-based backup would silently protect Firefox and Safari users less well than the anchor download that has to exist anyway (ADR-007)
 
@@ -175,7 +175,7 @@ Deliberately early — this is the durability mechanism, not a feature. Covers e
 - `Application/Services/ExportService.cs` — `ExportToJsonAsync()`; phantom persons excluded
 - `Application/Services/ImportService.cs` — JSON import; `ImportConflictResolution` (Skip/Overwrite/Merge); returns `ImportResultDto`
 - `Pages/Export/ExportPage.razor`, `Pages/Import/ImportPage.razor` — download via JS interop, upload via `InputFile`, preview pane, conflict radios, summary report
-- "Last exported N days ago" indicator with a stale-backup prompt
+- "Last exported N days ago" indicator, and a shell-wide prompt whenever the tree has changed since the last export
 - File System Access API evaluated and rejected — Chromium-only, so a picker-based backup would silently protect Firefox and Safari users less well. See `docs/decisions/ADR-007-export-file-delivery.md`
 - Read and validate the stored `schemaVersion` on import — import is the first code to consume a payload it did not write, and so the first place the stamp has to be checked rather than merely written. Until then the Durability Requirement above is only half met: PR 2 stamps the version, nothing reads it
 - GEDCOM deferred to PR 15 — JSON round-trip is what protects the data

@@ -2,8 +2,7 @@
 @inject ITreeDataAdministration TreeData
 @inject TreeStatsService Stats
 @inject TreeDataNotifier Notifier
-@inject IExportHistory History
-@inject TimeProvider Clock
+@inject BackupTracker Backups
 
 <PageTitle>Settings — FamilyTree</PageTitle>
 
@@ -25,7 +24,7 @@
             <dd data-testid="settings-persistence">@PersistenceLabel</dd>
 
             <dt>Backup</dt>
-            <dd data-testid="settings-backup">@_backup.Describe()</dd>
+            <dd data-testid="settings-backup">@BackupLabel</dd>
         </dl>
 
         @* The only thing on this page that protects the data rather than
@@ -95,7 +94,7 @@
     }
 
     private TreeStats _stats = TreeStats.Empty;
-    private BackupStatus _backup = BackupStatus.For(null, DateTimeOffset.UtcNow, hasData: false);
+    private BackupStatus _backup = BackupStatus.None;
     private StorageDurability? _durability;
     private string? _message;
     private bool _busy;
@@ -110,6 +109,12 @@
         { Persistent: true } => "Persistent — the browser will not evict this data automatically",
         _ => "Best effort — the browser may evict this data under storage pressure",
     };
+
+    // The elapsed time plus whether it still describes what is stored. "Last
+    // exported today" on a tree edited since is true and misleading.
+    private string BackupLabel => _backup is { ShouldPrompt: true, LastExport: not null }
+        ? $"{_backup.Describe()} — changed since"
+        : _backup.Describe();
 
     private string ConfirmLabel => _pending switch
     {
@@ -232,8 +237,7 @@
     private async Task RefreshAsync()
     {
         await RefreshStatsAsync();
-        _backup = BackupStatus.For(
-            await History.GetLastExportAsync(), Clock.GetUtcNow(), hasData: !_stats.IsEmpty);
+        _backup = await Backups.GetStatusAsync(hasData: !_stats.IsEmpty);
         _durability = await TreeData.EnsureDurableAsync();
     }
 

@@ -31,7 +31,7 @@ public class ExportPageTests : ShellTestContext
     public void ReportsHowLongAgoTheLastExportWas()
     {
         GivenTreeContains(Ada());
-        ExportHistory.LastExport = Clock.Now.AddDays(-3);
+        Backups.LastExport = Clock.Now.AddDays(-3);
 
         var cut = Render<ExportPage>();
 
@@ -51,21 +51,26 @@ public class ExportPageTests : ShellTestContext
     }
 
     [Fact]
-    public void WarnsWhenTheLastBackupIsAWeekOld()
+    public void WarnsWhenTheTreeHasChangedSinceTheLastBackup()
     {
         GivenTreeContains(Ada());
-        ExportHistory.LastExport = Clock.Now.AddDays(-9);
+        Backups.LastExport = Clock.Now.AddDays(-9);
+        Backups.LastChange = Clock.Now.AddDays(-1);
 
         var cut = Render<ExportPage>();
 
-        Assert.Contains("9 days", cut.Find("[data-testid=export-stale]").TextContent);
+        Assert.Contains("changed since the last backup, 9 days ago",
+            cut.Find("[data-testid=export-stale]").TextContent);
     }
 
+    // Exported once and untouched since is the state this page should be quiet
+    // about, however long ago the export was.
     [Fact]
-    public void DoesNotWarnWhenTheBackupIsRecent()
+    public void DoesNotWarnWhenNothingHasChangedSinceTheBackup()
     {
         GivenTreeContains(Ada());
-        ExportHistory.LastExport = Clock.Now.AddDays(-1);
+        Backups.LastChange = Clock.Now.AddDays(-40);
+        Backups.LastExport = Clock.Now.AddDays(-39);
 
         var cut = Render<ExportPage>();
 
@@ -113,7 +118,7 @@ public class ExportPageTests : ShellTestContext
 
         cut.Find("[data-testid=export-download]").Click();
 
-        Assert.Equal(Clock.Now, ExportHistory.LastExport);
+        Assert.Equal(Clock.Now, Backups.LastExport);
     }
 
     [Fact]

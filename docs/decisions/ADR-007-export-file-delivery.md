@@ -33,7 +33,7 @@ Storing the handle in IndexedDB and reusing it silently was considered and rejec
 - Export works identically in every browser the app supports, including mobile Safari, where the file goes to Files rather than to a chosen folder.
 - Users accumulate one file per export. The filename is `familytree-YYYY-MM-DD.json`, date-first and invariant, so a folder of backups sorts chronologically by name in every locale.
 - There is no "save over my backup" action and therefore no way for the app to destroy a good backup with a bad one.
-- Export cannot be automated or scheduled: every backup needs a click, which is what the stale-backup reminder in the shell exists to prompt.
+- Export cannot be automated or scheduled: every backup needs a click, which is what the reminder in the shell exists to prompt. It triggers on the tree having changed since the last export rather than on elapsed time, so the prompt tracks whether there is unsaved work rather than how long ago the last click was.
 - Revisit when two of the three major engines ship the picker. The change would be contained — `IFileDownloadInterop` is the only seam involved, and the anchor path stays as the fallback either way.
 
 ## Note on the exported payload

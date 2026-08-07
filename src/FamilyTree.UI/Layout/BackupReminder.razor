@@ -1,5 +1,5 @@
-@* A standing prompt to export, shown when this browser holds records it has
-   never written to a file — or has not written for a week.
+@* A standing prompt to export, shown when this browser holds work that is not
+   in any file.
 
    The browser is the only copy (ADR-004), so a user who never exports is one
    cleared cache from losing everything, with nothing in the interface having
@@ -7,9 +7,8 @@
    which is why it sits in the shell and not on a page somebody has to find. *@
 
 @implements IDisposable
-@inject IExportHistory History
+@inject BackupTracker Backups
 @inject TreeStatsService Stats
-@inject TimeProvider Clock
 @inject TreeDataNotifier Notifier
 @inject NavigationManager Nav
 
@@ -40,18 +39,22 @@
 }
 
 @code {
-    private BackupStatus? _status;
+    private BackupStatus _status = BackupStatus.None;
     private bool _dismissed;
+    private DateTimeOffset? _dismissedAtChange;
 
     // Hidden on the export page itself, where it would be telling the user to do
     // the thing they are already looking at.
-    private bool Visible => _status is { IsStale: true, HasData: true }
-        && !_dismissed
-        && !CurrentPathIs("export");
+    private bool Visible => _status.ShouldPrompt && !Dismissed && !CurrentPathIs("export");
 
-    private string Message => _status?.LastExport is null
+    // Dismissal covers the changes the user was told about, not every change
+    // they will ever make. Editing something after waving the banner away is a
+    // new reason to be warned, and the old dismissal should not silence it.
+    private bool Dismissed => _dismissed && _dismissedAtChange == _status.LastChange;
+
+    private string Message => _status.LastExport is null
         ? "This tree has never been backed up. If this browser loses its data, there is nothing to restore from."
-        : $"Last backed up {_status.DaysSince} days ago. Anything added since exists only in this browser.";
+        : $"You have changes that are not in any backup. {_status.Describe()}.";
 
     protected override async Task OnInitializedAsync()
     {
@@ -74,23 +77,23 @@
         // Cached between changes, so this costs a dictionary lookup rather than
         // a read of all four stores on every navigation.
         var stats = await Stats.GetAsync();
-        var lastExport = await History.GetLastExportAsync();
 
         // IsEmpty counts phantoms, which the displayed people count excludes: a
         // tree holding nothing but unidentified ancestors still has something to
         // lose.
-        _status = BackupStatus.For(
-            lastExport,
-            Clock.GetUtcNow(),
-            hasData: stats.IsSuccess && !stats.Value!.IsEmpty);
+        _status = await Backups.GetStatusAsync(hasData: stats.IsSuccess && !stats.Value!.IsEmpty);
 
         await InvokeAsync(StateHasChanged);
     }
 
-    // Dismissal lasts as long as the page does. Deliberately not persisted: a
-    // reminder that can be switched off permanently is one that stops protecting
-    // the person who most needed it.
-    private void Dismiss() => _dismissed = true;
+    // Lasts as long as the page, and only for the state it was given. Deliberately
+    // not persisted: a reminder that can be switched off permanently is one that
+    // stops protecting the person who most needed it.
+    private void Dismiss()
+    {
+        _dismissed = true;
+        _dismissedAtChange = _status.LastChange;
+    }
 
     private bool CurrentPathIs(string path) =>
         Nav.ToBaseRelativePath(Nav.Uri).TrimEnd('/')

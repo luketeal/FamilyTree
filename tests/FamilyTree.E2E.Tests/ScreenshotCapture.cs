@@ -248,6 +248,60 @@ public class ScreenshotCapture(StaticSiteFixture fixture)
         });
     }
 
+    // The reminder's other wording. The never-backed-up copy is what the shell
+    // capture above shows; this is the sentence a returning user actually reads,
+    // and it is longer, so it is the one that wraps badly if anything does.
+    [Theory]
+    [InlineData("desktop", 1440, 900)]
+    [InlineData("mobile", 390, 844)]
+    public async Task CaptureBackupReminderAfterAnEdit(string name, int width, int height)
+    {
+        Directory.CreateDirectory(OutputDirectory);
+
+        var context = await fixture.Browser.NewContextAsync(new BrowserNewContextOptions
+        {
+            ViewportSize = new ViewportSize { Width = width, Height = height },
+            AcceptDownloads = true,
+        });
+        var page = await context.NewPageAsync();
+
+        await page.GotoAsync(fixture.BaseUrl + "settings", new PageGotoOptions
+        {
+            WaitUntil = WaitUntilState.NetworkIdle,
+        });
+        await page.GetByTestId("load-sample").ClickAsync();
+        await Assertions.Expect(page.GetByTestId("settings-stats"))
+            .ToHaveTextAsync("10 people · 14 relationships");
+
+        await page.GotoAsync(fixture.BaseUrl + "export", new PageGotoOptions
+        {
+            WaitUntil = WaitUntilState.NetworkIdle,
+        });
+        await page.RunAndWaitForDownloadAsync(async () =>
+        {
+            await page.GetByTestId("export-download").ClickAsync();
+        });
+        await Assertions.Expect(page.GetByTestId("export-summary")).ToBeVisibleAsync();
+
+        // An edit through the ordinary path, which is what puts the tree out of
+        // step with the file that was just written.
+        await page.GotoAsync(fixture.BaseUrl + "people/add", new PageGotoOptions
+        {
+            WaitUntil = WaitUntilState.NetworkIdle,
+        });
+        await page.GetByTestId("input-first-name").FillAsync("Ada");
+        await page.GetByTestId("input-last-name").FillAsync("Lovelace");
+        await page.GetByTestId("save-person").ClickAsync();
+        await Assertions.Expect(page.GetByTestId("profile-name")).ToBeVisibleAsync();
+
+        await Assertions.Expect(page.GetByTestId("backup-reminder")).ToBeVisibleAsync();
+        await page.ScreenshotAsync(new PageScreenshotOptions
+        {
+            Path = Path.Combine(OutputDirectory, $"backup-reminder-changed-{name}.png"),
+            FullPage = true,
+        });
+    }
+
     // The one appearance check worth asserting: if the design tokens fail to
     // resolve, every component silently falls back to browser defaults.
     [Fact]

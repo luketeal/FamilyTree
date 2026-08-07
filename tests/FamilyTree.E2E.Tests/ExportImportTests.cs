@@ -402,10 +402,15 @@ public class ExportImportTests(StaticSiteFixture fixture)
         await Assertions.Expect(page.GetByTestId("backup-reminder")).ToBeHiddenAsync();
     }
 
-    // The other direction, and the one a stale render gets wrong: the banner
-    // must come back for a tree that has drifted out of date again.
+    // The complaint the change-based trigger exists to answer: export, then enter
+    // somebody new, and be told that the file no longer describes the tree. An
+    // elapsed-time rule stays silent here for a week.
+    //
+    // Driven through the real add-a-person path rather than by back-dating a
+    // timestamp, because the chain under test is mutation -> notifier -> journal
+    // -> banner, and back-dating would skip the first two links of it.
     [Fact]
-    public async Task TheBackupReminderComesBackWhenTheTreeChangesAfterAnExport()
+    public async Task TheBackupReminderComesBackWhenSomebodyIsAddedAfterAnExport()
     {
         var page = await OpenAsync();
         await LoadSampleAsync(page);
@@ -413,20 +418,39 @@ public class ExportImportTests(StaticSiteFixture fixture)
         await DownloadAsync(page);
 
         await page.GetByTestId("nav-people").ClickAsync();
+        await Assertions.Expect(page.GetByTestId("people-list")).ToBeVisibleAsync();
         await Assertions.Expect(page.GetByTestId("backup-reminder")).ToBeHiddenAsync();
 
-        // Rolling the clock forward is not available in the browser, so
-        // staleness is reproduced by putting the recorded export a fortnight
-        // into the past — the same state a user reaches by not exporting.
-        await page.EvaluateAsync(@"() => {
-            const when = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000);
-            localStorage.setItem('familytree.lastExportedAt', when.toISOString());
-        }");
-        await page.GetByTestId("nav-settings").ClickAsync();
+        await page.GetByTestId("add-person-button").ClickAsync();
+        await page.GetByTestId("quick-first-name").FillAsync("Ada");
+        await page.GetByTestId("quick-last-name").FillAsync("Lovelace");
+        await page.GetByTestId("quick-save").ClickAsync();
+        await Assertions.Expect(page.GetByTestId("profile-name")).ToHaveTextAsync("Ada Lovelace");
 
         await Assertions.Expect(page.GetByTestId("backup-reminder")).ToBeVisibleAsync();
         await Assertions.Expect(page.GetByTestId("backup-reminder-text"))
-            .ToContainTextAsync("14 days ago");
+            .ToContainTextAsync("changes that are not in any backup");
+    }
+
+    // Dismissing acknowledges the changes the user was shown, not every change
+    // they will ever make.
+    [Fact]
+    public async Task DismissingTheReminderDoesNotSilenceTheNextChange()
+    {
+        var page = await OpenAsync();
+        await LoadSampleAsync(page);
+        await Assertions.Expect(page.GetByTestId("backup-reminder")).ToBeVisibleAsync();
+
+        await page.GetByTestId("backup-reminder-dismiss").ClickAsync();
+        await Assertions.Expect(page.GetByTestId("backup-reminder")).ToBeHiddenAsync();
+
+        await page.GetByTestId("add-person-button").ClickAsync();
+        await page.GetByTestId("quick-first-name").FillAsync("Ada");
+        await page.GetByTestId("quick-last-name").FillAsync("Lovelace");
+        await page.GetByTestId("quick-save").ClickAsync();
+        await Assertions.Expect(page.GetByTestId("profile-name")).ToHaveTextAsync("Ada Lovelace");
+
+        await Assertions.Expect(page.GetByTestId("backup-reminder")).ToBeVisibleAsync();
     }
 
     // The one thing the user is left with afterwards, so it has to be right.
@@ -445,5 +469,6 @@ public class ExportImportTests(StaticSiteFixture fixture)
         });
 
         await Assertions.Expect(page.GetByTestId("settings-backup")).ToHaveTextAsync("Last exported today");
+        await Assertions.Expect(page.GetByTestId("backup-reminder")).ToBeHiddenAsync();
     }
 }

@@ -30,11 +30,11 @@ public abstract class ShellTestContext : BunitContext
 
     protected Mock<ITreeDataAdministration> TreeData { get; } = new();
 
-    protected StubExportHistory ExportHistory { get; } = new();
+    protected StubBackupJournal Backups { get; } = new();
 
     protected RecordingDownloads Downloads { get; } = new();
 
-    /// <summary>Fixed, so "seven days since the last backup" is a fact rather than a wait.</summary>
+    /// <summary>Fixed, so "three days since the last backup" is a fact rather than a wait.</summary>
     protected FixedClock Clock { get; } = new(new DateTimeOffset(2026, 8, 7, 12, 0, 0, TimeSpan.Zero));
 
     protected ShellTestContext()
@@ -59,7 +59,8 @@ public abstract class ShellTestContext : BunitContext
         Services.AddSingleton<ExportService>();
         Services.AddSingleton<ImportService>();
         Services.AddSingleton<TimeProvider>(Clock);
-        Services.AddSingleton<IExportHistory>(ExportHistory);
+        Services.AddSingleton<IBackupJournal>(Backups);
+        Services.AddSingleton<BackupTracker>();
         Services.AddSingleton<IFileDownloadInterop>(Downloads);
         // A double rather than the real interop: the overlays only ask it to pin
         // the page, and the JS module behind it is covered end to end in
@@ -93,16 +94,24 @@ public abstract class ShellTestContext : BunitContext
         }
     }
 
-    protected sealed class StubExportHistory : IExportHistory
+    protected sealed class StubBackupJournal : IBackupJournal
     {
         public DateTimeOffset? LastExport { get; set; }
 
-        public Task<DateTimeOffset?> GetLastExportAsync(CancellationToken ct = default) =>
-            Task.FromResult(LastExport);
+        public DateTimeOffset? LastChange { get; set; }
+
+        public Task<BackupState> ReadAsync(CancellationToken ct = default) =>
+            Task.FromResult(new BackupState(LastExport, LastChange));
 
         public Task RecordExportAsync(DateTimeOffset moment, CancellationToken ct = default)
         {
             LastExport = moment;
+            return Task.CompletedTask;
+        }
+
+        public Task RecordChangeAsync(DateTimeOffset moment, CancellationToken ct = default)
+        {
+            LastChange = moment;
             return Task.CompletedTask;
         }
     }

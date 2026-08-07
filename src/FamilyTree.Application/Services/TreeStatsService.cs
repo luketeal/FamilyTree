@@ -64,7 +64,11 @@ public sealed class TreeStatsService
         _adoptive = adoptive;
         _marriages = marriages;
 
-        notifier.ResetBeforeNotifying(() => _cached = null);
+        notifier.BeforeNotifying(() =>
+        {
+            _cached = null;
+            return Task.CompletedTask;
+        });
     }
 
     /// <summary>The current counts, served from cache when nothing has changed.</summary>
@@ -115,20 +119,25 @@ public sealed class TreeStatsService
 /// </summary>
 public sealed class TreeDataNotifier
 {
-    private readonly List<Action> _resets = [];
+    private readonly List<Func<Task>> _before = [];
 
     public event Func<Task>? Changed;
 
     /// <summary>
-    /// Registers work that must happen before any subscriber is told.
+    /// Registers work that must finish before any subscriber is told.
     /// </summary>
     /// <remarks>
-    /// Caches are the case this exists for. A cache that cleared itself from an
-    /// ordinary <see cref="Changed"/> handler would be racing the handlers that
-    /// read it, since they all run together — so half the subscribers would
-    /// redraw with the counts from before the change.
+    /// Two things need this: the tree-stats cache, which must be dropped before
+    /// anybody reads it, and the backup journal, whose "last changed" timestamp
+    /// the reminder reads on the very same notification. Both would be racing the
+    /// handlers that read them if they ran as ordinary <see cref="Changed"/>
+    /// subscribers, because those all run together — so half the subscribers
+    /// would redraw from the state that existed before the change.
+    ///
+    /// Awaited in registration order rather than together, since these are short
+    /// and ordering between them is easier to reason about than concurrency.
     /// </remarks>
-    public void ResetBeforeNotifying(Action reset) => _resets.Add(reset);
+    public void BeforeNotifying(Func<Task> work) => _before.Add(work);
 
     /// <summary>
     /// Awaits every subscriber, not just the last one.
@@ -142,9 +151,9 @@ public sealed class TreeDataNotifier
     /// </remarks>
     public async Task NotifyChangedAsync()
     {
-        foreach (var reset in _resets)
+        foreach (var work in _before)
         {
-            reset();
+            await work();
         }
 
         if (Changed is null)

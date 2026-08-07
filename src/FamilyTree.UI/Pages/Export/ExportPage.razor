@@ -1,9 +1,8 @@
 @page "/export"
 @inject ExportService Export
-@inject IExportHistory History
+@inject BackupTracker Backups
 @inject IFileDownloadInterop Download
 @inject TreeStatsService Stats
-@inject TimeProvider Clock
 @inject ToastService Toasts
 
 <PageTitle>Export — FamilyTree</PageTitle>
@@ -27,10 +26,10 @@
             <dd data-testid="export-tree-stats">@_stats</dd>
         </dl>
 
-        @if (_status is { IsStale: true, HasData: true })
+        @if (_status.ShouldPrompt)
         {
             <ErrorAlert Kind="ErrorAlert.AlertKind.Warning" TestId="export-stale"
-                        Message="@StaleMessage" />
+                        Message="@UnsavedMessage" />
         }
 
         <div class="data-card__actions">
@@ -86,15 +85,16 @@
 </section>
 
 @code {
-    private BackupStatus _status = BackupStatus.For(null, DateTimeOffset.UtcNow, hasData: false);
+    private BackupStatus _status = BackupStatus.None;
     private TreeStats _stats = TreeStats.Empty;
     private ExportPayload? _lastExport;
     private string? _error;
     private bool _busy;
 
-    private string StaleMessage => _status.LastExport is null
+    private string UnsavedMessage => _status.LastExport is null
         ? "This tree has never been exported. If this browser loses its data, there is nothing to restore from."
-        : $"It has been {_status.DaysSince} days since the last backup. Anything added since then exists only here.";
+        : $"This tree has changed since the last backup, {_status.DaysSinceExport} days ago. "
+            + "Anything added since then exists only here.";
 
     protected override async Task OnInitializedAsync() => await RefreshAsync();
 
@@ -116,11 +116,10 @@
             var payload = result.Value!;
             await Download.DownloadTextAsync(payload.FileName, payload.Json);
 
-            // Recorded only after the browser has been handed the file. A failed
-            // interop call that still marked the tree as backed up would silence
-            // the reminder for a week on the strength of a download that never
-            // happened.
-            await History.RecordExportAsync(payload.ExportedAt);
+            // Recorded only after the browser has been handed the file. Marking a
+            // tree as backed up on the strength of a download that never happened
+            // is the one bug in here that would cost somebody their data.
+            await Backups.RecordExportAsync(payload.ExportedAt);
 
             _lastExport = payload;
             Toasts.Show($"Exported {payload.Summary.Describe()}.");
@@ -147,10 +146,7 @@
         // IsEmpty counts phantoms, which the displayed people count excludes: a
         // tree of nothing but unidentified ancestors still holds records worth
         // protecting.
-        _status = BackupStatus.For(
-            await History.GetLastExportAsync(),
-            Clock.GetUtcNow(),
-            hasData: !_stats.IsEmpty);
+        _status = await Backups.GetStatusAsync(hasData: !_stats.IsEmpty);
     }
 
     private static string Describe(int count, string singular, string plural) =>

@@ -1,3 +1,4 @@
+using System.Globalization;
 using FamilyTree.Application.Common;
 using FamilyTree.Application.Services;
 using FamilyTree.Storage.Browser.Records;
@@ -42,33 +43,38 @@ public sealed class BrowserTreeDataAdministration(IndexedDbStore store) : ITreeD
 }
 
 /// <summary>
-/// Stores the last-export timestamp in this browser's localStorage.
+/// Stores the backup timestamps in this browser's localStorage.
 /// </summary>
 /// <remarks>
-/// Round-tripped as a round-trip ISO 8601 string ("O") so the value survives a
-/// change of machine time zone unchanged, and reads back as the same instant a
+/// localStorage rather than an IndexedDB store, because replacing the whole
+/// dataset — a sample load, a restore — must not also rewrite when this browser
+/// last made a backup. Round-tripped as ISO 8601 ("O") so a value survives a
+/// change of machine time zone unchanged and reads back as the same instant a
 /// year later regardless of locale.
+///
+/// Both timestamps are read in one call so the comparison between them is never
+/// made across two different moments.
 /// </remarks>
-public sealed class BrowserExportHistory(IndexedDbStore store) : IExportHistory
+public sealed class BrowserBackupJournal(IndexedDbStore store) : IBackupJournal
 {
-    private const string Key = "familytree.lastExportedAt";
+    private const string ExportKey = "familytree.lastExportedAt";
+    private const string ChangeKey = "familytree.lastChangedAt";
 
-    public async Task<DateTimeOffset?> GetLastExportAsync(CancellationToken ct = default)
-    {
-        var raw = await store.ReadSettingAsync(Key, ct);
-
-        return DateTimeOffset.TryParse(
-            raw,
-            System.Globalization.CultureInfo.InvariantCulture,
-            System.Globalization.DateTimeStyles.RoundtripKind,
-            out var parsed)
-            ? parsed
-            : null;
-    }
+    public async Task<BackupState> ReadAsync(CancellationToken ct = default) => new(
+        Parse(await store.ReadSettingAsync(ExportKey, ct)),
+        Parse(await store.ReadSettingAsync(ChangeKey, ct)));
 
     public Task RecordExportAsync(DateTimeOffset moment, CancellationToken ct = default) =>
-        store.WriteSettingAsync(
-            Key,
-            moment.ToString("O", System.Globalization.CultureInfo.InvariantCulture),
-            ct);
+        WriteAsync(ExportKey, moment, ct);
+
+    public Task RecordChangeAsync(DateTimeOffset moment, CancellationToken ct = default) =>
+        WriteAsync(ChangeKey, moment, ct);
+
+    private Task WriteAsync(string key, DateTimeOffset moment, CancellationToken ct) =>
+        store.WriteSettingAsync(key, moment.ToString("O", CultureInfo.InvariantCulture), ct);
+
+    private static DateTimeOffset? Parse(string? raw) => DateTimeOffset.TryParse(
+        raw, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var parsed)
+        ? parsed
+        : null;
 }
