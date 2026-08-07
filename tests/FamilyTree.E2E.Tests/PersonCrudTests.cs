@@ -519,4 +519,42 @@ public class PersonCrudTests(StaticSiteFixture fixture)
         });
         await Assertions.Expect(page.GetByTestId("people-empty-state")).ToBeVisibleAsync();
     }
+
+    // A year too large for Int32 is "typed something impossible", not "left it
+    // blank" — but a nullable int cannot tell those apart. The full form reasons
+    // from the raw string and catches it; the popover must do the same or the
+    // same failure survives on one of the two paths.
+    [Fact]
+    public async Task QuickAddRejectsAYearTooLargeToParse()
+    {
+        var page = await OpenAsync();
+
+        await page.GetByTestId("add-person-button").ClickAsync();
+        await page.GetByTestId("quick-first-name").FillAsync("Grace");
+        await page.GetByTestId("quick-last-name").FillAsync("Hopper");
+        await page.GetByTestId("quick-birth-year").FillAsync("99999999999");
+        await page.GetByTestId("quick-save").ClickAsync();
+
+        await Assertions.Expect(page.GetByTestId("quick-add-error")).ToBeVisibleAsync();
+        await Assertions.Expect(page.GetByTestId("tree-stats")).ToHaveTextAsync("0 people · 0 relationships");
+    }
+
+    // The other half of the parity: the full form already handles this, and a
+    // test here stops the two drifting apart again.
+    [Fact]
+    public async Task TheFullFormRejectsAYearTooLargeToParse()
+    {
+        var page = await OpenAsync("people/add");
+
+        await FillPersonAsync(page, "Grace", "Hopper", "99999999999");
+        await page.GetByTestId("save-person").ClickAsync();
+
+        await Assertions.Expect(page.GetByTestId("error-input-birth-year")).ToBeVisibleAsync();
+
+        await page.GotoAsync(fixture.BaseUrl + "people", new PageGotoOptions
+        {
+            WaitUntil = WaitUntilState.NetworkIdle,
+        });
+        await Assertions.Expect(page.GetByTestId("people-empty-state")).ToBeVisibleAsync();
+    }
 }

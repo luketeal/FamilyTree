@@ -46,11 +46,14 @@
 
     [Parameter] public EventCallback Cancel { get; set; }
 
-    private void OnKeyDown(KeyboardEventArgs args)
+    // Awaited rather than dropped: the returned task was being discarded, so an
+    // exception in the caller's handler went unobserved and the re-render could
+    // race the cancel.
+    private async Task OnKeyDown(KeyboardEventArgs args)
     {
         if (args.Key == "Escape")
         {
-            Cancel.InvokeAsync();
+            await Cancel.InvokeAsync();
         }
     }
 

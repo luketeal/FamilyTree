@@ -51,8 +51,8 @@
                         <div class="input">
                             <input id="quick-born" type="number" inputmode="numeric"
                                    placeholder="Year" data-testid="quick-birth-year"
-                                   value="@_birthYear"
-                                   @oninput="e => _birthYear = Parse(e.Value)" />
+                                   value="@_birthYearText"
+                                   @oninput="e => _birthYearText = e.Value?.ToString() ?? string.Empty" />
                         </div>
                     </div>
 
@@ -61,8 +61,8 @@
                         <div class="input">
                             <input id="quick-died" type="number" inputmode="numeric"
                                    placeholder="Year" data-testid="quick-death-year"
-                                   value="@_deathYear"
-                                   @oninput="e => _deathYear = Parse(e.Value)" />
+                                   value="@_deathYearText"
+                                   @oninput="e => _deathYearText = e.Value?.ToString() ?? string.Empty" />
                         </div>
                     </div>
                 </div>
@@ -111,22 +111,43 @@
 
     private string _firstName = string.Empty;
     private string _lastName = string.Empty;
-    private int? _birthYear;
-    private int? _deathYear;
+    private string _birthYearText = string.Empty;
+    private string _deathYearText = string.Empty;
     private Gender _gender = Gender.Unknown;
     private string? _error;
     private bool _busy;
 
     private static int MaxYear => DateTime.UtcNow.Year + 1;
 
-    // Keeps whatever was typed, valid or not. Discarding an out-of-range year
-    // here would silently drop a date the user believes they entered; SaveAsync
-    // reports it instead.
-    private static int? Parse(object? value) =>
-        int.TryParse(value?.ToString(), out var parsed) ? parsed : null;
+    /// <summary>
+    /// Reasons from the raw text, the way PartialDateInput does, rather than
+    /// from a nullable int.
+    /// </summary>
+    /// <remarks>
+    /// A nullable int cannot distinguish "left blank" from "typed something that
+    /// does not parse" — int.TryParse fails on anything past Int32.MaxValue and
+    /// yields the same null as an empty box. Reading that as "no year given"
+    /// waved an eleven-digit typo straight through and saved the person with the
+    /// date silently missing, which is the failure this validation exists to
+    /// prevent. An empty box is still a perfectly good answer.
+    /// </remarks>
+    private static bool TryReadYear(string text, out int? year)
+    {
+        year = null;
 
-    private static bool OutOfRange(int? year) =>
-        year is int value && (value < 1 || value > MaxYear);
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return true;
+        }
+
+        if (!int.TryParse(text, out var parsed) || parsed < 1 || parsed > MaxYear)
+        {
+            return false;
+        }
+
+        year = parsed;
+        return true;
+    }
 
     private static string Humanise(Gender gender) => gender switch
     {
@@ -149,11 +170,14 @@
     /// <summary>Raised with the new person so a caller can navigate to them.</summary>
     [Parameter] public EventCallback<PersonDetailDto> Added { get; set; }
 
-    private void OnKeyDown(KeyboardEventArgs args)
+    // async Task rather than void with a discarded task: Blazor awaits this and
+    // re-renders once it completes, and an exception inside it is observed
+    // rather than swallowed. Discarding it let the render race the close.
+    private async Task OnKeyDown(KeyboardEventArgs args)
     {
         if (args.Key == "Escape")
         {
-            _ = CloseAsync();
+            await CloseAsync();
         }
     }
 
@@ -198,8 +222,8 @@
     {
         _firstName = string.Empty;
         _lastName = string.Empty;
-        _birthYear = null;
-        _deathYear = null;
+        _birthYearText = string.Empty;
+        _deathYearText = string.Empty;
         _gender = Gender.Unknown;
         _error = null;
         Visible = false;
@@ -219,12 +243,14 @@
             query.Add($"last={Uri.EscapeDataString(_lastName.Trim())}");
         }
 
-        if (_birthYear is int born)
+        // Carries anything that parses, in range or not, so the full form shows
+        // its own error rather than the value disappearing on the way over.
+        if (int.TryParse(_birthYearText, out var born))
         {
             query.Add($"born={born}");
         }
 
-        if (_deathYear is int died)
+        if (int.TryParse(_deathYearText, out var died))
         {
             query.Add($"died={died}");
         }
@@ -250,7 +276,8 @@
 
         // No min/max on the inputs, so this is the only thing standing between a
         // typo and a saved record with the date quietly missing.
-        if (OutOfRange(_birthYear) || OutOfRange(_deathYear))
+        if (!TryReadYear(_birthYearText, out var birthYear)
+            || !TryReadYear(_deathYearText, out var deathYear))
         {
             _error = $"Years must be between 1 and {MaxYear}.";
             return;
@@ -262,8 +289,8 @@
             var result = await People.CreateAsync(new PersonService.PersonInput(
                 _firstName.Trim(),
                 _lastName.Trim(),
-                BirthDate: _birthYear is int born ? PartialDate.FromYear(born) : null,
-                DeathDate: _deathYear is int died ? PartialDate.FromYear(died) : null,
+                BirthDate: birthYear is int born ? PartialDate.FromYear(born) : null,
+                DeathDate: deathYear is int died ? PartialDate.FromYear(died) : null,
                 Gender: _gender));
 
             if (!result.IsSuccess)
