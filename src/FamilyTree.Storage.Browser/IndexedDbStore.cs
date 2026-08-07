@@ -1,4 +1,5 @@
 using System.Text.Json;
+using FamilyTree.Application.Common;
 using FamilyTree.Storage.Browser.Records;
 using Microsoft.JSInterop;
 
@@ -12,10 +13,13 @@ public sealed class IndexedDbStore(IJSRuntime js) : IAsyncDisposable
 {
     // Bumped when a persisted record shape changes. Written alongside the data
     // so that a future version can tell which shape it is reading before it
-    // tries. Nothing reads it yet — there is only one shape — but the stamp has
-    // to be present from the first release or the v1 data is indistinguishable
-    // from unstamped data when a migration is finally needed.
-    public const int SchemaVersion = 1;
+    // tries. ImportService is the first thing to read it, since a file is the
+    // first payload this app did not write itself.
+    //
+    // Shared with the export format rather than duplicated: the stamp describes
+    // the shape of a person and a link, and a store that reshaped one without
+    // the other would write files that lie about their own contents.
+    public const int SchemaVersion = TreeSchema.Version;
 
     public const string People = "people";
     public const string BiologicalLinks = "biologicalLinks";
@@ -82,6 +86,19 @@ public sealed class IndexedDbStore(IJSRuntime js) : IAsyncDisposable
     }
 
     private static object SchemaStamp => new { id = Guid.Empty, schemaVersion = SchemaVersion };
+
+    /// <summary>Reads a browser-local setting that is not part of the tree.</summary>
+    public async Task<string?> ReadSettingAsync(string key, CancellationToken ct = default)
+    {
+        var module = await ModuleAsync();
+        return await module.InvokeAsync<string?>("readSetting", ct, key);
+    }
+
+    public async Task WriteSettingAsync(string key, string value, CancellationToken ct = default)
+    {
+        var module = await ModuleAsync();
+        await module.InvokeVoidAsync("writeSetting", ct, key, value);
+    }
 
     /// <summary>
     /// Asks the browser to make this origin's storage persistent. The browser is

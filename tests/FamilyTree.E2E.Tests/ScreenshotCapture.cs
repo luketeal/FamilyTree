@@ -145,6 +145,109 @@ public class ScreenshotCapture(StaticSiteFixture fixture)
         }
     }
 
+    // Export and Import are new page shapes — cards, a radio group, a file
+    // picker and a warning banner in the shell — and none of them has ever been
+    // looked at on a phone. The import preview and the replace confirmation only
+    // exist after an interaction, so nothing else in this file would show them.
+    [Theory]
+    [InlineData("desktop", 1440, 900)]
+    [InlineData("mobile", 390, 844)]
+    public async Task CaptureExportAndImport(string name, int width, int height)
+    {
+        Directory.CreateDirectory(OutputDirectory);
+
+        var context = await fixture.Browser.NewContextAsync(new BrowserNewContextOptions
+        {
+            ViewportSize = new ViewportSize { Width = width, Height = height },
+            AcceptDownloads = true,
+        });
+        var page = await context.NewPageAsync();
+
+        await page.GotoAsync(fixture.BaseUrl + "settings", new PageGotoOptions
+        {
+            WaitUntil = WaitUntilState.NetworkIdle,
+        });
+        await page.GetByTestId("load-sample").ClickAsync();
+        await Assertions.Expect(page.GetByTestId("settings-stats"))
+            .ToHaveTextAsync("10 people · 14 relationships");
+
+        // The reminder only renders once there is something to lose, so it never
+        // appears in the shell capture above.
+        await Assertions.Expect(page.GetByTestId("backup-reminder")).ToBeVisibleAsync();
+        await page.ScreenshotAsync(new PageScreenshotOptions
+        {
+            Path = Path.Combine(OutputDirectory, $"backup-reminder-{name}.png"),
+            FullPage = true,
+        });
+
+        await page.GotoAsync(fixture.BaseUrl + "export", new PageGotoOptions
+        {
+            WaitUntil = WaitUntilState.NetworkIdle,
+        });
+        await page.ScreenshotAsync(new PageScreenshotOptions
+        {
+            Path = Path.Combine(OutputDirectory, $"export-{name}.png"),
+            FullPage = true,
+        });
+
+        var download = await page.RunAndWaitForDownloadAsync(async () =>
+        {
+            await page.GetByTestId("export-download").ClickAsync();
+        });
+        await Assertions.Expect(page.GetByTestId("export-summary")).ToBeVisibleAsync();
+        await page.ScreenshotAsync(new PageScreenshotOptions
+        {
+            Path = Path.Combine(OutputDirectory, $"export-done-{name}.png"),
+            FullPage = true,
+        });
+
+        using var stream = await download.CreateReadStreamAsync();
+        using var reader = new StreamReader(stream);
+        var json = await reader.ReadToEndAsync();
+
+        await page.GotoAsync(fixture.BaseUrl + "import", new PageGotoOptions
+        {
+            WaitUntil = WaitUntilState.NetworkIdle,
+        });
+        await page.ScreenshotAsync(new PageScreenshotOptions
+        {
+            Path = Path.Combine(OutputDirectory, $"import-empty-{name}.png"),
+            FullPage = true,
+        });
+
+        await page.GetByTestId("import-file").SetInputFilesAsync(new FilePayload
+        {
+            Name = "familytree-backup.json",
+            MimeType = "application/json",
+            Buffer = System.Text.Encoding.UTF8.GetBytes(json),
+        });
+        await Assertions.Expect(page.GetByTestId("import-preview")).ToBeVisibleAsync();
+        await page.ScreenshotAsync(new PageScreenshotOptions
+        {
+            Path = Path.Combine(OutputDirectory, $"import-preview-{name}.png"),
+            FullPage = true,
+        });
+
+        // The last thing a user reads before replacing their tree, which makes
+        // "is it actually legible" a real question that no assertion answers.
+        await page.GetByTestId("resolution-overwrite").ClickAsync();
+        await page.GetByTestId("import-run").ClickAsync();
+        await Assertions.Expect(page.GetByTestId("import-confirm")).ToBeVisibleAsync();
+        await page.ScreenshotAsync(new PageScreenshotOptions
+        {
+            Path = Path.Combine(OutputDirectory, $"import-confirm-{name}.png"),
+            FullPage = true,
+        });
+
+        await page.GetByTestId("import-confirm-run").ClickAsync();
+        await Assertions.Expect(page.GetByTestId("import-result")).ToBeVisibleAsync();
+        await page.ScreenshotAsync(new PageScreenshotOptions
+        {
+            Path = Path.Combine(OutputDirectory, $"import-result-{name}.png"),
+            FullPage = true,
+        });
+    }
+
     // The one appearance check worth asserting: if the design tokens fail to
     // resolve, every component silently falls back to browser defaults.
     [Fact]

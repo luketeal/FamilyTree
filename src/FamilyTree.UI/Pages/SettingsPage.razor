@@ -2,6 +2,8 @@
 @inject ITreeDataAdministration TreeData
 @inject TreeStatsService Stats
 @inject TreeDataNotifier Notifier
+@inject IExportHistory History
+@inject TimeProvider Clock
 
 <PageTitle>Settings — FamilyTree</PageTitle>
 
@@ -21,7 +23,18 @@
 
             <dt>Storage</dt>
             <dd data-testid="settings-persistence">@PersistenceLabel</dd>
+
+            <dt>Backup</dt>
+            <dd data-testid="settings-backup">@_backup.Describe()</dd>
         </dl>
+
+        @* The only thing on this page that protects the data rather than
+           risking it, so it sits with the facts about the data rather than
+           beneath the two buttons that destroy it. *@
+        <div class="settings__actions">
+            <a class="btn btn--primary" href="export" data-testid="settings-export">Export a backup</a>
+            <a class="btn btn--secondary" href="import" data-testid="settings-import">Restore from a file</a>
+        </div>
     </div>
 
     <div class="settings__card">
@@ -82,6 +95,7 @@
     }
 
     private TreeStats _stats = TreeStats.Empty;
+    private BackupStatus _backup = BackupStatus.For(null, DateTimeOffset.UtcNow, hasData: false);
     private StorageDurability? _durability;
     private string? _message;
     private bool _busy;
@@ -218,14 +232,22 @@
     private async Task RefreshAsync()
     {
         await RefreshStatsAsync();
+        _backup = BackupStatus.For(
+            await History.GetLastExportAsync(), Clock.GetUtcNow(), hasData: !_stats.IsEmpty);
         _durability = await TreeData.EnsureDurableAsync();
     }
 
     // Split out so a button press can re-check what is stored without also
     // re-requesting storage persistence from the browser.
+    //
+    // Deliberately the uncached read. The counts here decide whether an
+    // irreversible wipe is confirmed or waved through, and another tab on the
+    // same origin writes to the same database without raising this app's
+    // notifier — so the cache can be honestly out of date at exactly the moment
+    // that matters most.
     private async Task RefreshStatsAsync()
     {
-        var stats = await Stats.GetAsync();
+        var stats = await Stats.ReadFreshAsync();
         if (stats.IsSuccess)
         {
             _stats = stats.Value!;

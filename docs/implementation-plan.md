@@ -56,7 +56,7 @@ The browser is the only copy of the user's data. Genealogy data can represent ye
 - Every later PR that adds a persisted shape extends export coverage in the same PR
 - The UI surfaces "last exported N days ago" and prompts when stale
 - A `schemaVersion` is stamped on the stored payload so a shape change detects and migrates (or safely resets) rather than crashing
-- File System Access API is evaluated in PR 5 so the tree can live in a user-controlled file
+- The File System Access API was evaluated in PR 5 and rejected: it is Chromium-only, so a picker-based backup would silently protect Firefox and Safari users less well than the anchor download that has to exist anyway (ADR-007)
 
 ---
 
@@ -176,7 +176,7 @@ Deliberately early — this is the durability mechanism, not a feature. Covers e
 - `Application/Services/ImportService.cs` — JSON import; `ImportConflictResolution` (Skip/Overwrite/Merge); returns `ImportResultDto`
 - `Pages/Export/ExportPage.razor`, `Pages/Import/ImportPage.razor` — download via JS interop, upload via `InputFile`, preview pane, conflict radios, summary report
 - "Last exported N days ago" indicator with a stale-backup prompt
-- Evaluate the File System Access API for user-controlled file storage; record the finding inline if it changes the approach
+- File System Access API evaluated and rejected — Chromium-only, so a picker-based backup would silently protect Firefox and Safari users less well. See `docs/decisions/ADR-007-export-file-delivery.md`
 - Read and validate the stored `schemaVersion` on import — import is the first code to consume a payload it did not write, and so the first place the stamp has to be checked rather than merely written. Until then the Durability Requirement above is only half met: PR 2 stamps the version, nothing reads it
 - GEDCOM deferred to PR 15 — JSON round-trip is what protects the data
 
@@ -294,6 +294,7 @@ PR 16 (feedback hardening) after the rest is deployed
 | ADR-004 | Decided | Client-only Blazor WASM with local-first storage |
 | ADR-005 | PR 3 spike | Tree visualization library (DAG, 5 edge styles, phantom nodes, WASM-compatible) |
 | ADR-006 | PR 14 spike | Photo crop approach (circular mask, drag + zoom) |
+| ADR-007 | Decided | Export file delivery (anchor download vs File System Access API) |
 
 ADR-004 resolved the production-host question outright, so no host ADR is needed. PDF is handled by a print stylesheet rather than a library, so no PDF ADR is needed.
 

@@ -1,0 +1,158 @@
+@page "/export"
+@inject ExportService Export
+@inject IExportHistory History
+@inject IFileDownloadInterop Download
+@inject TreeStatsService Stats
+@inject TimeProvider Clock
+@inject ToastService Toasts
+
+<PageTitle>Export — FamilyTree</PageTitle>
+
+<section class="data-page">
+    <header class="data-page__header">
+        <h1>Export</h1>
+        <p class="data-page__lede">
+            Your tree lives in this browser and nowhere else. Clearing site data,
+            switching device, or a browser that reclaims storage takes it with no
+            warning — a downloaded file is the only copy that survives any of that.
+        </p>
+    </header>
+
+    <div class="data-card">
+        <dl class="data-facts">
+            <dt>Backup</dt>
+            <dd data-testid="export-status">@_status.Describe()</dd>
+
+            <dt>In this tree</dt>
+            <dd data-testid="export-tree-stats">@_stats</dd>
+        </dl>
+
+        @if (_status is { IsStale: true, HasData: true })
+        {
+            <ErrorAlert Kind="ErrorAlert.AlertKind.Warning" TestId="export-stale"
+                        Message="@StaleMessage" />
+        }
+
+        <div class="data-card__actions">
+            <button type="button" class="btn btn--primary" data-testid="export-download"
+                    disabled="@_busy" @onclick="DownloadAsync">
+                @(_busy ? "Preparing…" : "Download a backup")
+            </button>
+            <a class="btn btn--secondary" href="import" data-testid="export-to-import">
+                Restore from a file
+            </a>
+        </div>
+
+        <ErrorAlert Message="@_error" TestId="export-error" />
+
+        @if (_lastExport is { } done)
+        {
+            <div class="data-report" role="status" data-testid="export-summary">
+                <p class="data-report__headline">
+                    Saved @done.Summary.Describe() to <code>@done.FileName</code>.
+                </p>
+                <p class="data-report__note">
+                    Keep it somewhere that is not this computer — another drive, or
+                    somewhere it is backed up for you.
+                </p>
+
+                @if (done.Summary.PhantomsExcluded > 0)
+                {
+                    @* Named rather than silently subtracted. The rule that keeps
+                       unidentified ancestors out of lists and searches also keeps
+                       them out of the file, and a user comparing the counts would
+                       otherwise be left wondering what went missing. *@
+                    <p class="data-report__note" data-testid="export-phantom-note">
+                        @Describe(done.Summary.PhantomsExcluded, "unidentified ancestor", "unidentified ancestors")
+                        @(done.Summary.PhantomsExcluded == 1 ? "was" : "were") left out, along with
+                        @Describe(done.Summary.LinksToPhantomsExcluded, "relationship", "relationships")
+                        involving them. Placeholders carry no details to restore, and a file cannot
+                        hold a relationship to somebody it does not contain.
+                    </p>
+                }
+            </div>
+        }
+    </div>
+
+    <div class="data-card">
+        <h2>What is in the file</h2>
+        <p class="data-page__lede">
+            Indented JSON, stamped with the format version so a later release can
+            still read it. People, biological and adoptive links, and marriages —
+            everything this version of the app stores. You can open it in any text
+            editor to check it is really your tree.
+        </p>
+    </div>
+</section>
+
+@code {
+    private BackupStatus _status = BackupStatus.For(null, DateTimeOffset.UtcNow, hasData: false);
+    private TreeStats _stats = TreeStats.Empty;
+    private ExportPayload? _lastExport;
+    private string? _error;
+    private bool _busy;
+
+    private string StaleMessage => _status.LastExport is null
+        ? "This tree has never been exported. If this browser loses its data, there is nothing to restore from."
+        : $"It has been {_status.DaysSince} days since the last backup. Anything added since then exists only here.";
+
+    protected override async Task OnInitializedAsync() => await RefreshAsync();
+
+    private async Task DownloadAsync()
+    {
+        _busy = true;
+        _error = null;
+        _lastExport = null;
+
+        try
+        {
+            var result = await Export.ExportToJsonAsync();
+            if (!result.IsSuccess)
+            {
+                _error = result.Error;
+                return;
+            }
+
+            var payload = result.Value!;
+            await Download.DownloadTextAsync(payload.FileName, payload.Json);
+
+            // Recorded only after the browser has been handed the file. A failed
+            // interop call that still marked the tree as backed up would silence
+            // the reminder for a week on the strength of a download that never
+            // happened.
+            await History.RecordExportAsync(payload.ExportedAt);
+
+            _lastExport = payload;
+            Toasts.Show($"Exported {payload.Summary.Describe()}.");
+            await RefreshAsync();
+        }
+        catch (JSException ex)
+        {
+            _error = $"The browser would not save the file: {ex.Message}";
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task RefreshAsync()
+    {
+        var stats = await Stats.GetAsync();
+        if (stats.IsSuccess)
+        {
+            _stats = stats.Value!;
+        }
+
+        // IsEmpty counts phantoms, which the displayed people count excludes: a
+        // tree of nothing but unidentified ancestors still holds records worth
+        // protecting.
+        _status = BackupStatus.For(
+            await History.GetLastExportAsync(),
+            Clock.GetUtcNow(),
+            hasData: !_stats.IsEmpty);
+    }
+
+    private static string Describe(int count, string singular, string plural) =>
+        $"{count} {(count == 1 ? singular : plural)}";
+}
