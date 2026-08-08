@@ -93,8 +93,10 @@
 
     private string UnsavedMessage => _status.LastExport is null
         ? "This tree has never been exported. If this browser loses its data, there is nothing to restore from."
-        : $"This tree has changed since the last backup, {_status.DaysSinceExport} days ago. "
-            + "Anything added since then exists only here.";
+        // Describe() rather than the raw day count, which renders "0 days ago"
+        // on the most common path of all: export, add somebody, come back here.
+        : $"This tree has changed since the last backup. {_status.Describe()}, "
+            + "so anything added since then exists only here.";
 
     protected override async Task OnInitializedAsync() => await RefreshAsync();
 

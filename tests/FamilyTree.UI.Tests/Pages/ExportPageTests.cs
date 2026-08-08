@@ -59,8 +59,29 @@ public class ExportPageTests : ShellTestContext
 
         var cut = Render<ExportPage>();
 
-        Assert.Contains("changed since the last backup, 9 days ago",
+        Assert.Contains("changed since the last backup. Last exported 9 days ago",
             cut.Find("[data-testid=export-stale]").TextContent);
+    }
+
+    // Raw interpolation of a day count produces "0 days ago" and "1 days ago",
+    // and the zero case is the most common path there is: export, add somebody,
+    // come back to this page. BackupStatus.Describe handles all three forms and
+    // the shell banner already uses it.
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(2)]
+    public void DescribesTheAgeOfTheBackupGrammatically(int daysAgo)
+    {
+        GivenTreeContains(Ada());
+        Backups.LastExport = Clock.Now.AddDays(-daysAgo);
+        Backups.LastChange = Clock.Now.AddMinutes(1);
+
+        var cut = Render<ExportPage>();
+
+        var message = cut.Find("[data-testid=export-stale]").TextContent;
+        Assert.DoesNotContain("0 days", message);
+        Assert.DoesNotContain("1 days ", message);
     }
 
     // Exported once and untouched since is the state this page should be quiet

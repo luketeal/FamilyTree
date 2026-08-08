@@ -218,8 +218,7 @@
 
         if (file.Size > MaxFileBytes)
         {
-            _error = $"That file is {file.Size / (1024 * 1024)} MB, which is larger than "
-                + $"the {MaxFileBytes / (1024 * 1024)} MB this app will read. Is it definitely a FamilyTree export?";
+            _error = FileSizeMessage.TooLarge(file.Size, MaxFileBytes);
             return;
         }
 

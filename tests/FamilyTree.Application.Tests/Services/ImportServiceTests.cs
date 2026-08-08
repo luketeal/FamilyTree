@@ -516,6 +516,72 @@ public class ImportServiceTests
         Assert.Equal(2, _tree.Marriages.Count);
     }
 
+    // The counts are what a user reads to confirm a restore worked, on a page
+    // whose entire purpose is proving the backup came back intact. A summary
+    // claiming a relationship was added when it was dropped undercuts that,
+    // even though the tree itself is written correctly.
+    [Fact]
+    public async Task DoesNotCountADroppedOrphanLinkAsAdded()
+    {
+        var result = await CreateService().ImportAsync(File($$"""
+            "people": [{"id": "{{AdaId}}", "firstName": "Ada", "lastName": "Lovelace"}],
+            "biologicalLinks": [{"id": "{{LinkId}}", "parentId": "{{GraceId}}", "childId": "{{AdaId}}"}]
+            """), ImportConflictResolution.Overwrite);
+
+        Assert.Empty(_tree.BiologicalLinks);
+        Assert.Equal(0, result.Value!.RelationshipsAdded);
+        Assert.Equal(1, result.Value!.PeopleAdded);
+    }
+
+    // Two browsers each recording the same parent and child independently, then
+    // merged. Different ids, same meaning — realistic for this app rather than
+    // hypothetical.
+    [Fact]
+    public async Task DoesNotCountADroppedDuplicateLinkAsAdded()
+    {
+        var ada = Guid.Parse(AdaId);
+        var grace = Guid.Parse(GraceId);
+        _tree.With(Stored(AdaId, "Ada", "Lovelace"), Stored(GraceId, "Grace", "Hopper"))
+            .With(new BiologicalParentChild(grace, ada));
+
+        var result = await CreateService().ImportAsync(File($$"""
+            "biologicalLinks": [{"id": "{{LinkId}}", "parentId": "{{GraceId}}", "childId": "{{AdaId}}"}]
+            """), ImportConflictResolution.Skip);
+
+        Assert.Single(_tree.BiologicalLinks);
+        Assert.Equal(0, result.Value!.RelationshipsAdded);
+        Assert.Equal(1, result.Value!.RelationshipsSkipped);
+    }
+
+    // The summary a user actually reads. "2 added" for one stored record is the
+    // shape of the bug, so the sentence is asserted rather than just the fields.
+    [Fact]
+    public async Task DescribesOnlyWhatWasActuallyStored()
+    {
+        var result = await CreateService().ImportAsync(File($$"""
+            "people": [{"id": "{{AdaId}}", "firstName": "Ada", "lastName": "Lovelace"}],
+            "biologicalLinks": [{"id": "{{LinkId}}", "parentId": "{{GraceId}}", "childId": "{{AdaId}}"}]
+            """), ImportConflictResolution.Overwrite);
+
+        Assert.Equal("1 added, 1 rejected.", result.Value!.Describe());
+    }
+
+    // Counting an update as an addition would overstate the restore in the other
+    // direction, so the distinction is pinned alongside the fix.
+    [Fact]
+    public async Task CountsAReplacedRecordAsUpdatedRatherThanAdded()
+    {
+        _tree.With(Stored(AdaId, "Ada", "Lovelace"), Stored(GraceId, "Grace", "Hopper"));
+
+        var result = await CreateService().ImportAsync(File($$"""
+            "people": [{"id": "{{AdaId}}", "firstName": "Augusta", "lastName": "King"}]
+            """), ImportConflictResolution.Merge);
+
+        Assert.Equal(0, result.Value!.PeopleAdded);
+        Assert.Equal(1, result.Value!.PeopleUpdated);
+        Assert.Equal(0, result.Value!.PeopleRemoved);
+    }
+
     // ---- Round trip ----
 
     // The property the whole PR exists for: what comes out goes back in

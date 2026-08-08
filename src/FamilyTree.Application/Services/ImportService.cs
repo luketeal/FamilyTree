@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using System.Text.Json;
 using FamilyTree.Application.Common;
 using FamilyTree.Domain.Entities;
@@ -150,64 +151,152 @@ public sealed class ImportService(
         var existingAdoptive = await adoptive.GetAllAsync(ct);
         var existingMarriages = await marriages.GetAllAsync(ct);
 
-        var personMerge = Combine(existingPeople, file.People, p => p.Id, resolution);
-        var bioMerge = Combine(existingBio, file.BiologicalLinks, l => l.Id, resolution);
-        var adoptiveMerge = Combine(existingAdoptive, file.AdoptiveLinks, l => l.Id, resolution);
-        var marriageMerge = Combine(existingMarriages, file.Marriages, m => m.Id, resolution);
+        var finalPeople = Combine(existingPeople, file.People, p => p.Id, resolution);
+        var bioCombined = Combine(existingBio, file.BiologicalLinks, l => l.Id, resolution);
+        var adoptiveCombined = Combine(existingAdoptive, file.AdoptiveLinks, l => l.Id, resolution);
+        var marriagesCombined = Combine(existingMarriages, file.Marriages, m => m.Id, resolution);
 
         // A record that arrives with a fresh id but the same meaning as one
         // already present is still a duplicate. The domain forbids naming the
         // same person as a parent twice, and an import is the one path into the
         // store that never went through those guards.
         var bioLinks = Deduplicate(
-            bioMerge.Final,
+            bioCombined,
             l => (l.ParentId, l.ChildId),
             "the same biological parent and child",
             warnings,
-            out var bioDuplicates);
+            out _);
         var adoptiveLinks = Deduplicate(
-            adoptiveMerge.Final,
+            adoptiveCombined,
             l => (l.ParentId, l.ChildId),
             "the same adoptive parent and child",
             warnings,
-            out var adoptiveDuplicates);
+            out _);
         var marriageList = Deduplicate(
-            marriageMerge.Final,
+            marriagesCombined,
             MarriageKey,
             "the same two spouses and start date",
             warnings,
-            out var marriageDuplicates);
+            out _);
 
         // A link to somebody who is not in the tree is a link to nobody. Under
         // Skip and Merge the referent may come from what is already stored, so
         // this is checked against the final set rather than against the file.
-        var personIds = personMerge.Final.Select(p => p.Id).ToHashSet();
+        var personIds = finalPeople.Select(p => p.Id).ToHashSet();
         bioLinks = Connected(bioLinks, l => (l.ParentId, l.ChildId), "biological link", personIds, warnings, out var bioOrphans);
         adoptiveLinks = Connected(adoptiveLinks, l => (l.ParentId, l.ChildId), "adoptive link", personIds, warnings, out var adoptiveOrphans);
         marriageList = Connected(marriageList, m => (m.Spouse1Id, m.Spouse2Id), "marriage", personIds, warnings, out var marriageOrphans);
-
-        var duplicates = bioDuplicates + adoptiveDuplicates + marriageDuplicates;
-        rejected += bioOrphans + adoptiveOrphans + marriageOrphans;
 
         // One call, one transaction. Four repository writes could half-apply and
         // leave links pointing at people who were never stored — which is the
         // failure mode this whole PR exists to prevent.
         await administration.ReplaceAllAsync(
-            new TreeSnapshot(personMerge.Final, bioLinks, adoptiveLinks, marriageList),
+            new TreeSnapshot(finalPeople, bioLinks, adoptiveLinks, marriageList),
             ct);
+
+        // Counted from what was written, not from what was intended. The filters
+        // above run after the merge, so counting at merge time reported records
+        // as added that were then dropped — a summary claiming a relationship was
+        // restored when it was not, on the one page whose job is proving a backup
+        // came back intact.
+        var peopleTally = Count(existingPeople, file.People, finalPeople, p => p.Id);
+        var relationshipTally = Count(existingBio, file.BiologicalLinks, bioLinks, l => l.Id)
+            .Plus(Count(existingAdoptive, file.AdoptiveLinks, adoptiveLinks, l => l.Id))
+            .Plus(Count(existingMarriages, file.Marriages, marriageList, m => m.Id));
+
+        // Only the file's own records count as rejected here. An existing record
+        // dropped by the same filter was removed rather than refused, which the
+        // tally already reports as such.
+        var refused = FromFile(bioOrphans, file.BiologicalLinks)
+            + FromFile(adoptiveOrphans, file.AdoptiveLinks)
+            + FromFile(marriageOrphans, file.Marriages);
+        rejected += refused;
 
         return Result<ImportResultDto>.Success(new ImportResultDto(
             resolution,
-            personMerge.Added,
-            personMerge.Updated,
-            personMerge.Skipped,
-            personMerge.Removed,
-            bioMerge.Added + adoptiveMerge.Added + marriageMerge.Added,
-            bioMerge.Updated + adoptiveMerge.Updated + marriageMerge.Updated,
-            bioMerge.Skipped + adoptiveMerge.Skipped + marriageMerge.Skipped + duplicates,
-            bioMerge.Removed + adoptiveMerge.Removed + marriageMerge.Removed,
+            peopleTally.Added,
+            peopleTally.Updated,
+            peopleTally.NotApplied,
+            peopleTally.Removed,
+            relationshipTally.Added,
+            relationshipTally.Updated,
+            // Everything the file offered that was not applied, less the part of
+            // it that was refused outright: what is left was deliberately left
+            // alone, either by Skip or as a duplicate of something already here.
+            relationshipTally.NotApplied - refused,
+            relationshipTally.Removed,
             rejected,
             warnings.Messages));
+    }
+
+    /// <summary>What a write actually did to one collection.</summary>
+    private sealed record Tally(int Added, int Updated, int NotApplied, int Removed)
+    {
+        public Tally Plus(Tally other) => new(
+            Added + other.Added,
+            Updated + other.Updated,
+            NotApplied + other.NotApplied,
+            Removed + other.Removed);
+    }
+
+    /// <summary>
+    /// Compares the records about to be stored with the ones already there.
+    /// </summary>
+    /// <remarks>
+    /// Membership is tested by reference rather than by id, because a colliding
+    /// id appears on both sides and the question is which of the two instances
+    /// is the one being written: under Skip that is the stored record, and under
+    /// Merge and Overwrite it is the file's.
+    /// </remarks>
+    private static Tally Count<T>(
+        IReadOnlyList<T> existing,
+        IReadOnlyList<T> imported,
+        IReadOnlyList<T> final,
+        Func<T, Guid> id)
+        where T : class
+    {
+        var existingIds = existing.Select(id).ToHashSet();
+        var finalIds = final.Select(id).ToHashSet();
+        var survivors = new HashSet<T>(final, Same<T>.Instance);
+
+        var added = 0;
+        var updated = 0;
+
+        foreach (var record in imported.Where(survivors.Contains))
+        {
+            if (existingIds.Contains(id(record)))
+            {
+                updated++;
+            }
+            else
+            {
+                added++;
+            }
+        }
+
+        return new Tally(
+            added,
+            updated,
+            imported.Count - added - updated,
+            existing.Count(r => !finalIds.Contains(id(r))));
+    }
+
+    /// <summary>How many of these dropped records came from the file.</summary>
+    private static int FromFile<T>(IReadOnlyList<T> dropped, IReadOnlyList<T> imported)
+        where T : class
+    {
+        var fromFile = new HashSet<T>(imported, Same<T>.Instance);
+        return dropped.Count(fromFile.Contains);
+    }
+
+    private sealed class Same<T> : IEqualityComparer<T>
+        where T : class
+    {
+        public static Same<T> Instance { get; } = new();
+
+        public bool Equals(T? left, T? right) => ReferenceEquals(left, right);
+
+        public int GetHashCode(T value) => RuntimeHelpers.GetHashCode(value);
     }
 
     private static (Guid, Guid, int, int?, int?) MarriageKey(Marriage m) => (
@@ -219,18 +308,15 @@ public sealed class ImportService(
         m.StartDate.Month,
         m.StartDate.Day);
 
-    private sealed record MergeOutcome<T>(
-        IReadOnlyList<T> Final, int Added, int Updated, int Skipped, int Removed);
-
     /// <summary>
     /// Applies the chosen resolution to one collection.
     /// </summary>
     /// <remarks>
-    /// Order matters beyond bookkeeping: whichever side is listed first survives
-    /// the natural-key deduplication that runs afterwards, so the winner of an
-    /// id collision has to also be the winner of a meaning collision.
+    /// Order matters beyond tidiness: whichever side is listed first survives the
+    /// natural-key deduplication that runs afterwards, so the winner of an id
+    /// collision has to also be the winner of a meaning collision.
     /// </remarks>
-    private static MergeOutcome<T> Combine<T>(
+    private static IReadOnlyList<T> Combine<T>(
         IReadOnlyList<T> existing,
         IReadOnlyList<T> imported,
         Func<T, Guid> id,
@@ -239,22 +325,15 @@ public sealed class ImportService(
         var existingIds = existing.Select(id).ToHashSet();
         var importedIds = imported.Select(id).ToHashSet();
 
-        var added = imported.Count(r => !existingIds.Contains(id(r)));
-        var colliding = imported.Count - added;
-
         return resolution switch
         {
-            ImportConflictResolution.Skip => new MergeOutcome<T>(
+            ImportConflictResolution.Skip =>
                 [.. existing, .. imported.Where(r => !existingIds.Contains(id(r)))],
-                added, 0, colliding, 0),
 
-            ImportConflictResolution.Merge => new MergeOutcome<T>(
+            ImportConflictResolution.Merge =>
                 [.. imported, .. existing.Where(r => !importedIds.Contains(id(r)))],
-                added, colliding, 0, 0),
 
-            _ => new MergeOutcome<T>(
-                [.. imported],
-                added, colliding, 0, existing.Count(r => !importedIds.Contains(id(r)))),
+            _ => [.. imported],
         };
     }
 
@@ -263,12 +342,12 @@ public sealed class ImportService(
         Func<T, TKey> key,
         string describe,
         WarningLog warnings,
-        out int dropped)
+        out List<T> dropped)
         where TKey : notnull
     {
         var seen = new HashSet<TKey>();
         var kept = new List<T>(records.Count);
-        dropped = 0;
+        dropped = [];
 
         foreach (var record in records)
         {
@@ -278,7 +357,7 @@ public sealed class ImportService(
                 continue;
             }
 
-            dropped++;
+            dropped.Add(record);
             warnings.Add($"Ignored a duplicate record: another one already has {describe}.");
         }
 
@@ -291,10 +370,10 @@ public sealed class ImportService(
         string kind,
         IReadOnlySet<Guid> personIds,
         WarningLog warnings,
-        out int dropped)
+        out List<T> dropped)
     {
         var kept = new List<T>(records.Count);
-        dropped = 0;
+        dropped = [];
 
         foreach (var record in records)
         {
@@ -305,7 +384,7 @@ public sealed class ImportService(
                 continue;
             }
 
-            dropped++;
+            dropped.Add(record);
             var missing = personIds.Contains(left) ? right : left;
             warnings.Add($"Dropped a {kind}: it refers to person {missing}, who is not in the tree.");
         }
