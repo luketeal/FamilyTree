@@ -338,7 +338,9 @@ public class PersonCrudTests(StaticSiteFixture fixture)
     }
 
     // Switching to the full form must not cost what has already been typed, or
-    // the escape hatch is worse than never opening the popover.
+    // the escape hatch is worse than never opening the popover. Every field the
+    // popover collects is asserted, so a value can never be dropped in transit
+    // by being the one nobody checked.
     [Fact]
     public async Task OpeningTheFullFormCarriesOverWhatWasTyped()
     {
@@ -348,12 +350,14 @@ public class PersonCrudTests(StaticSiteFixture fixture)
         await page.GetByTestId("quick-first-name").FillAsync("Grace");
         await page.GetByTestId("quick-last-name").FillAsync("Hopper");
         await page.GetByTestId("quick-birth-year").FillAsync("1906");
+        await page.GetByTestId("quick-death-year").FillAsync("1992");
         await page.GetByTestId("quick-gender").SelectOptionAsync("Female");
         await page.GetByTestId("quick-open-full").ClickAsync();
 
         await Assertions.Expect(page.GetByTestId("input-first-name")).ToHaveValueAsync("Grace");
         await Assertions.Expect(page.GetByTestId("input-last-name")).ToHaveValueAsync("Hopper");
         await Assertions.Expect(page.GetByTestId("input-birth-year")).ToHaveValueAsync("1906");
+        await Assertions.Expect(page.GetByTestId("input-death-year")).ToHaveValueAsync("1992");
         await Assertions.Expect(page.GetByTestId("input-gender")).ToHaveValueAsync("Female");
         // Nothing was saved on the way through.
         await Assertions.Expect(page.GetByTestId("tree-stats")).ToHaveTextAsync("0 people · 0 relationships");
