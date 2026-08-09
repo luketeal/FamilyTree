@@ -17,9 +17,11 @@ public class PersonFormTests : ShellTestContext
     private PersonService.PersonInput? _submitted;
     private int _submitCount;
 
-    private IRenderedComponent<PersonForm> RenderForm(PersonDetailDto? person = null) =>
+    private IRenderedComponent<PersonForm> RenderForm(
+        PersonDetailDto? person = null, PartialDateText? birthSeed = null) =>
         Render<PersonForm>(p => p
             .Add(f => f.Person, person)
+            .Add(f => f.BirthDateSeed, birthSeed)
             .Add(f => f.Submit, input =>
             {
                 _submitted = input;
@@ -181,6 +183,90 @@ public class PersonFormTests : ShellTestContext
         cut.Render();
 
         Assert.Empty(cut.FindAll("[data-testid=unsaved-indicator]"));
+    }
+
+    // The carried-over date has to reach the saved record without the user
+    // retyping it. It arrives as text, so nothing puts it in the model unless
+    // the control emits it on seeding.
+    [Fact]
+    public void SubmitsACarriedOverBirthDate_WithoutItBeingRetyped()
+    {
+        var cut = RenderForm(birthSeed: PartialDateText.FromYearText("1906"));
+        cut.Find("[data-testid=input-first-name]").Input("Grace");
+        cut.Find("[data-testid=input-last-name]").Input("Hopper");
+
+        cut.Find("form").Submit();
+
+        Assert.Equal(PartialDate.FromYear(1906), _submitted!.BirthDate);
+    }
+
+    // A year the app will not accept must block the save rather than being
+    // dropped from the record on the way through.
+    [Fact]
+    public void RefusesToSubmit_WhileACarriedOverYearIsOutOfRange()
+    {
+        var cut = RenderForm(birthSeed: PartialDateText.FromYearText("30000"));
+        cut.Find("[data-testid=input-first-name]").Input("Carry");
+        cut.Find("[data-testid=input-last-name]").Input("Over");
+
+        cut.Find("form").Submit();
+
+        Assert.Equal(0, _submitCount);
+        Assert.NotEmpty(cut.FindAll("[data-testid=error-input-birth-year]"));
+    }
+
+    // The seed is raw text precisely so a value no PartialDate can hold still
+    // reaches the box the user corrects it in.
+    [Fact]
+    public void ShowsACarriedOverYearThatCouldNotBeStored()
+    {
+        var cut = RenderForm(birthSeed: PartialDateText.FromYearText("30000"));
+
+        Assert.Equal("30000", cut.Find("[data-testid=input-birth-year]").GetAttribute("value"));
+    }
+
+    [Fact]
+    public void CorrectingACarriedOverYearLetsTheSaveThrough()
+    {
+        var cut = RenderForm(birthSeed: PartialDateText.FromYearText("30000"));
+        cut.Find("[data-testid=input-first-name]").Input("Carry");
+        cut.Find("[data-testid=input-last-name]").Input("Over");
+
+        cut.Find("[data-testid=input-birth-year]").Input("1906");
+        cut.Find("form").Submit();
+
+        Assert.Equal(1, _submitCount);
+        Assert.Equal(PartialDate.FromYear(1906), _submitted!.BirthDate);
+    }
+
+    [Fact]
+    public void SubmitsAFullDate_WhenEveryPartIsEntered()
+    {
+        var cut = RenderForm();
+        cut.Find("[data-testid=input-first-name]").Input("Ada");
+        cut.Find("[data-testid=input-last-name]").Input("Lovelace");
+        cut.Find("[data-testid=input-birth-year]").Input("1815");
+        cut.Find("[data-testid=input-birth-year-month]").Change("12");
+        cut.Find("[data-testid=input-birth-year-day]").Input("10");
+
+        cut.Find("form").Submit();
+
+        Assert.Equal(PartialDate.FromYearMonthDay(1815, 12, 10), _submitted!.BirthDate);
+    }
+
+    // An existing date now leaves the model, becomes text, and comes back. A
+    // lossy leg anywhere in that round trip would quietly change a stored date
+    // on any edit that never touched the field.
+    [Fact]
+    public void PreservesAnExistingFullDate_ThroughAnEditThatDoesNotTouchIt()
+    {
+        var stored = PartialDate.FromYearMonthDay(1815, 12, 10, isApproximate: true);
+        var cut = RenderForm(Existing() with { BirthDate = stored });
+
+        cut.Find("[data-testid=input-birth-place]").Input("London");
+        cut.Find("form").Submit();
+
+        Assert.Equal(stored, _submitted!.BirthDate);
     }
 
     private static PersonDetailDto Existing() => new(

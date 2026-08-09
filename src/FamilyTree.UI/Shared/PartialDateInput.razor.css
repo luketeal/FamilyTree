@@ -4,6 +4,9 @@
     gap: 4px;
 }
 
+/* Four controls on one line is exactly the shape that overflows a phone, so the
+   row wraps rather than clipping — and every part of it is sized in relative
+   units so it can. */
 .pdate__row {
     display: flex;
     align-items: center;
@@ -12,20 +15,36 @@
 }
 
 .pdate__year {
-    width: 120px;
+    flex: 1 1 88px;
+    min-width: 0;
+    max-width: 120px;
 }
 
-/* Number inputs get spinners that make a four-digit year cramped, and the
-   arrows are meaningless for a date nobody increments. */
-.pdate__year input {
-    -moz-appearance: textfield;
-    appearance: textfield;
+.pdate__month {
+    flex: 1 1 118px;
+    min-width: 0;
+    max-width: 150px;
 }
 
-.pdate__year input::-webkit-outer-spin-button,
-.pdate__year input::-webkit-inner-spin-button {
-    -webkit-appearance: none;
-    margin: 0;
+.pdate__day {
+    flex: 1 1 68px;
+    min-width: 0;
+    max-width: 88px;
+}
+
+.pdate__select {
+    flex: 1;
+    border: 0;
+    outline: 0;
+    background: transparent;
+    /* Load-bearing: .input is 16px below 768px, and a control under 16px makes
+       iOS Safari zoom the page on focus. A scoped rule outranks the bare
+       `select` rule in app.css, so this has to inherit rather than set a size of
+       its own. FormControls_AreLargeEnoughToNotTriggerIosZoom pins it. */
+    font: inherit;
+    color: inherit;
+    min-width: 0;
+    cursor: pointer;
 }
 
 .pdate__circa {
@@ -35,12 +54,6 @@
     font-size: 12px;
     color: var(--ink2);
     cursor: pointer;
-}
-
-.pdate__hint {
-    margin: 0;
-    font-size: 11px;
-    color: var(--ink4);
 }
 
 .pdate__error {

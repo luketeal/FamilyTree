@@ -1,32 +1,69 @@
-@* Year-only stub. PR 6 extends this in place to Year → Month → Day → Circa;
-   the parameter contract is already PartialDate? so that change does not reach
-   the pages using it.
+@using System.Globalization
+
+@* US-045. Year → Month → Day → Circa, so a record that knows only "circa 1880"
+   can say exactly that.
 
    A genealogy record frequently knows the year and nothing else, so an ordinary
    <input type="date"> is the wrong control: it would force a month and day the
-   source never recorded. PartialDate carries the precision explicitly. *@
+   source never recorded. PartialDate carries the precision explicitly, and this
+   control converts to it only on emit — the half-typed states in between are
+   never a domain value. *@
 
 <div class="pdate">
     <label class="field-label" for="@_yearId">@Label</label>
     <div class="pdate__row">
-        @* Deliberately no min/max. Those put the field under native constraint
-           validation, which refuses to submit the enclosing form — so Blazor
-           never runs, nothing renders, and the save button reads as dead. The
-           range is enforced below instead, where the app can say something. *@
+        @* Text rather than number, and deliberately no min/max. Both put the
+           field under native constraint validation, which refuses to submit the
+           enclosing form — so Blazor never runs, nothing renders, and the save
+           button reads as dead. A number input is worse than that: its value is
+           the empty string for anything that is not a number, so "abc" carried
+           in from a query string was displayed as a blank box next to an error
+           about a year the user could no longer see. inputmode keeps the numeric
+           keypad on a phone; the range is enforced in C#, where the app can say
+           something. *@
         <div class="input pdate__year">
             <input id="@_yearId"
-                   type="number"
+                   type="text"
                    inputmode="numeric"
                    placeholder="Year"
-                   value="@_year"
+                   value="@_text.Year"
                    data-testid="@TestId"
-                   aria-invalid="@(_error is not null)"
+                   aria-invalid="@(_error is null ? null : "true")"
+                   aria-describedby="@(_error is null ? null : ErrorId)"
                    @oninput="OnYearInput" />
+        </div>
+
+        <div class="input pdate__month">
+            <select class="pdate__select"
+                    aria-label="@($"{Label} month")"
+                    data-testid="@($"{TestId}-month")"
+                    aria-invalid="@(_error is null ? null : "true")"
+                    aria-describedby="@(_error is null ? null : ErrorId)"
+                    @onchange="OnMonthChanged">
+                <option value="">Month</option>
+                @for (var month = 1; month <= 12; month++)
+                {
+                    var value = month.ToString(CultureInfo.InvariantCulture);
+                    <option value="@value" selected="@(_text.Month == value)">@MonthName(month)</option>
+                }
+            </select>
+        </div>
+
+        <div class="input pdate__day">
+            <input type="text"
+                   inputmode="numeric"
+                   placeholder="Day"
+                   value="@_text.Day"
+                   aria-label="@($"{Label} day")"
+                   data-testid="@($"{TestId}-day")"
+                   aria-invalid="@(_error is null ? null : "true")"
+                   aria-describedby="@(_error is null ? null : ErrorId)"
+                   @oninput="OnDayInput" />
         </div>
 
         <label class="pdate__circa">
             <input type="checkbox"
-                   checked="@_isApproximate"
+                   checked="@_text.IsApproximate"
                    data-testid="@($"{TestId}-approx")"
                    @onchange="OnApproximateChanged" />
             <span>Approximate</span>
@@ -35,15 +72,14 @@
 
     @if (_error is not null)
     {
-        <p class="pdate__error" data-testid="@($"error-{TestId}")">@_error</p>
+        <p class="pdate__error" id="@ErrorId" data-testid="@ErrorId">@_error</p>
     }
 </div>
 
 @code {
     private readonly string _yearId = $"pdate-{Guid.NewGuid():N}";
 
-    private int? _year;
-    private bool _isApproximate;
+    private PartialDateText _text = PartialDateText.Empty;
     private string? _error;
 
     /// <summary>
@@ -55,20 +91,33 @@
     /// </summary>
     private bool _seeded;
 
-    // Deliberately not a local constant. This rule had three UI copies and they
-    // drifted — the seeding path allowed up to 9999 while this one allowed up to
-    // next year, which is how an out-of-range year reached storage.
-    private static int MaxYear => PersonService.MaxYear;
+    private string ErrorId => $"error-{TestId}";
 
-    [Parameter] public string Label { get; set; } = "Year";
+    [Parameter] public string Label { get; set; } = "Date";
 
-    [Parameter] public PartialDate? Value { get; set; }
+    /// <summary>
+    /// What to put in the boxes, as raw text.
+    /// </summary>
+    /// <remarks>
+    /// Read once, then owned by this control. Deliberately not a
+    /// <see cref="PartialDate"/>: that type cannot express a value the user
+    /// typed but which it cannot hold, so a caller seeding one has to decide
+    /// what to do with an unrepresentable year before this control ever sees it
+    /// — and dropping it was the only option available. See
+    /// <see cref="PartialDateText"/>.
+    /// </remarks>
+    [Parameter] public PartialDateText Seed { get; set; } = PartialDateText.Empty;
 
+    /// <summary>
+    /// Raised with the domain value, or null while the boxes do not describe
+    /// one. Parsing happens here and nowhere else, so an intermediate typing
+    /// state is never emitted as a date.
+    /// </summary>
     [Parameter] public EventCallback<PartialDate?> ValueChanged { get; set; }
 
     /// <summary>
-    /// Raised whenever the entered year becomes valid or invalid, so the form
-    /// hosting this control can refuse to submit while it is out of range.
+    /// Raised whenever the entered date becomes valid or invalid, so the form
+    /// hosting this control can refuse to submit while it is not a date.
     /// </summary>
     [Parameter] public EventCallback<bool> InvalidChanged { get; set; }
 
@@ -82,58 +131,59 @@
         }
 
         _seeded = true;
-        _year = Value?.Year;
-        _isApproximate = Value?.IsApproximate ?? false;
+        _text = Seed;
 
-        // A seeded year is judged exactly like a typed one. Validity used to be
-        // computed only in OnYearInput, so a year that arrived from the
-        // carry-over query string was never judged at all: it seeded a
-        // valid-looking PartialDate, left InvalidChanged false, and saved. The
-        // same year typed into this box was rejected — the two paths disagreed
-        // about the same value in the same form.
-        _error = _year is null || InRange(_year)
-            ? null
-            : $"Year must be between 1 and {MaxYear}.";
-
-        if (_error is not null)
+        // A seeded value is judged exactly like a typed one, and emitted the
+        // same way. Validity used to be computed only while typing, so a value
+        // that arrived from the carry-over query string was never judged at all:
+        // it seeded a valid-looking PartialDate, left InvalidChanged false, and
+        // saved. The same value typed into these boxes was rejected — two paths
+        // disagreeing about the same value in the same form.
+        if (!_text.IsBlank)
         {
-            await InvalidChanged.InvokeAsync(true);
+            await EmitAsync();
         }
     }
 
-    private async Task OnYearInput(ChangeEventArgs args)
+    private Task OnYearInput(ChangeEventArgs args) =>
+        UpdateAsync(_text with { Year = Read(args) });
+
+    // Clearing the month clears the day with it. A day without a month is not a
+    // date — ExportedDate rejects that combination on import — so the control
+    // must not be able to produce one.
+    private Task OnMonthChanged(ChangeEventArgs args)
     {
-        var raw = args.Value?.ToString();
-        _year = int.TryParse(raw, out var parsed) ? parsed : null;
-
-        // Distinguish "nothing entered" from "entered something impossible".
-        // An empty box is a perfectly good answer; 30000 is a typo.
-        _error = string.IsNullOrWhiteSpace(raw) || InRange(_year)
-            ? null
-            : $"Year must be between 1 and {MaxYear}.";
-
-        await EmitAsync();
+        var month = Read(args);
+        return UpdateAsync(month.Length == 0
+            ? _text with { Month = string.Empty, Day = string.Empty }
+            : _text with { Month = month });
     }
 
-    private async Task OnApproximateChanged(ChangeEventArgs args)
+    private Task OnDayInput(ChangeEventArgs args) =>
+        UpdateAsync(_text with { Day = Read(args) });
+
+    private Task OnApproximateChanged(ChangeEventArgs args) =>
+        UpdateAsync(_text with { IsApproximate = args.Value is true });
+
+    private Task UpdateAsync(PartialDateText next)
     {
-        _isApproximate = args.Value is true;
-        await EmitAsync();
+        _text = next;
+        return EmitAsync();
     }
 
-    private static bool InRange(int? year) => year is int value && value >= 1 && value <= MaxYear;
+    private static string Read(ChangeEventArgs args) => args.Value?.ToString() ?? string.Empty;
 
-    // An out-of-range year emits null rather than a PartialDate the domain would
-    // reject. The error above is what tells the user; the null keeps an invalid
-    // value out of the model.
+    private static string MonthName(int month) =>
+        CultureInfo.InvariantCulture.DateTimeFormat.GetMonthName(month);
+
+    // Anything the boxes do not yet describe emits null rather than a
+    // PartialDate the domain would reject. The error is what tells the user;
+    // the null keeps a value the app cannot store out of the model.
     private async Task EmitAsync()
     {
-        PartialDate? next = InRange(_year)
-            ? PartialDate.FromYear(_year!.Value, _isApproximate)
-            : null;
+        _text.TryToDomain(out var date, out _error);
 
-        Value = next;
-        await ValueChanged.InvokeAsync(next);
+        await ValueChanged.InvokeAsync(date);
         await InvalidChanged.InvokeAsync(_error is not null);
     }
 }

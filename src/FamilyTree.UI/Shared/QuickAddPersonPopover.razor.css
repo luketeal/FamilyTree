@@ -86,17 +86,6 @@
     cursor: pointer;
 }
 
-.quickadd__pair input[type="number"] {
-    -moz-appearance: textfield;
-    appearance: textfield;
-}
-
-.quickadd__pair input[type="number"]::-webkit-outer-spin-button,
-.quickadd__pair input[type="number"]::-webkit-inner-spin-button {
-    -webkit-appearance: none;
-    margin: 0;
-}
-
 /* A link in behaviour, a button in semantics: it navigates, but only after
    collecting what has been typed. */
 .quickadd__full {

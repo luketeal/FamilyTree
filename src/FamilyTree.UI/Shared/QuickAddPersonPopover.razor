@@ -49,7 +49,7 @@
                     <div class="quickadd__field">
                         <label class="field-label" for="quick-born">Born</label>
                         <div class="input">
-                            <input id="quick-born" type="number" inputmode="numeric"
+                            <input id="quick-born" type="text" inputmode="numeric"
                                    placeholder="Year" data-testid="quick-birth-year"
                                    value="@_birthYearText"
                                    @oninput="e => _birthYearText = e.Value?.ToString() ?? string.Empty" />
@@ -59,7 +59,7 @@
                     <div class="quickadd__field">
                         <label class="field-label" for="quick-died">Died</label>
                         <div class="input">
-                            <input id="quick-died" type="number" inputmode="numeric"
+                            <input id="quick-died" type="text" inputmode="numeric"
                                    placeholder="Year" data-testid="quick-death-year"
                                    value="@_deathYearText"
                                    @oninput="e => _deathYearText = e.Value?.ToString() ?? string.Empty" />
@@ -126,7 +126,11 @@
     /// from a nullable int.
     /// </summary>
     /// <remarks>
-    /// A nullable int cannot distinguish "left blank" from "typed something that
+    /// The boxes are text inputs for the same reason: a number input's value is
+    /// the empty string for anything that is not a number, so it cannot show
+    /// back the typo it is complaining about — and it puts the field under
+    /// native constraint validation, which blocks the submit before any of this
+    /// runs. A nullable int cannot distinguish "left blank" from "typed something that
     /// does not parse" — int.TryParse fails on anything past Int32.MaxValue and
     /// yields the same null as an empty box. Reading that as "no year given"
     /// waved an eleven-digit typo straight through and saved the person with the
@@ -245,16 +249,19 @@
             query.Add($"last={Uri.EscapeDataString(_lastName.Trim())}");
         }
 
-        // Carries anything that parses, in range or not, so the full form shows
-        // its own error rather than the value disappearing on the way over.
-        if (int.TryParse(_birthYearText, out var born))
+        // Carries the text itself, valid or not, so the full form shows its own
+        // error rather than the value disappearing on the way over. Carrying
+        // only what int.TryParse accepted still lost an eleven-digit typo
+        // silently — the full form now seeds from raw text, so there is nothing
+        // left to filter for.
+        if (!string.IsNullOrWhiteSpace(_birthYearText))
         {
-            query.Add($"born={born}");
+            query.Add($"born={Uri.EscapeDataString(_birthYearText.Trim())}");
         }
 
-        if (int.TryParse(_deathYearText, out var died))
+        if (!string.IsNullOrWhiteSpace(_deathYearText))
         {
-            query.Add($"died={died}");
+            query.Add($"died={Uri.EscapeDataString(_deathYearText.Trim())}");
         }
 
         if (_gender != Gender.Unknown)

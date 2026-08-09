@@ -61,7 +61,7 @@
 
         <div class="pform__field">
             <PartialDateInput Label="Born" TestId="input-birth-year"
-                              Value="_model.BirthDate"
+                              Seed="_birthSeed"
                               ValueChanged="v => Set(m => m.BirthDate = v)"
                               InvalidChanged="v => _birthYearInvalid = v" />
         </div>
@@ -77,7 +77,7 @@
 
         <div class="pform__field">
             <PartialDateInput Label="Died" TestId="input-death-year"
-                              Value="_model.DeathDate"
+                              Seed="_deathSeed"
                               ValueChanged="v => Set(m => m.DeathDate = v)"
                               InvalidChanged="v => _deathYearInvalid = v" />
         </div>
@@ -210,6 +210,21 @@
 
     [Parameter] public PersonDetailDto? Person { get; set; }
 
+    /// <summary>
+    /// What to put in the date boxes when it is not a stored date — text a user
+    /// typed elsewhere and has not yet had accepted, carried over from quick add
+    /// through the query string. Falls back to <see cref="Person"/>'s dates.
+    /// </summary>
+    /// <remarks>
+    /// Separate from <see cref="Person"/> because a PersonDetailDto can only
+    /// carry a PartialDate, and the whole point of these is that they may be
+    /// text no PartialDate can hold. Routing them through the DTO is what forced
+    /// the page to drop such a year before the form ever saw it.
+    /// </remarks>
+    [Parameter] public PartialDateText? BirthDateSeed { get; set; }
+
+    [Parameter] public PartialDateText? DeathDateSeed { get; set; }
+
     [Parameter] public string SubmitLabel { get; set; } = "Save";
 
     [Parameter] public string? Error { get; set; }
@@ -240,9 +255,17 @@
         _seeded = true;
         _model = Person is null ? new Model() : Model.From(Person);
         _original = _model.Clone();
+
+        // The date controls own their own text from here. They emit the parsed
+        // value straight back into _model, so a carried-over date reaches the
+        // saved record without the user having to retype it.
+        _birthSeed = BirthDateSeed ?? PartialDateText.From(_model.BirthDate);
+        _deathSeed = DeathDateSeed ?? PartialDateText.From(_model.DeathDate);
     }
 
     private bool _seeded;
+    private PartialDateText _birthSeed = PartialDateText.Empty;
+    private PartialDateText _deathSeed = PartialDateText.Empty;
 
     private void Set(Action<Model> mutate)
     {

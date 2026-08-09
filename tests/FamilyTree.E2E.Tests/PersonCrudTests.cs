@@ -383,12 +383,12 @@ public class PersonCrudTests(StaticSiteFixture fixture)
         await Assertions.Expect(page.GetByTestId("tree-stats")).ToHaveTextAsync("0 people · 0 relationships");
     }
 
-    // PartialDate cannot hold a year past 9999, so this one genuinely cannot be
-    // carried. Emptying the field without a word told the user it had been
-    // accepted — the same silent loss as saving it wrongly, in the other
-    // direction.
+    // No PartialDate can hold a year past 9999, which is exactly why the form is
+    // seeded with text rather than a date: the page used to have to drop this
+    // one and then apologise for it. Now it lands in the box the user corrects
+    // it in, and is judged there like any other.
     [Fact]
-    public async Task AYearTooLargeToCarryOverIsReportedRatherThanDropped()
+    public async Task AYearTooLargeForAnyDateStillReachesTheFullForm()
     {
         var page = await OpenAsync();
 
@@ -398,7 +398,132 @@ public class PersonCrudTests(StaticSiteFixture fixture)
         await page.GetByTestId("quick-birth-year").FillAsync("30000");
         await page.GetByTestId("quick-open-full").ClickAsync();
 
-        await Assertions.Expect(page.GetByTestId("form-error")).ToContainTextAsync("30000");
+        await Assertions.Expect(page.GetByTestId("input-birth-year")).ToHaveValueAsync("30000");
+        await Assertions.Expect(page.GetByTestId("error-input-birth-year")).ToBeVisibleAsync();
+    }
+
+    // The same loss one level earlier: a year too large for Int32 never parsed,
+    // so the carry-over dropped it before the query string was even built.
+    [Fact]
+    public async Task AYearTooLargeToParseStillReachesTheFullForm()
+    {
+        var page = await OpenAsync();
+
+        await page.GetByTestId("add-person-button").ClickAsync();
+        await page.GetByTestId("quick-first-name").FillAsync("Carry");
+        await page.GetByTestId("quick-last-name").FillAsync("Over");
+        await page.GetByTestId("quick-birth-year").FillAsync("99999999999");
+        await page.GetByTestId("quick-open-full").ClickAsync();
+
+        await Assertions.Expect(page.GetByTestId("input-birth-year")).ToHaveValueAsync("99999999999");
+        await Assertions.Expect(page.GetByTestId("error-input-birth-year")).ToBeVisibleAsync();
+    }
+
+    // The query parameter is bound as text, so a value that is not a number at
+    // all survives to be shown and judged rather than being silently discarded
+    // by the binder before any code runs.
+    [Fact]
+    public async Task AHandEditedYearThatIsNotANumberIsShownRatherThanDiscarded()
+    {
+        var page = await OpenAsync("people/add?first=Carry&born=abc");
+
+        await Assertions.Expect(page.GetByTestId("input-birth-year")).ToHaveValueAsync("abc");
+        await Assertions.Expect(page.GetByTestId("error-input-birth-year")).ToBeVisibleAsync();
+    }
+
+    // US-045: a full date, stored and read back at the precision it was given.
+    [Fact]
+    public async Task AFullDateIsSavedAndDisplayedAtFullPrecision()
+    {
+        var page = await OpenAsync("people/add");
+
+        await FillPersonAsync(page, "Ada", "Lovelace", "1815");
+        await page.GetByTestId("input-birth-year-month").SelectOptionAsync("12");
+        await page.GetByTestId("input-birth-year-day").FillAsync("10");
+        await page.GetByTestId("save-person").ClickAsync();
+
+        await Assertions.Expect(page.GetByTestId("profile-birth")).ToContainTextAsync("10 December 1815");
+
+        // Through IndexedDB and back, because month and day are new columns on
+        // the stored record's shape as far as this flow is concerned.
+        await page.ReloadAsync(new PageReloadOptions { WaitUntil = WaitUntilState.NetworkIdle });
+        await Assertions.Expect(page.GetByTestId("profile-birth")).ToContainTextAsync("10 December 1815");
+    }
+
+    // The precision the source actually recorded, and nothing more. A control
+    // that quietly filled in a day would be inventing information.
+    [Fact]
+    public async Task AYearAndMonthIsSavedWithoutInventingADay()
+    {
+        var page = await OpenAsync("people/add");
+
+        await FillPersonAsync(page, "Ada", "Lovelace", "1815");
+        await page.GetByTestId("input-birth-year-month").SelectOptionAsync("12");
+        await page.GetByTestId("save-person").ClickAsync();
+
+        await Assertions.Expect(page.GetByTestId("profile-birth")).ToContainTextAsync("December 1815");
+        await Assertions.Expect(page.GetByTestId("profile-birth")).Not.ToContainTextAsync("1 December");
+    }
+
+    // A day without a month is not a date — ExportedDate rejects the pairing on
+    // import — so clearing the month has to take the day with it rather than
+    // leaving a combination the app cannot store.
+    [Fact]
+    public async Task ClearingTheMonthClearsTheDayAndSavesTheYearAlone()
+    {
+        var page = await OpenAsync("people/add");
+
+        await FillPersonAsync(page, "Ada", "Lovelace", "1815");
+        await page.GetByTestId("input-birth-year-month").SelectOptionAsync("12");
+        await page.GetByTestId("input-birth-year-day").FillAsync("10");
+
+        await page.GetByTestId("input-birth-year-month").SelectOptionAsync(string.Empty);
+
+        await Assertions.Expect(page.GetByTestId("input-birth-year-day")).ToHaveValueAsync(string.Empty);
+
+        await page.GetByTestId("save-person").ClickAsync();
+        await Assertions.Expect(page.GetByTestId("profile-birth")).ToContainTextAsync("1815");
+        await Assertions.Expect(page.GetByTestId("profile-birth")).Not.ToContainTextAsync("December");
+    }
+
+    // PartialDate validates the day eagerly through DateTime.DaysInMonth and
+    // throws, and an exception reaching the Blazor renderer is a dead page with
+    // an error banner rather than a message the user can act on.
+    [Fact]
+    public async Task AnImpossibleDayIsReportedRatherThanCrashingTheApp()
+    {
+        var page = await OpenAsync("people/add");
+
+        await FillPersonAsync(page, "Ada", "Lovelace", "1815");
+        await page.GetByTestId("input-birth-year-month").SelectOptionAsync("2");
+        await page.GetByTestId("input-birth-year-day").FillAsync("31");
+
+        await Assertions.Expect(page.GetByTestId("error-input-birth-year"))
+            .ToContainTextAsync("Day must be between 1 and 28");
+        await Assertions.Expect(page.Locator("#blazor-error-ui")).ToBeHiddenAsync();
+
+        await page.GetByTestId("save-person").ClickAsync();
+        await page.GotoAsync(fixture.BaseUrl + "people", new PageGotoOptions
+        {
+            WaitUntil = WaitUntilState.NetworkIdle,
+        });
+        await Assertions.Expect(page.GetByTestId("people-empty-state")).ToBeVisibleAsync();
+    }
+
+    // US-045's display criterion at full precision, and the age's "~" prefix,
+    // which is what an approximate date is *for*.
+    [Fact]
+    public async Task AnApproximateDateIsMarkedOnBothTheDateAndTheAge()
+    {
+        var page = await OpenAsync("people/add");
+
+        await FillPersonAsync(page, "Ada", "Lovelace", "1815");
+        await page.GetByTestId("input-birth-year-approx").CheckAsync();
+        await page.GetByTestId("input-death-year").FillAsync("1852");
+        await page.GetByTestId("save-person").ClickAsync();
+
+        await Assertions.Expect(page.GetByTestId("profile-birth")).ToContainTextAsync("c. 1815");
+        await Assertions.Expect(page.GetByTestId("profile-age")).ToHaveTextAsync("~37 years");
     }
 
     // US-006: a note is research the user typed. Silently dropping its tail at
@@ -580,6 +705,24 @@ public class PersonCrudTests(StaticSiteFixture fixture)
         await page.GetByTestId("quick-first-name").FillAsync("Grace");
         await page.GetByTestId("quick-last-name").FillAsync("Hopper");
         await page.GetByTestId("quick-birth-year").FillAsync("99999999999");
+        await page.GetByTestId("quick-save").ClickAsync();
+
+        await Assertions.Expect(page.GetByTestId("quick-add-error")).ToBeVisibleAsync();
+        await Assertions.Expect(page.GetByTestId("tree-stats")).ToHaveTextAsync("0 people · 0 relationships");
+    }
+
+    // Only reachable now that the box is a text input: a number input would not
+    // have accepted the keystrokes, which sounds like a guard but only meant the
+    // rule below had never been exercised from the keyboard.
+    [Fact]
+    public async Task QuickAddRejectsAYearThatIsNotANumber()
+    {
+        var page = await OpenAsync();
+
+        await page.GetByTestId("add-person-button").ClickAsync();
+        await page.GetByTestId("quick-first-name").FillAsync("Grace");
+        await page.GetByTestId("quick-last-name").FillAsync("Hopper");
+        await page.GetByTestId("quick-birth-year").FillAsync("abc");
         await page.GetByTestId("quick-save").ClickAsync();
 
         await Assertions.Expect(page.GetByTestId("quick-add-error")).ToBeVisibleAsync();
