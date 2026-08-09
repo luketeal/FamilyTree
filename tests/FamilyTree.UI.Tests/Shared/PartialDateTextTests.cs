@@ -40,6 +40,30 @@ public class PartialDateTextTests
         Assert.Null(error);
     }
 
+    // A box holding only spaces is an empty box. It reported a range error
+    // instead, because the blank check read the untrimmed text while the parse
+    // trimmed — and quick add, which uses IsNullOrWhiteSpace, disagreed with
+    // this control about the same keystrokes.
+    [Fact]
+    public void TreatsAWhitespaceOnlyYearAsAnEmptyControl()
+    {
+        Assert.True(Text("   ").TryToDomain(out var date, out var error));
+        Assert.Null(date);
+        Assert.Null(error);
+    }
+
+    [Fact]
+    public void TreatsAWhitespaceOnlyDayAsNoDayRatherThanAnImpossibleOne()
+    {
+        Assert.Equal(PartialDate.FromYearMonth(1815, 12), Parse(Text("1815", "12", "  ")));
+    }
+
+    [Fact]
+    public void ReadsAYearPaddedWithSpaces()
+    {
+        Assert.Equal(1815, Parse(Text(" 1815 ")).Year);
+    }
+
     [Fact]
     public void AYearAloneIsAYearOnlyDate()
     {

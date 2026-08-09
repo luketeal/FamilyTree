@@ -14,7 +14,17 @@
         <a class="person-edit__back" href="people">Back to people</a>
     </header>
 
+    @* Keyed on the carry-over, so arriving with a different one builds a fresh
+       form rather than reusing the one on screen. Both this page and the form
+       below it seed exactly once and then let the user own the fields — which is
+       what stops a keystroke being overwritten by a re-render, and equally what
+       would silently drop a carry-over that arrived while the form was already
+       open. The popover lives in the top bar, so that is reachable from this
+       very page: open it here, type a year, choose "Open full form", and the
+       route does not change, only the query string. A new key is the difference
+       between "the same form, re-rendered" and "a different form". *@
     <PersonForm @ref="_form"
+                @key="_seedKey"
                 Person="_seed"
                 BirthDateSeed="_birthSeed"
                 DeathDateSeed="_deathSeed"
@@ -30,6 +40,7 @@
     private PersonDetailDto? _seed;
     private PartialDateText? _birthSeed;
     private PartialDateText? _deathSeed;
+    private string _seedKey = string.Empty;
     private string? _error;
     private bool _busy;
 
@@ -54,8 +65,17 @@
 
     protected override void OnParametersSet()
     {
+        // The whole query string rather than the individual values: two
+        // carry-overs that differ in any field have to be different keys, and
+        // navigating back to a bare people/add has to be a different key again
+        // or the previous person's details arrive pre-filled.
+        _seedKey = new Uri(Nav.Uri).Query;
+
         if (FirstName is null && LastName is null && BornYear is null && DiedYear is null && GenderName is null)
         {
+            _seed = null;
+            _birthSeed = null;
+            _deathSeed = null;
             return;
         }
 

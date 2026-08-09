@@ -402,6 +402,59 @@ public class PersonCrudTests(StaticSiteFixture fixture)
         await Assertions.Expect(page.GetByTestId("error-input-birth-year")).ToBeVisibleAsync();
     }
 
+    // The popover is in the top bar, so it is reachable from the full form
+    // itself — and navigating from /people/add to /people/add?... keeps the same
+    // component instance. A form that only ever seeds on its first render drops
+    // everything carried over on that path.
+    [Fact]
+    public async Task OpeningTheFullFormWhileAlreadyOnItStillCarriesOverWhatWasTyped()
+    {
+        var page = await OpenAsync("people/add");
+
+        await page.GetByTestId("add-person-button").ClickAsync();
+        await page.GetByTestId("quick-first-name").FillAsync("Grace");
+        await page.GetByTestId("quick-last-name").FillAsync("Hopper");
+        await page.GetByTestId("quick-birth-year").FillAsync("1906");
+        await page.GetByTestId("quick-open-full").ClickAsync();
+
+        await Assertions.Expect(page.GetByTestId("input-first-name")).ToHaveValueAsync("Grace");
+        await Assertions.Expect(page.GetByTestId("input-last-name")).ToHaveValueAsync("Hopper");
+        await Assertions.Expect(page.GetByTestId("input-birth-year")).ToHaveValueAsync("1906");
+    }
+
+    // The same path with a value that cannot be stored: an empty box and no
+    // error is exactly the silent loss this control exists to prevent.
+    [Fact]
+    public async Task AnUncarriableYearIsStillReportedWhenTheFullFormIsAlreadyOpen()
+    {
+        var page = await OpenAsync("people/add");
+
+        await page.GetByTestId("add-person-button").ClickAsync();
+        await page.GetByTestId("quick-first-name").FillAsync("Carry");
+        await page.GetByTestId("quick-last-name").FillAsync("Over");
+        await page.GetByTestId("quick-birth-year").FillAsync("99999999999");
+        await page.GetByTestId("quick-open-full").ClickAsync();
+
+        await Assertions.Expect(page.GetByTestId("input-birth-year")).ToHaveValueAsync("99999999999");
+        await Assertions.Expect(page.GetByTestId("error-input-birth-year")).ToBeVisibleAsync();
+    }
+
+    // Navigating back to a bare people/add must not leave the previous
+    // carry-over behind, or the form arrives pre-filled with someone else.
+    [Fact]
+    public async Task ReturningToABareAddFormDoesNotKeepTheEarlierCarryOver()
+    {
+        var page = await OpenAsync("people/add?first=Grace&last=Hopper&born=1906");
+        await Assertions.Expect(page.GetByTestId("input-first-name")).ToHaveValueAsync("Grace");
+
+        await page.GetByTestId("nav-people").ClickAsync();
+        await Assertions.Expect(page.GetByTestId("people-empty-state")).ToBeVisibleAsync();
+        await page.GetByTestId("add-first-person").ClickAsync();
+
+        await Assertions.Expect(page.GetByTestId("input-first-name")).ToHaveValueAsync(string.Empty);
+        await Assertions.Expect(page.GetByTestId("input-birth-year")).ToHaveValueAsync(string.Empty);
+    }
+
     // The same loss one level earlier: a year too large for Int32 never parsed,
     // so the carry-over dropped it before the query string was even built.
     [Fact]
