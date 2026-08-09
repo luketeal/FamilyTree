@@ -22,15 +22,24 @@ Do not add EF Core, SQLite, ASP.NET Core hosting, or a server project. They were
 
 Sessions usually start without a .NET SDK. Install it before doing anything else — you cannot build, test, or verify without one.
 
-**Preferred: the Ubuntu archive.** On Ubuntu 24.04 (noble) the SDK is packaged in `noble-updates`:
+**Preferred: the Ubuntu archive.** On Ubuntu 24.04 (noble) the SDK is packaged in `noble-updates`. Refreshing the index first is not optional — the image ships a stale one that resolves to `.deb` files already superseded in the pool, so every download fails with a 404 that reads as "the package does not exist".
+
+A plain `sudo apt-get update` does not get you there. The image carries two unrelated PPAs — `deadsnakes` and `ondrej/php` — whose repositories return 403, so the command exits non-zero even though the Ubuntu archives refreshed fine. Chained with `&&`, the install never runs.
+
+Scoping the refresh to the main sources is the fix, but it has to be scoped to the right file. `/etc/apt/sources.list` is **empty** on this image: the real entries are deb822-format in `/etc/apt/sources.list.d/ubuntu.sources`, alongside the two broken PPAs. Pointing `Dir::Etc::sourcelist` at `sources.list` therefore refreshes nothing at all, succeeds silently, and leaves you with the same 404s.
+
+Copy the one file you want into a directory of its own and refresh from that:
 
 ```bash
-sudo apt-get update          # do not skip this
+mkdir -p /tmp/aptsrc && cp /etc/apt/sources.list.d/ubuntu.sources /tmp/aptsrc/
+sudo apt-get update -o Dir::Etc::sourcelist="/dev/null" \
+                    -o Dir::Etc::sourceparts="/tmp/aptsrc" \
+                    -o APT::Get::List-Cleanup="0"
 sudo apt-get install -y dotnet-sdk-10.0
 dotnet --version             # expect 10.0.x
 ```
 
-`apt-get update` is not optional. A stale package index resolves to `.deb` files that have already been superseded in the pool, and every download fails with a 404 that looks like the package is missing.
+`apt-cache policy dotnet-sdk-10.0` tells you whether the refresh worked before you spend a download on finding out: a candidate version older than what the pool holds means the index is still stale.
 
 **Other options, if the archive is unavailable:**
 - `https://dot.net/v1/dotnet-install.sh` — the official install script. It downloads binaries from `builds.dotnet.microsoft.com`, which is **often blocked by egress policy** in sandboxed sessions. A 403 on `CONNECT` is a policy denial: report it, do not try to route around it.
