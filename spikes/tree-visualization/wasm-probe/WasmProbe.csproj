@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk.BlazorWebAssembly">
+
+  <!-- Throwaway probe for the PR 3 spike. Deliberately standalone rather than a
+       page added to FamilyTree.App: the question it answers is about the
+       interop boundary, not about the app, and a spike page in the real app
+       would outlive the spike. It is excluded from FamilyTree.slnx. -->
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>WasmProbe</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly" Version="10.0.10" />
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.DevServer" Version="10.0.10" PrivateAssets="all" />
+  </ItemGroup>
+
+  <!-- The probe renders with the same renderer the browser harness measures,
+       rather than a copy. Measuring a reimplementation would prove nothing
+       about the code the ADR recommends. The directory structure is mirrored
+       so the modules' relative imports resolve unchanged. -->
+  <Target Name="CopySpikeRenderer" BeforeTargets="BeforeBuild">
+    <ItemGroup>
+      <SpikeRoot Include="..\renderer-svg.js;..\family-graph.js;..\harness.css" />
+      <SpikeCandidate Include="..\candidates\hand.js" />
+    </ItemGroup>
+    <Copy SourceFiles="@(SpikeRoot)" DestinationFolder="wwwroot\viz\" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(SpikeCandidate)" DestinationFolder="wwwroot\viz\candidates\" SkipUnchangedFiles="true" />
+  </Target>
+
+</Project>

@@ -1,0 +1,177 @@
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+
+@*
+    Answers the one question the browser harness cannot: what does it cost to
+    get a 500-person graph from C# into the renderer under WebAssembly?
+
+    The harness builds its graph in JavaScript, so it measures layout and
+    drawing with the interop boundary removed. In the real app the graph is
+    built by a C# service from the repositories and has to cross that boundary,
+    and Blazor crosses it by serialising the argument with System.Text.Json —
+    which in WASM is running on a single thread inside an interpreted-then-JITted
+    runtime. If that marshalling costs seconds, the choice of drawing library
+    stops mattering, so it is measured first and separately.
+
+    Three routes are compared:
+      1. Passing the DTO as an object, letting Blazor serialise it.
+      2. Serialising to a JSON string in C# and passing the string.
+      3. The same as 2 but with a source-generated serialiser context, which
+         avoids reflection — the option that matters most under WASM.
+*@
+
+<div class="probe">
+    <h1>Tree visualisation — WebAssembly interop probe</h1>
+
+    @if (_results is null)
+    {
+        <p>Measuring…</p>
+    }
+    else
+    {
+        <dl>
+            <dt>graph</dt>
+            <dd>@_results.NodeCount nodes, @_results.EdgeCount edges</dd>
+            <dt>build DTO in C#</dt>
+            <dd>@Fmt(_results.BuildMs)</dd>
+            <dt>interop, object argument</dt>
+            <dd>@Fmt(_results.ObjectArgMs)</dd>
+            <dt>interop, JSON string (reflection)</dt>
+            <dd>@Fmt(_results.JsonStringMs)</dd>
+            <dt>interop, JSON string (source-generated)</dt>
+            <dd>@Fmt(_results.JsonSourceGenMs)</dd>
+            <dt>payload</dt>
+            <dd>@(_results.PayloadBytes / 1024) kB</dd>
+            <dt>layout + render in JS</dt>
+            <dd>@Fmt(_results.LayoutMs) + @Fmt(_results.RenderMs)</dd>
+        </dl>
+    }
+</div>
+
+<div id="stage" class="stage"></div>
+
+@code {
+    private IJSObjectReference? _module;
+    private ProbeResults? _results;
+
+    // Blazor's own interop serialiser is camelCase, so the hand-serialised
+    // routes have to match it or the three would not be producing the same
+    // bytes and the comparison would be meaningless.
+    private static readonly System.Text.Json.JsonSerializerOptions CamelCase = new()
+    {
+        PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase,
+    };
+
+    [Parameter]
+    public int Size { get; set; } = 500;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+
+        _module = await JS.InvokeAsync<IJSObjectReference>(
+            "import", "./viz/probe.js");
+
+        var buildWatch = System.Diagnostics.Stopwatch.StartNew();
+        var graph = SyntheticGraph.Build(Size);
+        buildWatch.Stop();
+
+        // Each route is run twice and the second reading kept. The first call
+        // through any of them pays for JIT and for System.Text.Json building
+        // its reflection-based metadata, which is a real cost but a one-off —
+        // reporting it as the steady-state number would overstate all three.
+        await _module.InvokeVoidAsync("receiveObject", graph);
+        var objectMs = await TimeAsync(() => _module.InvokeVoidAsync("receiveObject", graph).AsTask());
+
+        var reflectionJson = System.Text.Json.JsonSerializer.Serialize(graph, CamelCase);
+        await _module.InvokeVoidAsync("receiveJson", reflectionJson);
+        var jsonMs = await TimeAsync(async () =>
+        {
+            var json = System.Text.Json.JsonSerializer.Serialize(graph, CamelCase);
+            await _module.InvokeVoidAsync("receiveJson", json).AsTask();
+        });
+
+        var sourceGenJson = System.Text.Json.JsonSerializer.Serialize(
+            graph, ProbeJsonContext.Default.SyntheticGraphDto);
+        await _module.InvokeVoidAsync("receiveJson", sourceGenJson);
+        var sourceGenMs = await TimeAsync(async () =>
+        {
+            var json = System.Text.Json.JsonSerializer.Serialize(
+                graph, ProbeJsonContext.Default.SyntheticGraphDto);
+            await _module.InvokeVoidAsync("receiveJson", json).AsTask();
+        });
+
+        // Finally the whole path end to end: hand the DTO over and let the
+        // real renderer draw it, so the probe proves the modules load and run
+        // under Blazor rather than only that bytes crossed the boundary.
+        var drawn = await _module.InvokeAsync<DrawTimings>("draw", "stage", graph);
+
+        // Verifies the claim the probe's timings rest on: that this graph is
+        // the same one the browser harness measured.
+        var parity = await _module.InvokeAsync<GraphParity>("compareWithJs", graph, Size);
+
+        _results = new ProbeResults(
+            graph.Nodes.Count,
+            graph.Edges.Count,
+            buildWatch.Elapsed.TotalMilliseconds,
+            objectMs,
+            jsonMs,
+            sourceGenMs,
+            System.Text.Encoding.UTF8.GetByteCount(sourceGenJson),
+            drawn.LayoutMs,
+            drawn.RenderMs,
+            parity.Identical,
+            parity.Mismatches);
+
+        StateHasChanged();
+
+        await _module.InvokeVoidAsync("publishResults", _results);
+    }
+
+    private static async Task<double> TimeAsync(Func<Task> action)
+    {
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        await action();
+        watch.Stop();
+        return watch.Elapsed.TotalMilliseconds;
+    }
+
+    private static string Fmt(double ms) => $"{ms:F1} ms";
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_module is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await _module.DisposeAsync();
+        }
+        catch (JSDisconnectedException)
+        {
+            // The page is going away.
+        }
+    }
+
+    public sealed record DrawTimings(double LayoutMs, double RenderMs);
+
+    public sealed record GraphParity(bool Identical, IReadOnlyList<string> Mismatches);
+
+    public sealed record ProbeResults(
+        int NodeCount,
+        int EdgeCount,
+        double BuildMs,
+        double ObjectArgMs,
+        double JsonStringMs,
+        double JsonSourceGenMs,
+        int PayloadBytes,
+        double LayoutMs,
+        double RenderMs,
+        bool MatchesJsGenerator,
+        IReadOnlyList<string> GeneratorMismatches);
+}

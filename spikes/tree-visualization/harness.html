@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FamilyTree — tree visualisation spike</title>
+<link rel="stylesheet" href="harness.css">
+</head>
+<body>
+<div class="stage" id="stage"></div>
+
+<div class="hud">
+    <h1 id="hud-label">loading…</h1>
+    <dl>
+        <dt>nodes</dt><dd id="hud-nodes">—</dd>
+        <dt>edges</dt><dd id="hud-edges">—</dd>
+        <dt>layout</dt><dd id="hud-layout">—</dd>
+        <dt>render</dt><dd id="hud-render">—</dd>
+        <dt>DOM nodes</dt><dd id="hud-dom">—</dd>
+    </dl>
+</div>
+
+<div class="legend">
+    <ul>
+        <li><svg width="34" height="8"><line x1="0" y1="4" x2="34" y2="4" class="ft-edge ft-edge--biological"/></svg> Biological</li>
+        <li><svg width="34" height="8"><line x1="0" y1="4" x2="34" y2="4" class="ft-edge ft-edge--adoptive"/></svg> Adoptive (A)</li>
+        <li><svg width="34" height="8"><line x1="0" y1="4" x2="34" y2="4" class="ft-edge ft-edge--marriage"/></svg> Marriage</li>
+        <li><svg width="34" height="8"><line x1="0" y1="4" x2="34" y2="4" class="ft-edge ft-edge--marriage-ended"/></svg> Marriage ended</li>
+        <li><svg width="34" height="8"><line x1="0" y1="4" x2="34" y2="4" class="ft-edge ft-edge--stepparent"/></svg> Stepparent</li>
+    </ul>
+</div>
+
+<script type="module">
+import { buildFamilyGraph } from './family-graph.js';
+
+const params = new URLSearchParams(location.search);
+const candidateId = params.get('candidate') ?? 'hand';
+const size = Number(params.get('size') ?? 500);
+const wantMinimap = params.get('minimap') !== '0';
+
+const modules = {
+    hand: () => import('./candidates/hand.js'),
+    dagre: () => import('./candidates/dagre.js'),
+    d3dag: () => import('./candidates/d3dag.js'),
+    cytoscape: () => import('./candidates/cytoscape.js'),
+};
+
+const stage = document.getElementById('stage');
+const graph = buildFamilyGraph(size);
+
+const loader = modules[candidateId];
+if (!loader) {
+    document.getElementById('hud-label').textContent = `unknown candidate: ${candidateId}`;
+    throw new Error(`unknown candidate: ${candidateId}`);
+}
+
+const mod = await loader();
+const api = await mod.mount(stage, graph, { minimap: wantMinimap });
+
+document.getElementById('hud-label').textContent = mod.meta.label;
+document.getElementById('hud-nodes').textContent = String(graph.stats.nodes);
+document.getElementById('hud-edges').textContent = String(graph.stats.edges);
+document.getElementById('hud-layout').textContent = `${api.timings.layoutMs.toFixed(1)} ms`;
+document.getElementById('hud-render').textContent = `${api.timings.renderMs.toFixed(1)} ms`;
+document.getElementById('hud-dom').textContent = String(stage.querySelectorAll('*').length);
+
+// The measurement driver reaches in through these rather than synthesising
+// input events, so a slow candidate cannot be flattered by event coalescing.
+window.__spike = {
+    api,
+    graph,
+    meta: mod.meta,
+    domNodes: () => stage.querySelectorAll('*').length,
+    // The area the layout spreads the graph over. Two candidates sharing a
+    // renderer can still differ in frame time if one of them produces a canvas
+    // several times larger, so this has to be recorded alongside the timings
+    // rather than inferred from them.
+    extent: () => {
+        const b = api.bounds;
+        const width = b.width ?? (b.x2 - b.x1);
+        const height = b.height ?? (b.y2 - b.y1);
+        return { width: Math.round(width), height: Math.round(height) };
+    },
+};
+window.__spikeReady = true;
+</script>
+</body>
+</html>
