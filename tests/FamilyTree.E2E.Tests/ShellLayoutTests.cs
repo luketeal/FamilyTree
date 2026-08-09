@@ -592,6 +592,50 @@ public class ShellLayoutTests(StaticSiteFixture fixture)
             $"The rail label \"{clipped}\" is clipped by {clippedBy}px at 390px wide.");
     }
 
+    // The date control went from one input and a checkbox to three inputs, a
+    // select and a checkbox on one line. That is the shape that overflows a
+    // phone, and the symptom is a control sticking out of its own field rather
+    // than a page that scrolls — the form column has its own bounds, so
+    // Shell_DoesNotScroll would not see it.
+    //
+    // Measured against the field the control sits in rather than a pixel budget,
+    // so the assertion stays true whatever the form's column widths become.
+    [Theory]
+    [InlineData(390)]
+    [InlineData(768)]
+    [InlineData(1440)]
+    public async Task DateControlsStayInsideTheirOwnField(int width)
+    {
+        var page = await OpenAsync(width, 844, "people/add");
+        await Assertions.Expect(page.GetByTestId("input-birth-year")).ToBeVisibleAsync();
+
+        var measured = await page.EvaluateAsync<string>(@"() => {
+            let worst = 0, offender = 'none', counted = 0;
+            for (const field of document.querySelectorAll('.pdate')) {
+                const bounds = field.getBoundingClientRect();
+                for (const el of field.querySelectorAll('.input, .pdate__circa')) {
+                    counted++;
+                    const rect = el.getBoundingClientRect();
+                    const over = Math.max(rect.right - bounds.right, bounds.left - rect.left);
+                    if (over > worst) {
+                        worst = over;
+                        offender = el.className + ' by ' + Math.round(over) + 'px';
+                    }
+                }
+            }
+            return JSON.stringify({ overflowBy: worst, offender, counted });
+        }");
+
+        using var result = JsonDocument.Parse(measured);
+        var overflowBy = result.RootElement.GetProperty("overflowBy").GetDouble();
+
+        Assert.True(result.RootElement.GetProperty("counted").GetInt32() >= 8,
+            "Fewer controls than the two date fields have, so this measured the wrong thing.");
+        Assert.True(overflowBy <= 0.5,
+            $"A date control sticks out of its field at {width}x844: "
+            + $"{result.RootElement.GetProperty("offender").GetString()}");
+    }
+
     // The reminder must be sized by its own content. It sits in its own grid
     // row, and if that row is the flexible one the reminder becomes whatever is
     // left of the viewport after the page below it — 306px of amber on Settings,

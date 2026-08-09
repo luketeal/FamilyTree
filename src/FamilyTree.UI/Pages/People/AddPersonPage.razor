@@ -14,8 +14,20 @@
         <a class="person-edit__back" href="people">Back to people</a>
     </header>
 
+    @* Keyed on the carry-over, so arriving with a different one builds a fresh
+       form rather than reusing the one on screen. Both this page and the form
+       below it seed exactly once and then let the user own the fields — which is
+       what stops a keystroke being overwritten by a re-render, and equally what
+       would silently drop a carry-over that arrived while the form was already
+       open. The popover lives in the top bar, so that is reachable from this
+       very page: open it here, type a year, choose "Open full form", and the
+       route does not change, only the query string. A new key is the difference
+       between "the same form, re-rendered" and "a different form". *@
     <PersonForm @ref="_form"
+                @key="_seedKey"
                 Person="_seed"
+                BirthDateSeed="_birthSeed"
+                DeathDateSeed="_deathSeed"
                 SubmitLabel="Save person"
                 Error="@_error"
                 Busy="_busy"
@@ -26,6 +38,9 @@
 @code {
     private PersonForm? _form;
     private PersonDetailDto? _seed;
+    private PartialDateText? _birthSeed;
+    private PartialDateText? _deathSeed;
+    private string _seedKey = string.Empty;
     private string? _error;
     private bool _busy;
 
@@ -35,71 +50,57 @@
 
     [SupplyParameterFromQuery(Name = "last")] private string? LastName { get; set; }
 
-    [SupplyParameterFromQuery(Name = "born")] private int? BornYear { get; set; }
+    /// <summary>
+    /// Deliberately a string rather than an <c>int?</c>. Blazor binds a query
+    /// value it cannot parse as null, so <c>?born=abc</c> was discarded here —
+    /// one level before anything could report it — which is the same class of
+    /// loss as an out-of-range year: a type that cannot express "typed something
+    /// invalid" leaves the caller nothing to carry.
+    /// </summary>
+    [SupplyParameterFromQuery(Name = "born")] private string? BornYear { get; set; }
 
-    [SupplyParameterFromQuery(Name = "died")] private int? DiedYear { get; set; }
+    [SupplyParameterFromQuery(Name = "died")] private string? DiedYear { get; set; }
 
     [SupplyParameterFromQuery(Name = "gender")] private string? GenderName { get; set; }
 
     protected override void OnParametersSet()
     {
+        // The whole query string rather than the individual values: two
+        // carry-overs that differ in any field have to be different keys, and
+        // navigating back to a bare people/add has to be a different key again
+        // or the previous person's details arrive pre-filled.
+        _seedKey = new Uri(Nav.Uri).Query;
+
         if (FirstName is null && LastName is null && BornYear is null && DiedYear is null && GenderName is null)
         {
+            _seed = null;
+            _birthSeed = null;
+            _deathSeed = null;
             return;
         }
 
         // A DTO purely to seed the form. Nothing is stored until the user saves,
-        // so the id is a throwaway.
+        // so the id is a throwaway. The dates are deliberately absent from it:
+        // they travel as raw text instead, because a PartialDate cannot hold a
+        // year the user typed but the type will not accept, and this page used
+        // to have to drop such a year and then apologise for it. Now it lands in
+        // the box, where the control judges it and the user can correct it.
         _seed = new PersonDetailDto(
-            Guid.Empty,
-            FirstName ?? string.Empty,
-            LastName ?? string.Empty,
-            null,
-            SafeYear(BornYear),
-            null,
-            SafeYear(DiedYear),
-            null,
-            Enum.TryParse<Gender>(GenderName, out var gender) ? gender : Gender.Unknown,
-            null,
-            null,
-            false);
+            Id: Guid.Empty,
+            FirstName: FirstName ?? string.Empty,
+            LastName: LastName ?? string.Empty,
+            BirthSurname: null,
+            BirthDate: null,
+            BirthPlace: null,
+            DeathDate: null,
+            DeathPlace: null,
+            Gender: Enum.TryParse<Gender>(GenderName, out var gender) ? gender : Gender.Unknown,
+            PhotoPath: null,
+            Notes: null,
+            IsPhantom: false);
 
-        _error = UnrepresentableYearMessage();
-    }
-
-    /// <summary>
-    /// Guards only what <see cref="PartialDate"/> can physically hold, so a
-    /// hand-edited query string cannot throw on the way into the form.
-    /// </summary>
-    /// <remarks>
-    /// This deliberately no longer decides whether a year is <em>acceptable</em>
-    /// — that rule lives in PartialDateInput and PersonService. It used to allow
-    /// anything up to 9999 while the rest of the app stopped at next year, so
-    /// years in the gap were seeded as valid, never judged, and saved.
-    /// </remarks>
-    private static PartialDate? SafeYear(int? year) =>
-        year is int value && value >= 1 && value <= 9999 ? PartialDate.FromYear(value) : null;
-
-    // Anything PartialDate cannot hold is gone from the field, so say so.
-    // Emptying the box silently told the user the year had been accepted when it
-    // had been discarded — the same silent-loss class as saving it wrongly.
-    private string? UnrepresentableYearMessage()
-    {
-        var dropped = new List<string>(2);
-
-        if (BornYear is not null && SafeYear(BornYear) is null)
-        {
-            dropped.Add($"birth year {BornYear}");
-        }
-
-        if (DiedYear is not null && SafeYear(DiedYear) is null)
-        {
-            dropped.Add($"death year {DiedYear}");
-        }
-
-        return dropped.Count == 0
-            ? null
-            : $"Could not carry over the {string.Join(" or the ", dropped)} — a year must be between 1 and 9999.";
+        _birthSeed = PartialDateText.FromYearText(BornYear);
+        _deathSeed = PartialDateText.FromYearText(DiedYear);
     }
 
     private async Task SaveAsync(PersonService.PersonInput input)

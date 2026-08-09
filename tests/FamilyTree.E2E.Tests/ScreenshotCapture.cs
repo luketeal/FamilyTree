@@ -109,9 +109,15 @@ public class ScreenshotCapture(StaticSiteFixture fixture)
         await page.GetByTestId("input-first-name").FillAsync("Ada");
         await page.GetByTestId("input-last-name").FillAsync("Lovelace");
         await page.GetByTestId("input-birth-surname").FillAsync("Byron");
+        // Every part of the date control filled in, because four controls and a
+        // checkbox on one line is exactly the shape that wraps badly on a phone
+        // and no assertion answers "does it look like one field".
         await page.GetByTestId("input-birth-year").FillAsync("1815");
+        await page.GetByTestId("input-birth-year-month").SelectOptionAsync("12");
+        await page.GetByTestId("input-birth-year-day").FillAsync("10");
         await page.GetByTestId("input-birth-place").FillAsync("London, England");
         await page.GetByTestId("input-death-year").FillAsync("1852");
+        await page.GetByTestId("input-death-year-approx").CheckAsync();
         await page.GetByTestId("input-notes").FillAsync("Wrote the first algorithm intended for a machine.");
         await page.ScreenshotAsync(new PageScreenshotOptions
         {
@@ -143,6 +149,38 @@ public class ScreenshotCapture(StaticSiteFixture fixture)
                 FullPage = true,
             });
         }
+    }
+
+    // The date control's error state, which only exists after an interaction and
+    // is the row most likely to push a phone sideways: the message sits under
+    // four controls that have already wrapped.
+    [Theory]
+    [InlineData("desktop", 1440, 900)]
+    [InlineData("mobile", 390, 844)]
+    public async Task CaptureDateError(string name, int width, int height)
+    {
+        Directory.CreateDirectory(OutputDirectory);
+
+        var context = await fixture.Browser.NewContextAsync(new BrowserNewContextOptions
+        {
+            ViewportSize = new ViewportSize { Width = width, Height = height },
+        });
+        var page = await context.NewPageAsync();
+
+        await page.GotoAsync(fixture.BaseUrl + "people/add", new PageGotoOptions
+        {
+            WaitUntil = WaitUntilState.NetworkIdle,
+        });
+        await page.GetByTestId("input-birth-year").FillAsync("1815");
+        await page.GetByTestId("input-birth-year-month").SelectOptionAsync("2");
+        await page.GetByTestId("input-birth-year-day").FillAsync("31");
+        await Assertions.Expect(page.GetByTestId("error-input-birth-year")).ToBeVisibleAsync();
+
+        await page.ScreenshotAsync(new PageScreenshotOptions
+        {
+            Path = Path.Combine(OutputDirectory, $"date-error-{name}.png"),
+            FullPage = true,
+        });
     }
 
     // Export and Import are new page shapes — cards, a radio group, a file
