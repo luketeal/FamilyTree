@@ -13,14 +13,24 @@ export function downloadText(fileName, text, mimeType) {
     const anchor = document.createElement('a');
     anchor.href = url;
     anchor.download = fileName;
-    // Firefox ignores a click on an anchor that is not in the document.
+
+    // Two steps below exist for engines other than Chromium, which needs
+    // neither: Firefox is documented to ignore a click on a detached anchor, and
+    // Safari has not read the blob by the time click() returns, so revoking
+    // without yielding cancels the download. Both are unconditional rather than
+    // sniffed — they cost a DOM insertion and one turn of the event loop, which
+    // is less than a branch would cost to get wrong.
+    //
+    // Neither claim is verified here: this project's test container can only run
+    // Chromium. What *is* verified, in ExportImportTests, is that both steps
+    // actually happen — the anchor is in the document when clicked, and the
+    // revoke lands on a later task. Chromium passes with or without them, so
+    // without those assertions either could be deleted as dead weight and the
+    // download would break only for the people this suite cannot reach.
     anchor.style.display = 'none';
     document.body.appendChild(anchor);
     anchor.click();
     anchor.remove();
 
-    // Revoking synchronously cancels the download in Safari, which has not yet
-    // read the blob when click() returns. A turn of the event loop is enough,
-    // and leaking the object URL for that long costs nothing.
     setTimeout(() => URL.revokeObjectURL(url), 0);
 }

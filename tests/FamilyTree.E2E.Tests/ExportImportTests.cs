@@ -259,6 +259,129 @@ public class ExportImportTests(StaticSiteFixture fixture)
         await Assertions.Expect(page.GetByTestId("tree-stats")).ToHaveTextAsync(SampleStats);
     }
 
+    // ---- The two steps that exist for engines this container cannot run ----
+
+    // download.js does two things purely for Firefox and Safari: it puts the
+    // anchor in the document before clicking it, and it defers revoking the
+    // object URL by a turn of the event loop. Neither is engine-branched, so
+    // Chromium exercises the same single code path — but Chromium does not
+    // *need* either step, which means removing one leaves this suite green and
+    // silently breaks the download for everybody not on Chromium.
+    //
+    // These assertions cannot confirm Gecko or WebKit behave as documented. What
+    // they can do is make the workarounds impossible to delete quietly, which is
+    // the failure this file can actually prevent.
+    private static async Task<IPage> InstrumentedPageAsync(StaticSiteFixture fixture)
+    {
+        var context = await fixture.Browser.NewContextAsync(new BrowserNewContextOptions
+        {
+            AcceptDownloads = true,
+        });
+
+        // Init script rather than an evaluate, so the prototypes are patched
+        // before the download module is ever imported.
+        await context.AddInitScriptAsync(@"
+            window.__download = {
+                clicked: false,
+                inDocumentAtClick: null,
+                clickTurnEnded: false,
+                revokedBeforeClick: false,
+                revokedInClickTurn: false,
+                revokedAfterClick: false,
+            };
+
+            const click = HTMLAnchorElement.prototype.click;
+            HTMLAnchorElement.prototype.click = function () {
+                if (this.hasAttribute('download')) {
+                    window.__download.clicked = true;
+                    window.__download.inDocumentAtClick = document.contains(this);
+                    // Queued from inside the click's own turn, so it fires at the
+                    // start of the next task. Anything that revokes before this
+                    // has run did so without yielding, which is the thing Safari
+                    // cannot survive. Queued before the real click so it is
+                    // always ahead of any timer the caller sets afterwards.
+                    setTimeout(() => { window.__download.clickTurnEnded = true; }, 0);
+                }
+                return click.apply(this, arguments);
+            };
+
+            const revoke = URL.revokeObjectURL;
+            URL.revokeObjectURL = function (url) {
+                if (window.__download.clicked) {
+                    window.__download.revokedAfterClick = true;
+                    if (!window.__download.clickTurnEnded) {
+                        window.__download.revokedInClickTurn = true;
+                    }
+                } else {
+                    window.__download.revokedBeforeClick = true;
+                }
+                return revoke.apply(this, arguments);
+            };
+        ");
+
+        return await context.NewPageAsync();
+    }
+
+    [Fact]
+    public async Task TheDownloadAnchorIsInTheDocumentWhenItIsClicked()
+    {
+        var page = await InstrumentedPageAsync(fixture);
+        await page.GotoAsync(fixture.BaseUrl + "settings",
+            new PageGotoOptions { WaitUntil = WaitUntilState.NetworkIdle });
+        await LoadSampleAsync(page);
+        await DownloadAsync(page);
+
+        var clicked = await page.EvaluateAsync<bool>("() => window.__download.clicked");
+        var inDocument = await page.EvaluateAsync<bool?>("() => window.__download.inDocumentAtClick");
+
+        Assert.True(clicked, "No download anchor was clicked, so the probe did not observe the export.");
+        Assert.True(inDocument,
+            "The download anchor was clicked while detached from the document. Chromium tolerates "
+            + "that; Firefox is documented not to, so the appendChild in download.js is load-bearing "
+            + "for users this suite cannot reach.");
+    }
+
+    [Fact]
+    public async Task TheObjectUrlOutlivesTheClickThatUsesIt()
+    {
+        var page = await InstrumentedPageAsync(fixture);
+        await page.GotoAsync(fixture.BaseUrl + "settings",
+            new PageGotoOptions { WaitUntil = WaitUntilState.NetworkIdle });
+        await LoadSampleAsync(page);
+        await DownloadAsync(page);
+
+        // Asserted as "not in the same task as the click" rather than "not before
+        // the click". A synchronous revoke happens after click() returns and so
+        // passes the weaker check, while still being exactly the bug: Safari has
+        // not read the blob by then, and revoking without yielding cancels the
+        // download.
+        var revokedInClickTurn = await page.EvaluateAsync<bool>(
+            "() => window.__download.revokedInClickTurn");
+        var revokedBefore = await page.EvaluateAsync<bool>(
+            "() => window.__download.revokedBeforeClick");
+
+        Assert.False(revokedBefore, "The object URL was revoked before the anchor was clicked.");
+        Assert.False(revokedInClickTurn,
+            "The object URL was revoked in the same task as the click, without yielding. Chromium "
+            + "tolerates that; Safari has not read the blob yet and cancels the download — which is "
+            + "why download.js defers the revoke by a turn of the event loop.");
+    }
+
+    // The deferral must not become a leak: the URL still has to be released.
+    [Fact]
+    public async Task TheObjectUrlIsReleasedAfterTheDownload()
+    {
+        var page = await InstrumentedPageAsync(fixture);
+        await page.GotoAsync(fixture.BaseUrl + "settings",
+            new PageGotoOptions { WaitUntil = WaitUntilState.NetworkIdle });
+        await LoadSampleAsync(page);
+        await DownloadAsync(page);
+
+        // Polled rather than read once: the revoke is deliberately on a later
+        // turn of the event loop, so a single read can race it.
+        await page.WaitForFunctionAsync("() => window.__download.revokedAfterClick === true");
+    }
+
     // ---- Refusing what cannot be read ----
 
     [Fact]
