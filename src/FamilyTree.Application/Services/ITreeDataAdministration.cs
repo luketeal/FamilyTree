@@ -1,3 +1,5 @@
+using FamilyTree.Application.Common;
+
 namespace FamilyTree.Application.Services;
 
 public sealed record StorageDurability(bool Supported, bool Persistent);
@@ -17,6 +19,19 @@ public interface ITreeDataAdministration
 {
     /// <summary>Replaces the entire tree with the demonstration family.</summary>
     Task LoadSampleFamilyAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// Replaces the entire tree with the given records, atomically.
+    /// </summary>
+    /// <remarks>
+    /// Import's write path. It is one call rather than four repository writes
+    /// for the reason this interface exists: a sequence can half-apply, and a
+    /// half-applied restore leaves relationships pointing at people who were
+    /// never written — which looks like corruption rather than a failed import.
+    /// Over a future HTTP-backed implementation it is also one request instead
+    /// of four that can each fail separately.
+    /// </remarks>
+    Task ReplaceAllAsync(TreeSnapshot snapshot, CancellationToken ct = default);
 
     /// <summary>Removes everything.</summary>
     Task ClearAsync(CancellationToken ct = default);

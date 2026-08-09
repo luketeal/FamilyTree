@@ -37,7 +37,9 @@
     display: grid;
     grid-template-columns: minmax(0, 140px) minmax(0, 1fr);
     gap: 8px 16px;
-    margin: 0;
+    /* Bottom margin so the buttons that follow are not touching the last value.
+       The facts list used to be the last thing in this card. */
+    margin: 0 0 16px;
     font-size: 13px;
 }
 

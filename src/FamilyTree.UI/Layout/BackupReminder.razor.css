@@ -1,0 +1,58 @@
+.reminder {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 16px;
+    background: var(--warn-bg);
+    border-bottom: 1px solid var(--warn);
+    color: var(--warn);
+    /* The shell is a grid whose content row is sized 1fr; without this the
+       banner is free to grow and take the height from the page beneath it. */
+    min-width: 0;
+}
+
+.reminder__icon {
+    flex: none;
+}
+
+.reminder__text {
+    margin: 0;
+    /* minmax(0) equivalent for a flex item: the default min-width is the
+       content's minimum, so a long sentence would push the row wider than the
+       viewport instead of wrapping. */
+    min-width: 0;
+    flex: 1 1 auto;
+    font-size: 12px;
+    line-height: 1.4;
+    color: var(--ink2);
+}
+
+.reminder__action,
+.reminder__dismiss {
+    flex: none;
+    height: 28px;
+}
+
+@media (max-width: 768px) {
+    .reminder {
+        /* Three items across cannot hold a sentence at 390px, so the text takes
+           a row of its own and the controls sit beneath it. */
+        flex-wrap: wrap;
+        padding: 8px 12px;
+        row-gap: 8px;
+    }
+
+    /* Decorative, and the only thing that would otherwise sit alone on the
+       first row once the text wraps to full width. */
+    .reminder__icon {
+        display: none;
+    }
+
+    .reminder__text {
+        flex: 1 1 100%;
+    }
+
+    .reminder__action {
+        margin-left: auto;
+    }
+}

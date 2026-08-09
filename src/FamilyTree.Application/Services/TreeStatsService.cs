@@ -29,18 +29,69 @@ public sealed record TreeStats(int People, int Relationships)
 /// this runs on every page load and is the first thing to notice if the seam
 /// starts issuing per-row requests.
 /// </summary>
-public sealed class TreeStatsService(
-    IPersonRepository people,
-    IBiologicalRelationshipRepository biological,
-    IAdoptiveRelationshipRepository adoptive,
-    IMarriageRepository marriages)
+/// <remarks>
+/// The result is cached between changes. Every subscriber to
+/// <see cref="TreeDataNotifier"/> asks for these counts when the tree changes,
+/// and each ask is a complete read of all four stores — free against IndexedDB,
+/// four HTTP round trips per listener once the seam is swapped. A third
+/// component now listens (the backup reminder, alongside the top bar and
+/// Settings), which would make one save cost twelve requests: exactly the
+/// pattern this class's own docstring existed to watch for.
+///
+/// The cache is dropped by the notifier <em>before</em> it dispatches, rather
+/// than by a subscriber of its own. Subscribers are awaited together, so a
+/// clearing handler racing the reading handlers would sometimes hand a listener
+/// the counts from before the change.
+/// </remarks>
+public sealed class TreeStatsService
 {
-    public async Task<Result<TreeStats>> GetAsync(CancellationToken ct = default)
+    private readonly IPersonRepository _people;
+    private readonly IBiologicalRelationshipRepository _biological;
+    private readonly IAdoptiveRelationshipRepository _adoptive;
+    private readonly IMarriageRepository _marriages;
+
+    private TreeStats? _cached;
+
+    public TreeStatsService(
+        IPersonRepository people,
+        IBiologicalRelationshipRepository biological,
+        IAdoptiveRelationshipRepository adoptive,
+        IMarriageRepository marriages,
+        TreeDataNotifier notifier)
     {
-        var allPeople = await people.GetAllAsync(ct);
-        var bio = await biological.GetAllAsync(ct);
-        var adopt = await adoptive.GetAllAsync(ct);
-        var married = await marriages.GetAllAsync(ct);
+        _people = people;
+        _biological = biological;
+        _adoptive = adoptive;
+        _marriages = marriages;
+
+        notifier.BeforeNotifying(() =>
+        {
+            _cached = null;
+            return Task.CompletedTask;
+        });
+    }
+
+    /// <summary>The current counts, served from cache when nothing has changed.</summary>
+    public async Task<Result<TreeStats>> GetAsync(CancellationToken ct = default) =>
+        _cached is { } cached
+            ? Result<TreeStats>.Success(cached)
+            : await ReadFreshAsync(ct);
+
+    /// <summary>
+    /// Reads the stores regardless of what is cached.
+    /// </summary>
+    /// <remarks>
+    /// For callers that must not act on a stale answer. Another tab on the same
+    /// origin writes to the same database without raising this app's notifier,
+    /// so a cached zero could let a destructive action skip its confirmation and
+    /// wipe work this instance never saw.
+    /// </remarks>
+    public async Task<Result<TreeStats>> ReadFreshAsync(CancellationToken ct = default)
+    {
+        var allPeople = await _people.GetAllAsync(ct);
+        var bio = await _biological.GetAllAsync(ct);
+        var adopt = await _adoptive.GetAllAsync(ct);
+        var married = await _marriages.GetAllAsync(ct);
 
         // Phantoms are placeholders for ancestors nobody has identified, so
         // counting them would overstate how much of the tree is actually known.
@@ -53,11 +104,12 @@ public sealed class TreeStatsService(
 
         var relationships = bio.Count + adopt.Count + married.Count;
 
-        return Result<TreeStats>.Success(
-            new TreeStats(realPeople, relationships)
-            {
-                StoredRecords = allPeople.Count + relationships,
-            });
+        _cached = new TreeStats(realPeople, relationships)
+        {
+            StoredRecords = allPeople.Count + relationships,
+        };
+
+        return Result<TreeStats>.Success(_cached);
     }
 }
 
@@ -67,7 +119,25 @@ public sealed class TreeStatsService(
 /// </summary>
 public sealed class TreeDataNotifier
 {
+    private readonly List<Func<Task>> _before = [];
+
     public event Func<Task>? Changed;
+
+    /// <summary>
+    /// Registers work that must finish before any subscriber is told.
+    /// </summary>
+    /// <remarks>
+    /// Two things need this: the tree-stats cache, which must be dropped before
+    /// anybody reads it, and the backup journal, whose "last changed" timestamp
+    /// the reminder reads on the very same notification. Both would be racing the
+    /// handlers that read them if they ran as ordinary <see cref="Changed"/>
+    /// subscribers, because those all run together — so half the subscribers
+    /// would redraw from the state that existed before the change.
+    ///
+    /// Awaited in registration order rather than together, since these are short
+    /// and ordering between them is easier to reason about than concurrency.
+    /// </remarks>
+    public void BeforeNotifying(Func<Task> work) => _before.Add(work);
 
     /// <summary>
     /// Awaits every subscriber, not just the last one.
@@ -81,6 +151,11 @@ public sealed class TreeDataNotifier
     /// </remarks>
     public async Task NotifyChangedAsync()
     {
+        foreach (var work in _before)
+        {
+            await work();
+        }
+
         if (Changed is null)
         {
             return;

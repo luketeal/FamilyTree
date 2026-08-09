@@ -5,6 +5,9 @@
     <IconRail />
     <div class="shell__main">
         <TopBar />
+        @* Above the content rather than inside a page, because the thing it
+           warns about is true on every page. *@
+        <BackupReminder />
         <main class="shell__content">
             @Body
         </main>

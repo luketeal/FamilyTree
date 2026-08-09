@@ -112,6 +112,33 @@ export async function clearAll(meta) {
 }
 
 /**
+ * Browser-local settings that are not part of the tree — currently only the
+ * timestamp of the last export.
+ *
+ * localStorage rather than an IndexedDB store, because these are facts about
+ * this device rather than about the family: replacing the whole dataset (a
+ * sample load, a restore) must not also rewrite when this browser last made a
+ * backup. Both calls swallow their errors: Safari in private mode throws on
+ * write, and losing the backup reminder must never cost the user the export.
+ */
+export function readSetting(key) {
+    try {
+        return localStorage.getItem(key);
+    } catch {
+        return null;
+    }
+}
+
+export function writeSetting(key, value) {
+    try {
+        localStorage.setItem(key, value);
+    } catch {
+        // Storage unavailable or full. The reminder degrades to "never
+        // exported"; the export itself already happened.
+    }
+}
+
+/**
  * Asks the browser to exempt this origin from routine eviction. Without it the
  * tree is "best effort" storage and can be discarded under pressure — which for
  * a genealogy record is data loss, not a cache miss.

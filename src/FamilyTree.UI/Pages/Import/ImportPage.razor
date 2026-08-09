@@ -1,0 +1,356 @@
+@page "/import"
+@inject ImportService Import
+@inject TreeStatsService Stats
+@inject TreeDataNotifier Notifier
+@inject ToastService Toasts
+
+<PageTitle>Import — FamilyTree</PageTitle>
+
+<section class="data-page">
+    <header class="data-page__header">
+        <h1>Import</h1>
+        <p class="data-page__lede">
+            Restore a tree from a file you exported earlier, or bring one across
+            from another browser. Nothing is written until you choose what should
+            happen to the records already here.
+        </p>
+    </header>
+
+    <div class="data-card">
+        <h2>Choose a file</h2>
+
+        <label class="data-file">
+            <InputFile OnChange="OnFileChosenAsync" accept=".json,application/json"
+                       class="data-file__input" data-testid="import-file" />
+        </label>
+
+        <ErrorAlert Message="@_error" TestId="import-error" />
+    </div>
+
+    @if (_preview is { } preview)
+    {
+        <div class="data-card" data-testid="import-preview">
+            <h2>What is in this file</h2>
+
+            <dl class="data-facts">
+                <dt>Written</dt>
+                <dd data-testid="import-preview-exported">@DescribeExportedAt(preview)</dd>
+
+                <dt>Format</dt>
+                <dd>version @preview.SchemaVersion</dd>
+
+                <dt>Contains</dt>
+                <dd data-testid="import-preview-counts">
+                    @Describe(preview.People, "person", "people") ·
+                    @Describe(preview.Relationships, "relationship", "relationships")
+                </dd>
+            </dl>
+
+            @if (preview.Warnings.Count > 0)
+            {
+                <div class="data-warnings" data-testid="import-warnings">
+                    <p class="data-warnings__headline">
+                        @Describe(preview.RecordsRejected, "record", "records") in this file could not be read:
+                    </p>
+                    <ul>
+                        @foreach (var warning in preview.Warnings)
+                        {
+                            <li>@warning</li>
+                        }
+                    </ul>
+                </div>
+            }
+        </div>
+
+        <div class="data-card">
+            <h2>What to do with what is already here</h2>
+            <p class="data-page__lede">
+                This browser currently holds @_stats.
+            </p>
+
+            <fieldset class="data-choices">
+                <legend class="visually-hidden">Conflict handling</legend>
+
+                @foreach (var option in Options)
+                {
+                    <label class="data-choice" data-testid="@($"resolution-{option.Value.ToString().ToLowerInvariant()}")">
+                        <input type="radio" name="resolution" value="@option.Value"
+                               checked="@(_resolution == option.Value)"
+                               @onchange="() => Choose(option.Value)" />
+                        <span class="data-choice__body">
+                            <span class="data-choice__title">@option.Title</span>
+                            <span class="data-choice__detail">@option.Detail</span>
+                        </span>
+                    </label>
+                }
+            </fieldset>
+
+            <div class="data-card__actions">
+                <button type="button" class="btn @(IsDestructive ? "btn--destructive" : "btn--primary")"
+                        data-testid="import-run" disabled="@_busy" @onclick="RequestAsync">
+                    @(_busy ? "Importing…" : "Import")
+                </button>
+            </div>
+
+            @if (_confirming)
+            {
+                @* Same shape as the Settings confirmation, and for the same
+                   reason: replacing the tree is not undoable, so the prompt names
+                   what is about to be destroyed rather than asking "are you sure".
+                   tabindex lets the panel take focus so a screen reader announces
+                   it; Escape cancels, as a dialog should. *@
+                <div class="data-confirm" role="alertdialog" aria-labelledby="import-confirm-title"
+                     data-testid="import-confirm" tabindex="-1" @ref="_confirmPanel"
+                     @onkeydown="OnConfirmKeyDown">
+                    <p id="import-confirm-title" class="data-confirm__text" data-testid="import-confirm-text">
+                        @ConfirmPrompt
+                    </p>
+                    <div class="data-card__actions">
+                        <button type="button" class="btn btn--destructive" data-testid="import-confirm-run"
+                                disabled="@_busy" @onclick="RunAsync">
+                            Replace my tree
+                        </button>
+                        <button type="button" class="btn btn--secondary" data-testid="import-confirm-cancel"
+                                disabled="@_busy" @onclick="CancelConfirm">
+                            Cancel
+                        </button>
+                        <a class="btn btn--secondary" href="export" data-testid="import-confirm-export">
+                            Export first
+                        </a>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+
+    @if (_result is { } result)
+    {
+        <div class="data-card" role="status" data-testid="import-result">
+            <h2>Imported</h2>
+            <p class="data-report__headline" data-testid="import-result-summary">@result.Describe()</p>
+
+            <dl class="data-facts">
+                <dt>People</dt>
+                <dd data-testid="import-result-people">
+                    @result.PeopleAdded added · @result.PeopleUpdated updated ·
+                    @result.PeopleSkipped left alone · @result.PeopleRemoved removed
+                </dd>
+
+                <dt>Relationships</dt>
+                <dd data-testid="import-result-relationships">
+                    @result.RelationshipsAdded added · @result.RelationshipsUpdated updated ·
+                    @result.RelationshipsSkipped left alone · @result.RelationshipsRemoved removed
+                </dd>
+            </dl>
+
+            @if (result.Warnings.Count > 0)
+            {
+                <div class="data-warnings" data-testid="import-result-warnings">
+                    <p class="data-warnings__headline">Records that were not imported:</p>
+                    <ul>
+                        @foreach (var warning in result.Warnings)
+                        {
+                            <li>@warning</li>
+                        }
+                    </ul>
+                </div>
+            }
+
+            <div class="data-card__actions">
+                <a class="btn btn--primary" href="people" data-testid="import-to-people">See the people</a>
+            </div>
+        </div>
+    }
+</section>
+
+@code {
+    /// <summary>
+    /// 64 MB. A tree big enough to exceed this is one somebody would notice
+    /// truncating, and the cap is what stops a mis-picked video file from being
+    /// read into WebAssembly memory in its entirety.
+    /// </summary>
+    private const long MaxFileBytes = 64L * 1024 * 1024;
+
+    private sealed record Option(ImportConflictResolution Value, string Title, string Detail);
+
+    private static readonly Option[] Options =
+    [
+        new(ImportConflictResolution.Skip, "Keep what is here",
+            "Adds only records this tree does not already have. Nothing already stored is changed or removed."),
+        new(ImportConflictResolution.Merge, "Let the file win",
+            "Adds new records, and replaces the details of any record the file also has. Nothing is removed."),
+        new(ImportConflictResolution.Overwrite, "Replace everything",
+            "Discards this tree entirely and restores the file in its place. Use this to restore a backup."),
+    ];
+
+    private string? _json;
+    private ImportPreviewDto? _preview;
+    private ImportResultDto? _result;
+    private ImportConflictResolution _resolution = ImportConflictResolution.Skip;
+    private TreeStats _stats = TreeStats.Empty;
+    private string? _error;
+    private bool _busy;
+    private bool _confirming;
+    private ElementReference _confirmPanel;
+    private bool _focusConfirm;
+
+    private bool IsDestructive => _resolution == ImportConflictResolution.Overwrite;
+
+    // Built here rather than interleaved with markup: a count and its noun split
+    // across two Razor expressions are separated by whatever whitespace the
+    // source happened to have, which is not something a sentence should depend on.
+    private string ConfirmPrompt =>
+        $"Replacing this tree permanently deletes the {Describe(_stats.People, "person", "people")} "
+        + $"and {Describe(_stats.Relationships, "relationship", "relationships")} in this browser. "
+        + "There is no undo. Export a backup first if you have not.";
+
+    protected override async Task OnInitializedAsync() => await RefreshStatsAsync();
+
+    private async Task OnFileChosenAsync(InputFileChangeEventArgs args)
+    {
+        _error = null;
+        _preview = null;
+        _result = null;
+        _confirming = false;
+        _json = null;
+
+        var file = args.File;
+
+        if (file.Size > MaxFileBytes)
+        {
+            _error = FileSizeMessage.TooLarge(file.Size, MaxFileBytes);
+            return;
+        }
+
+        try
+        {
+            using var stream = file.OpenReadStream(MaxFileBytes);
+            using var reader = new StreamReader(stream);
+            _json = await reader.ReadToEndAsync();
+        }
+        catch (Exception ex) when (ex is IOException or JSException)
+        {
+            _error = $"That file could not be read: {ex.Message}";
+            return;
+        }
+
+        var preview = Import.Preview(_json);
+        if (!preview.IsSuccess)
+        {
+            _error = preview.Error;
+            _json = null;
+            return;
+        }
+
+        _preview = preview.Value;
+        await RefreshStatsAsync();
+    }
+
+    private void Choose(ImportConflictResolution resolution)
+    {
+        _resolution = resolution;
+        // A choice made after the prompt appeared invalidates the prompt: the
+        // panel names what "Replace everything" would delete, and it must not
+        // stay on screen once the user has moved to an option that deletes
+        // nothing.
+        _confirming = false;
+    }
+
+    // Confirmation is only worth the friction when there is something to lose,
+    // and only Overwrite can lose it.
+    private async Task RequestAsync()
+    {
+        // Re-read rather than trusting the counts this page loaded with. Another
+        // tab on the same origin writes to the same database, so a cached zero
+        // would skip the confirmation and replace work this page never saw.
+        await RefreshStatsAsync(fresh: true);
+
+        if (!IsDestructive || _stats.IsEmpty)
+        {
+            await RunAsync();
+            return;
+        }
+
+        _confirming = true;
+        _focusConfirm = true;
+    }
+
+    private void CancelConfirm()
+    {
+        _confirming = false;
+        _error = null;
+    }
+
+    private void OnConfirmKeyDown(KeyboardEventArgs args)
+    {
+        if (args.Key == "Escape")
+        {
+            CancelConfirm();
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_focusConfirm && _confirming)
+        {
+            _focusConfirm = false;
+            await _confirmPanel.FocusAsync();
+        }
+    }
+
+    private async Task RunAsync()
+    {
+        if (_json is null)
+        {
+            return;
+        }
+
+        _busy = true;
+        _confirming = false;
+
+        try
+        {
+            var result = await Import.ImportAsync(_json, _resolution);
+            if (!result.IsSuccess)
+            {
+                _error = result.Error;
+                return;
+            }
+
+            _result = result.Value;
+            _error = null;
+
+            // The file has been consumed. Leaving the preview and its Import
+            // button on screen would invite a second press, which under
+            // "Replace everything" is a second confirmation prompt for a tree
+            // that is already the file's.
+            _preview = null;
+            _json = null;
+
+            await RefreshStatsAsync(fresh: true);
+            await Notifier.NotifyChangedAsync();
+            Toasts.Show($"Import finished. {_result!.Describe()}");
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task RefreshStatsAsync(bool fresh = false)
+    {
+        var stats = fresh ? await Stats.ReadFreshAsync() : await Stats.GetAsync();
+        if (stats.IsSuccess)
+        {
+            _stats = stats.Value!;
+        }
+    }
+
+    private static string DescribeExportedAt(ImportPreviewDto preview) =>
+        preview.ExportedAt is { } when
+            ? when.ToLocalTime().ToString("d MMMM yyyy")
+            : "date not recorded";
+
+    private static string Describe(int count, string singular, string plural) =>
+        $"{count} {(count == 1 ? singular : plural)}";
+}

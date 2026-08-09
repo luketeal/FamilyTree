@@ -20,6 +20,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IAdoptiveRelationshipRepository, BrowserAdoptiveRelationshipRepository>();
         services.AddScoped<IMarriageRepository, BrowserMarriageRepository>();
         services.AddScoped<ITreeDataAdministration, BrowserTreeDataAdministration>();
+        services.AddScoped<IBackupJournal, BrowserBackupJournal>();
         return services;
     }
 }
