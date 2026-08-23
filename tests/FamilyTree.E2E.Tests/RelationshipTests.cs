@@ -109,7 +109,7 @@ public class RelationshipTests(StaticSiteFixture fixture)
         await Assertions.Expect(page.GetByTestId("relationship-dialog")).ToBeVisibleAsync();
 
         await page.GetByTestId("relationship-dialog-search-query").FillAsync(personName);
-        await page.GetByTestId("relationship-dialog-results")
+        await page.GetByTestId("relationship-dialog-search-results")
             .GetByText(personName, new LocatorGetByTextOptions { Exact = false })
             .First.ClickAsync();
 
@@ -195,7 +195,7 @@ public class RelationshipTests(StaticSiteFixture fixture)
 
         await page.GetByTestId("add-biological-parent").ClickAsync();
         await page.GetByTestId("relationship-dialog-search-query").FillAsync("Arthur");
-        await page.GetByTestId("relationship-dialog-results")
+        await page.GetByTestId("relationship-dialog-search-results")
             .GetByText("Arthur Whitfield").First.ClickAsync();
         await page.GetByTestId("relationship-dialog-next").ClickAsync();
         await page.GetByTestId("relationship-dialog-save").ClickAsync();
@@ -222,7 +222,7 @@ public class RelationshipTests(StaticSiteFixture fixture)
 
         await page.GetByTestId("add-biological-parent").ClickAsync();
         await page.GetByTestId("relationship-dialog-search-query").FillAsync("Eleanor");
-        await page.GetByTestId("relationship-dialog-results")
+        await page.GetByTestId("relationship-dialog-search-results")
             .GetByText("Eleanor Hartley").First.ClickAsync();
         await page.GetByTestId("relationship-dialog-next").ClickAsync();
         await page.GetByTestId("relationship-dialog-save").ClickAsync();
@@ -300,7 +300,7 @@ public class RelationshipTests(StaticSiteFixture fixture)
 
         await page.Locator("[data-testid^='replace-parent-']").First.ClickAsync();
         await page.GetByTestId("relationship-dialog-search-query").FillAsync("Vera");
-        await page.GetByTestId("relationship-dialog-results")
+        await page.GetByTestId("relationship-dialog-search-results")
             .GetByText("Vera Whitfield").First.ClickAsync();
         await page.GetByTestId("relationship-dialog-next").ClickAsync();
 
@@ -318,7 +318,7 @@ public class RelationshipTests(StaticSiteFixture fixture)
 
         await page.Locator("[data-testid^='replace-parent-']").First.ClickAsync();
         await page.GetByTestId("relationship-dialog-search-query").FillAsync("Vera");
-        await page.GetByTestId("relationship-dialog-results")
+        await page.GetByTestId("relationship-dialog-search-results")
             .GetByText("Vera Whitfield").First.ClickAsync();
         await page.GetByTestId("relationship-dialog-next").ClickAsync();
         await page.GetByTestId("relationship-dialog-save").ClickAsync();

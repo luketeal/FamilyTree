@@ -823,7 +823,7 @@ public class ShellLayoutTests(StaticSiteFixture fixture)
     {
         var page = await OpenTheRelationshipWizardAsync(390);
 
-        await page.GetByTestId("relationship-dialog-results")
+        await page.GetByTestId("relationship-dialog-search-results")
             .GetByText("Vera Whitfield").First.ClickAsync();
         await page.GetByTestId("relationship-dialog-next").ClickAsync();
 

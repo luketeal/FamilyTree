@@ -419,7 +419,7 @@ public class ScreenshotCapture(StaticSiteFixture fixture)
         });
 
         await page.GetByTestId("relationship-dialog-search-create-cancel").ClickAsync();
-        await page.GetByTestId("relationship-dialog-results")
+        await page.GetByTestId("relationship-dialog-search-results")
             .GetByText("Vera Whitfield").First.ClickAsync();
         await page.GetByTestId("relationship-dialog-next").ClickAsync();
         await Assertions.Expect(page.GetByTestId("relationship-dialog-summary")).ToBeVisibleAsync();

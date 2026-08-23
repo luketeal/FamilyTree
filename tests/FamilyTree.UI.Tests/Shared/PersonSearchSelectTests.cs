@@ -214,6 +214,28 @@ public class PersonSearchSelectTests : ShellTestContext
         Assert.Equal("Lovelace", cut.Find("[data-testid='person-search-create-last']").GetAttribute("value"));
     }
 
+    // The regression that reached CI. "Create new person" is clicked precisely
+    // when somebody already knows the name is not in the list, so it is clicked
+    // straight after typing — while the debounce is still pending. Reading the
+    // debounced text rather than the typed text gave them empty boxes and an
+    // error demanding the name they had just entered.
+    //
+    // The debounce is deliberately longer than the test could ever wait out: the
+    // point is that the click lands mid-debounce, which is the ordinary case in
+    // a browser and the one the zero-debounce test above cannot reach.
+    [Fact]
+    public void CarriesTheSearchTextEvenWhenCreateIsClickedBeforeTheDebounceLands()
+    {
+        GivenRoster();
+        var cut = RenderSelect(debounce: 10_000);
+
+        cut.Find("[data-testid='person-search-query']").Input("Ada Lovelace");
+        cut.Find("[data-testid='person-search-create']").Click();
+
+        Assert.Equal("Ada", cut.Find("[data-testid='person-search-create-first']").GetAttribute("value"));
+        Assert.Equal("Lovelace", cut.Find("[data-testid='person-search-create-last']").GetAttribute("value"));
+    }
+
     [Fact]
     public void RefusesToCreateSomebodyWithNoLastName()
     {
