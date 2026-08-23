@@ -132,8 +132,10 @@ public class ExportServiceTests
         Assert.Equal("Female", json.RootElement.GetProperty("people")[0].GetProperty("gender").GetString());
     }
 
+    // The rule that keeps unidentified ancestors out of lists and searches still
+    // applies to the people section — a reader of `people` sees only people.
     [Fact]
-    public async Task ExcludesPhantomPeople()
+    public async Task KeepsPhantomsOutOfThePeopleSection()
     {
         _tree.With(Ada(), Person.CreatePhantom());
 
@@ -142,10 +144,40 @@ public class ExportServiceTests
         Assert.Equal(1, json.RootElement.GetProperty("people").GetArrayLength());
     }
 
-    // A link to somebody the file does not contain is a dangling reference that
-    // import would have to reject on arrival, so it never gets written.
+    // ...but they are still in the file. Dropping them cost one relationship per
+    // unidentified ancestor on every round trip (ADR-007), which is silent loss
+    // rather than tidiness.
     [Fact]
-    public async Task ExcludesLinksThatReferenceAPhantom()
+    public async Task WritesPhantomsToTheirOwnSection()
+    {
+        var phantom = Person.CreatePhantom();
+        _tree.With(Ada(), phantom);
+
+        using var json = await ExportAsync();
+
+        var phantoms = json.RootElement.GetProperty("phantoms");
+        Assert.Equal(1, phantoms.GetArrayLength());
+        Assert.Equal(phantom.Id, phantoms[0].GetProperty("id").GetGuid());
+    }
+
+    // A phantom has no name and no dates, so its id is the whole record. Writing
+    // anything else would be inventing detail nobody recorded.
+    [Fact]
+    public async Task WritesNothingButAnIdForAPhantom()
+    {
+        _tree.With(Ada(), Person.CreatePhantom());
+
+        using var json = await ExportAsync();
+
+        var phantom = json.RootElement.GetProperty("phantoms")[0];
+        Assert.Equal(["id"], phantom.EnumerateObject().Select(p => p.Name).ToArray());
+    }
+
+    // The link that used to be dropped. It is the whole reason the section
+    // exists: a relationship to an unidentified ancestor is research, and it was
+    // vanishing between an export and its restore.
+    [Fact]
+    public async Task KeepsLinksThatReferenceAPhantom()
     {
         var ada = Ada();
         var phantom = Person.CreatePhantom();
@@ -153,13 +185,13 @@ public class ExportServiceTests
 
         using var json = await ExportAsync();
 
-        Assert.Equal(0, json.RootElement.GetProperty("biologicalLinks").GetArrayLength());
+        Assert.Equal(1, json.RootElement.GetProperty("biologicalLinks").GetArrayLength());
     }
 
-    // The exclusion is a subtraction from what the user believes they have, so
-    // it is reported rather than done quietly.
+    // Counted separately from people, so a user comparing the file with the app's
+    // own "10 people" is not left wondering which number is lying.
     [Fact]
-    public async Task ReportsWhatWasLeftOut()
+    public async Task ReportsPhantomsApartFromPeople()
     {
         var ada = Ada();
         var phantom = Person.CreatePhantom();
@@ -167,8 +199,22 @@ public class ExportServiceTests
 
         var result = await CreateService().ExportToJsonAsync();
 
-        Assert.Equal(1, result.Value!.Summary.PhantomsExcluded);
-        Assert.Equal(1, result.Value!.Summary.LinksToPhantomsExcluded);
+        Assert.Equal(1, result.Value!.Summary.People);
+        Assert.Equal(1, result.Value!.Summary.Phantoms);
+        Assert.Equal(1, result.Value!.Summary.Relationships);
+    }
+
+    // A file of nothing but empty slots restores nothing anybody can read, and
+    // saving it over a good backup would destroy the copy it replaced.
+    [Fact]
+    public async Task RefusesATreeOfNothingButPhantoms()
+    {
+        _tree.With(Person.CreatePhantom(), Person.CreatePhantom());
+
+        var result = await CreateService().ExportToJsonAsync();
+
+        Assert.False(result.IsSuccess);
+        Assert.Contains("nothing to export", result.Error);
     }
 
     [Fact]

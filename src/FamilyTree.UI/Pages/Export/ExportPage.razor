@@ -55,18 +55,17 @@
                     somewhere it is backed up for you.
                 </p>
 
-                @if (done.Summary.PhantomsExcluded > 0)
+                @if (done.Summary.Phantoms > 0)
                 {
-                    @* Named rather than silently subtracted. The rule that keeps
-                       unidentified ancestors out of lists and searches also keeps
-                       them out of the file, and a user comparing the counts would
-                       otherwise be left wondering what went missing. *@
+                    @* Named rather than left to be inferred from a count that does
+                       not add up. Placeholders are in the file but not in the
+                       people total, so somebody comparing the two numbers needs
+                       telling why. *@
                     <p class="data-report__note" data-testid="export-phantom-note">
-                        @Describe(done.Summary.PhantomsExcluded, "unidentified ancestor", "unidentified ancestors")
-                        @(done.Summary.PhantomsExcluded == 1 ? "was" : "were") left out, along with
-                        @Describe(done.Summary.LinksToPhantomsExcluded, "relationship", "relationships")
-                        involving them. Placeholders carry no details to restore, and a file cannot
-                        hold a relationship to somebody it does not contain.
+                        @Describe(done.Summary.Phantoms, "unidentified ancestor", "unidentified ancestors")
+                        @(done.Summary.Phantoms == 1 ? "is" : "are") saved too, kept separate from the
+                        people so they stay out of lists — but included, so the relationships that
+                        point at @(done.Summary.Phantoms == 1 ? "them" : "them") come back with the rest.
                     </p>
                 }
             </div>
@@ -77,9 +76,9 @@
         <h2>What is in the file</h2>
         <p class="data-page__lede">
             Indented JSON, stamped with the format version so a later release can
-            still read it. People, biological and adoptive links, and marriages —
-            everything this version of the app stores. You can open it in any text
-            editor to check it is really your tree.
+            still read it. People, unidentified ancestors, biological and adoptive
+            links, and marriages — everything this version of the app stores. You
+            can open it in any text editor to check it is really your tree.
         </p>
     </div>
 </section>

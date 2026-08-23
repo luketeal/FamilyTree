@@ -703,4 +703,209 @@ public class ShellLayoutTests(StaticSiteFixture fixture)
         Assert.True(result.RootElement.GetProperty("aboveThePage").GetBoolean(),
             "The reminder overlaps the page content.");
     }
+
+    // ---- The relationship wizard (PR 7) ----
+
+    /// <summary>
+    /// Loads the sample family and opens the wizard on Daniel's profile, which
+    /// has an empty parent slot to add into.
+    /// </summary>
+    private async Task<IPage> OpenTheRelationshipWizardAsync(int width, int height = 844)
+    {
+        var page = await OpenAsync(width, height, "settings");
+        await page.GetByTestId("load-sample").ClickAsync();
+        await Assertions.Expect(page.GetByTestId("settings-stats"))
+            .ToHaveTextAsync("10 people · 14 relationships");
+
+        await page.GotoAsync(fixture.BaseUrl + "people", new PageGotoOptions
+        {
+            WaitUntil = WaitUntilState.NetworkIdle,
+        });
+        await page.GetByText("Daniel Whitfield").First.ClickAsync();
+        await page.GetByTestId("add-biological-parent").ClickAsync();
+        await Assertions.Expect(page.GetByTestId("relationship-dialog")).ToBeVisibleAsync();
+        return page;
+    }
+
+    // A modal with a search field is the shape that breaks at 390px, and the
+    // wizard's own overflow is invisible to Shell_DoesNotScroll: that test walks
+    // page URLs, and this only exists after two clicks.
+    [Theory]
+    [InlineData(390)]
+    [InlineData(768)]
+    [InlineData(1440)]
+    public async Task TheRelationshipWizard_DoesNotScrollSideways(int width)
+    {
+        var page = await OpenTheRelationshipWizardAsync(width);
+
+        var measured = await page.EvaluateAsync<string>(@"() => {
+            const describe = el => el.tagName.toLowerCase() +
+                (el.className && typeof el.className === 'string'
+                    ? '.' + el.className.trim().split(/\s+/).join('.')
+                    : '');
+
+            let worst = null, worstBy = 0;
+            for (const el of [document.documentElement, ...document.querySelectorAll('*')]) {
+                const over = el.scrollWidth - el.clientWidth;
+                if (over > worstBy) { worstBy = over; worst = el; }
+            }
+
+            return JSON.stringify({
+                overflowBy: worstBy,
+                offender: worst ? describe(worst) : 'none',
+            });
+        }");
+
+        using var result = JsonDocument.Parse(measured);
+        var overflowBy = result.RootElement.GetProperty("overflowBy").GetDouble();
+        var offender = result.RootElement.GetProperty("offender").GetString();
+
+        Assert.True(overflowBy <= 0,
+            $"The relationship wizard scrolls sideways by {overflowBy}px at {width}px. "
+            + $"Widest offender: {offender}");
+    }
+
+    // The same 16px rule as FormControls_AreLargeEnoughToNotTriggerIosZoom, on
+    // controls that theory cannot reach because they are behind two clicks. A
+    // scoped stylesheet adds an attribute selector and so outranks the bare
+    // `select` and `input` rules in app.css — setting a size in the dialog's own
+    // CSS instead of inheriting one is how this regresses.
+    [Fact]
+    public async Task TheRelationshipWizardsControls_AreLargeEnoughToNotTriggerIosZoom()
+    {
+        var page = await OpenTheRelationshipWizardAsync(390);
+
+        // Onto the details step, where the certainty select lives — it is the
+        // control most at risk, being a `select` inside a scoped stylesheet.
+        await page.GetByTestId("relationship-dialog-search-create").ClickAsync();
+        await Assertions.Expect(page.GetByTestId("relationship-dialog-search-create-form"))
+            .ToBeVisibleAsync();
+
+        var smallest = await page.EvaluateAsync<string>(@"() => {
+            const dialog = document.querySelector('[data-testid=relationship-dialog]');
+            const controls = [...dialog.querySelectorAll('input, select, textarea')]
+                .filter(el => el.type !== 'checkbox' && el.type !== 'radio' && !el.disabled);
+
+            let worst = null, worstSize = Infinity;
+            for (const el of controls) {
+                const size = parseFloat(getComputedStyle(el).fontSize);
+                if (size < worstSize) { worstSize = size; worst = el; }
+            }
+
+            return JSON.stringify({
+                counted: controls.length,
+                size: worst ? worstSize : 0,
+                offender: worst
+                    ? `${worst.tagName.toLowerCase()}[data-testid=${worst.dataset.testid ?? worst.id ?? '?'}]`
+                    : 'none',
+            });
+        }");
+
+        using var result = JsonDocument.Parse(smallest);
+        var counted = result.RootElement.GetProperty("counted").GetInt32();
+        var size = result.RootElement.GetProperty("size").GetDouble();
+        var offender = result.RootElement.GetProperty("offender").GetString();
+
+        // Guards the assertion below against passing because it measured
+        // nothing: a selector that stopped matching would otherwise report a
+        // clean result on a dialog full of undersized controls.
+        Assert.True(counted >= 4,
+            $"Only {counted} controls were measured, so this test is not looking at the wizard.");
+        Assert.True(size >= 16,
+            $"The relationship wizard has a control at {size}px, which makes iOS Safari zoom "
+            + $"and scroll the page sideways on focus. Smallest: {offender}");
+    }
+
+    // The wizard's certainty select is the specific case the comment above
+    // warns about, checked by name rather than only as "the smallest".
+    [Fact]
+    public async Task TheCertaintySelect_InheritsItsSizeRatherThanSettingOne()
+    {
+        var page = await OpenTheRelationshipWizardAsync(390);
+
+        await page.GetByTestId("relationship-dialog-results")
+            .GetByText("Vera Whitfield").First.ClickAsync();
+        await page.GetByTestId("relationship-dialog-next").ClickAsync();
+
+        var size = await page.GetByTestId("relationship-dialog-certainty")
+            .EvaluateAsync<double>("el => parseFloat(getComputedStyle(el).fontSize)");
+
+        Assert.True(size >= 16,
+            $"The certainty select computes to {size}px at 390px. Scoped CSS outranks the bare "
+            + "`select` rule in app.css, so it must inherit its size rather than declare one.");
+    }
+
+    // A profile with parents, children and siblings is a denser page than the
+    // one the shell test walks — every row is a chip, a label and two actions.
+    [Theory]
+    [InlineData(390)]
+    [InlineData(768)]
+    [InlineData(1440)]
+    public async Task AProfileWithRelationships_DoesNotScrollSideways(int width)
+    {
+        var page = await OpenAsync(width, 844, "settings");
+        await page.GetByTestId("load-sample").ClickAsync();
+        await Assertions.Expect(page.GetByTestId("settings-stats"))
+            .ToHaveTextAsync("10 people · 14 relationships");
+
+        await page.GotoAsync(fixture.BaseUrl + "people", new PageGotoOptions
+        {
+            WaitUntil = WaitUntilState.NetworkIdle,
+        });
+        await page.GetByText("Susan Hartley").First.ClickAsync();
+        await Assertions.Expect(page.GetByTestId("siblings-list")).ToBeVisibleAsync();
+
+        var measured = await page.EvaluateAsync<string>(@"() => {
+            const describe = el => el.tagName.toLowerCase() +
+                (el.className && typeof el.className === 'string'
+                    ? '.' + el.className.trim().split(/\s+/).join('.')
+                    : '');
+
+            let worst = null, worstBy = 0;
+            for (const el of [document.documentElement, ...document.querySelectorAll('*')]) {
+                const over = el.scrollWidth - el.clientWidth;
+                if (over > worstBy) { worstBy = over; worst = el; }
+            }
+
+            return JSON.stringify({
+                overflowBy: worstBy,
+                offender: worst ? describe(worst) : 'none',
+            });
+        }");
+
+        using var result = JsonDocument.Parse(measured);
+        var overflowBy = result.RootElement.GetProperty("overflowBy").GetDouble();
+        var offender = result.RootElement.GetProperty("offender").GetString();
+
+        Assert.True(overflowBy <= 0,
+            $"A profile with relationships scrolls sideways by {overflowBy}px at {width}px. "
+            + $"Widest offender: {offender}");
+    }
+
+    // The chips carry their styling through `::deep`, without which the parent's
+    // scope attribute never reaches them and the rule silently matches nothing —
+    // the failure that has already cost this project two misdiagnoses.
+    [Fact]
+    public async Task RelationshipChips_ReceiveTheirVariantStyling()
+    {
+        var page = await OpenAsync(1440, 900, "settings");
+        await page.GetByTestId("load-sample").ClickAsync();
+        await Assertions.Expect(page.GetByTestId("settings-stats"))
+            .ToHaveTextAsync("10 people · 14 relationships");
+
+        await page.GotoAsync(fixture.BaseUrl + "people", new PageGotoOptions
+        {
+            WaitUntil = WaitUntilState.NetworkIdle,
+        });
+        await page.GetByText("Susan Hartley").First.ClickAsync();
+        await Assertions.Expect(page.GetByTestId("parents-list")).ToBeVisibleAsync();
+
+        var display = await page.Locator("[data-testid^='parent-chip-']").First
+            .EvaluateAsync<string>("el => getComputedStyle(el).display");
+        var radius = await page.Locator("[data-testid^='parent-chip-']").First
+            .EvaluateAsync<string>("el => getComputedStyle(el).borderRadius");
+
+        Assert.Equal("inline-flex", display);
+        Assert.Equal("999px", radius);
+    }
 }

@@ -95,6 +95,14 @@
     background: var(--paper);
 }
 
+.profile__relation-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
 .profile__relation h2 {
     margin: 0 0 4px;
     font-family: var(--font-ui);
@@ -126,5 +134,90 @@
 
     .profile__actions .btn {
         flex: 1;
+    }
+}
+
+/* Relationship rows. `::deep` is required for the chips: CSS isolation does not
+   stamp this component's scope attribute onto an element rendered by a child
+   component, so a bare .chip selector here would match nothing at all and fail
+   silently — which looks exactly like the stylesheet not loading. */
+.relations {
+    list-style: none;
+    margin: 6px 0 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+}
+
+.relations__row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    min-width: 0;
+}
+
+.relations ::deep .chip {
+    min-width: 0;
+}
+
+.relations__kind {
+    flex: none;
+    font-size: 11px;
+    color: var(--ink4);
+}
+
+.relations__shared {
+    font-size: 11px;
+    color: var(--ink3);
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Pushed to the end of the row on a wide screen, and allowed to wrap onto its
+   own line rather than squeezing the name when there is no room. */
+.relations__actions {
+    display: flex;
+    gap: 8px;
+    flex: none;
+    margin-left: auto;
+}
+
+.relations__action {
+    padding: 0;
+    background: transparent;
+    border: 0;
+    /* Inherited rather than set: a button otherwise falls back to the UA's own
+       control font. */
+    font: inherit;
+    font-size: 11px;
+    color: var(--ink3);
+    text-decoration: underline;
+    cursor: pointer;
+}
+
+.relations__action:hover {
+    color: var(--coral);
+}
+
+.relations__action--warn:hover {
+    color: var(--err);
+}
+
+/* A section header button sits next to an 12px heading, so the 32px shell
+   button is out of proportion here. */
+.btn--small {
+    height: 26px;
+    padding: 0 10px;
+    font-size: 12px;
+}
+
+@media (max-width: 768px) {
+    .relations__actions {
+        margin-left: 0;
     }
 }

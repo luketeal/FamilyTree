@@ -5,14 +5,20 @@ using FamilyTree.Domain.Repositories;
 
 namespace FamilyTree.Application.Services;
 
-/// <summary>What an export contained, and what it deliberately left out.</summary>
+/// <summary>What an export contained.</summary>
+/// <remarks>
+/// <see cref="People"/> counts identified people only, matching the number the
+/// app displays everywhere else. <see cref="Phantoms"/> is reported alongside
+/// rather than folded in: the placeholders are in the file — that is the point
+/// of the section — but calling them people would overstate how much of the
+/// tree is actually known.
+/// </remarks>
 public sealed record ExportSummary(
     int People,
     int Relationships,
-    int PhantomsExcluded,
-    int LinksToPhantomsExcluded)
+    int Phantoms)
 {
-    /// <summary>"10 people and 13 relationships", singular where it should be.</summary>
+    /// <summary>"10 people and 14 relationships", singular where it should be.</summary>
     public string Describe() =>
         $"{Count(People, "person", "people")} and {Count(Relationships, "relationship", "relationships")}";
 
@@ -52,30 +58,23 @@ public sealed class ExportService(
         var adopt = await adoptive.GetAllAsync(ct);
         var married = await marriages.GetAllAsync(ct);
 
-        // Phantoms are unnamed placeholders for ancestors nobody has identified,
-        // and are excluded from exports by the same rule that keeps them out of
-        // lists and search. Their links have to go with them: a link to a person
-        // the file does not contain is a dangling reference, and import would
-        // reject it on arrival. The counts are reported so this is visible to
-        // the user rather than a silent subtraction.
-        var phantomIds = allPeople.Where(p => p.IsPhantom).Select(p => p.Id).ToHashSet();
+        // Phantoms go into their own section rather than into the people list.
+        // They stay out of anything that reads `people`, which is the rule that
+        // keeps unidentified ancestors out of lists and searches, and the links
+        // that name them now have somewhere to point — so a tree comes back from
+        // its own backup the same size it went in. Excluding them outright cost
+        // one relationship per unidentified ancestor on every round trip, which
+        // is silent data loss rather than tidiness (ADR-007).
+        var phantoms = allPeople.Where(p => p.IsPhantom).ToList();
         var realPeople = allPeople.Where(p => !p.IsPhantom).ToList();
 
-        var exportableBio = bio
-            .Where(l => !phantomIds.Contains(l.ParentId) && !phantomIds.Contains(l.ChildId))
-            .ToList();
-        var exportableAdopt = adopt
-            .Where(l => !phantomIds.Contains(l.ParentId) && !phantomIds.Contains(l.ChildId))
-            .ToList();
-        var exportableMarriages = married
-            .Where(m => !phantomIds.Contains(m.Spouse1Id) && !phantomIds.Contains(m.Spouse2Id))
-            .ToList();
-
-        var relationships = exportableBio.Count + exportableAdopt.Count + exportableMarriages.Count;
+        var relationships = bio.Count + adopt.Count + married.Count;
 
         // An empty file is worse than no file: the natural thing to do with a
         // backup is save it over the last one, and a zero-record export would
-        // then destroy the copy it replaced.
+        // then destroy the copy it replaced. A tree of nothing but placeholders
+        // is still nothing anybody can restore anything from, so phantoms do not
+        // count towards having something to save.
         if (realPeople.Count == 0 && relationships == 0)
         {
             return Result<ExportPayload>.Failure(
@@ -113,7 +112,14 @@ public sealed class ExportService(
                 })
                 .ToList(),
 
-            BiologicalLinks = exportableBio
+            // Phantom ids are Guids like any other, so they sort into the same
+            // stable order and need no special handling below.
+            Phantoms = phantoms
+                .OrderBy(p => p.Id)
+                .Select(p => new ExportedPhantom { Id = p.Id })
+                .ToList(),
+
+            BiologicalLinks = bio
                 .OrderBy(l => l.Id)
                 .Select(l => new ExportedBiologicalLink
                 {
@@ -124,7 +130,7 @@ public sealed class ExportService(
                 })
                 .ToList(),
 
-            AdoptiveLinks = exportableAdopt
+            AdoptiveLinks = adopt
                 .OrderBy(l => l.Id)
                 .Select(l => new ExportedAdoptiveLink
                 {
@@ -136,7 +142,7 @@ public sealed class ExportService(
                 })
                 .ToList(),
 
-            Marriages = exportableMarriages
+            Marriages = married
                 .OrderBy(m => m.Id)
                 .Select(m => new ExportedMarriage
                 {
@@ -152,13 +158,7 @@ public sealed class ExportService(
                 .ToList(),
         };
 
-        var summary = new ExportSummary(
-            realPeople.Count,
-            relationships,
-            phantomIds.Count,
-            (bio.Count - exportableBio.Count)
-                + (adopt.Count - exportableAdopt.Count)
-                + (married.Count - exportableMarriages.Count));
+        var summary = new ExportSummary(realPeople.Count, relationships, phantoms.Count);
 
         return Result<ExportPayload>.Success(new ExportPayload(
             FileNameFor(exportedAt),

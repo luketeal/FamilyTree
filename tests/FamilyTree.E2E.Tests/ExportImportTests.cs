@@ -17,11 +17,13 @@ namespace FamilyTree.E2E.Tests;
 public class ExportImportTests(StaticSiteFixture fixture)
 {
     // The sample family holds 11 people, one of whom is an unidentified
-    // ancestor, and 14 relationships, one of which is a link to her. Exports
-    // exclude both, so a restored tree is smaller than the one exported — which
-    // is a real limitation, pinned here rather than discovered later.
+    // ancestor, and 14 relationships, one of which is a link to her. The
+    // placeholder rides in its own section of the file and the link with it, so
+    // a restored tree is the same size as the one exported. It used to come back
+    // with 13 — that gap is ADR-007's, closed in PR 7, and this is where a
+    // regression would show up first.
     private const string SampleStats = "10 people · 14 relationships";
-    private const string RestoredStats = "10 people · 13 relationships";
+    private const string RestoredStats = SampleStats;
 
     private async Task<IPage> OpenAsync(string path = "settings")
     {
@@ -99,7 +101,7 @@ public class ExportImportTests(StaticSiteFixture fixture)
         var (_, json) = await DownloadAsync(page);
 
         using var document = JsonDocument.Parse(json);
-        Assert.Equal(1, document.RootElement.GetProperty("schemaVersion").GetInt32());
+        Assert.Equal(2, document.RootElement.GetProperty("schemaVersion").GetInt32());
         Assert.Equal("FamilyTree", document.RootElement.GetProperty("application").GetString());
     }
 
@@ -114,10 +116,12 @@ public class ExportImportTests(StaticSiteFixture fixture)
         using var document = JsonDocument.Parse(json);
         var root = document.RootElement;
 
-        // 10 rather than 11: the unidentified ancestor is excluded, and so is the
-        // one biological link that names her.
+        // 10 rather than 11: the unidentified ancestor is a person nobody can
+        // name, so she is not in `people` — she is in `phantoms`, and the
+        // biological link naming her is in the file with the other eight.
         Assert.Equal(10, root.GetProperty("people").GetArrayLength());
-        Assert.Equal(8, root.GetProperty("biologicalLinks").GetArrayLength());
+        Assert.Equal(1, root.GetProperty("phantoms").GetArrayLength());
+        Assert.Equal(9, root.GetProperty("biologicalLinks").GetArrayLength());
         Assert.Equal(2, root.GetProperty("adoptiveLinks").GetArrayLength());
         Assert.Equal(3, root.GetProperty("marriages").GetArrayLength());
     }
@@ -178,6 +182,45 @@ public class ExportImportTests(StaticSiteFixture fixture)
         await page.GetByTestId("import-run").ClickAsync();
 
         await Assertions.Expect(page.GetByTestId("tree-stats")).ToHaveTextAsync(RestoredStats);
+    }
+
+    // The link that used to be lost, checked on the profile rather than in a
+    // count: Margaret's unidentified mother comes back as a recorded parent, not
+    // as a second empty slot.
+    [Fact]
+    public async Task AnUnidentifiedAncestorSurvivesTheRoundTrip()
+    {
+        var page = await OpenAsync();
+        await LoadSampleAsync(page);
+        var (_, json) = await DownloadAsync(page);
+
+        await page.GotoAsync(fixture.BaseUrl + "settings", new PageGotoOptions
+        {
+            WaitUntil = WaitUntilState.NetworkIdle,
+        });
+        await page.GetByTestId("clear-data").ClickAsync();
+        await page.GetByTestId("confirm-destructive").ClickAsync();
+        await Assertions.Expect(page.GetByTestId("settings-stats"))
+            .ToHaveTextAsync("0 people · 0 relationships");
+
+        await page.GotoAsync(fixture.BaseUrl + "import", new PageGotoOptions
+        {
+            WaitUntil = WaitUntilState.NetworkIdle,
+        });
+        await ChooseFileAsync(page, json);
+        await page.GetByTestId("import-run").ClickAsync();
+        await Assertions.Expect(page.GetByTestId("import-result")).ToBeVisibleAsync();
+
+        await page.GotoAsync(fixture.BaseUrl + "people", new PageGotoOptions
+        {
+            WaitUntil = WaitUntilState.NetworkIdle,
+        });
+        await page.GetByText("Margaret Whitfield (née Ellery)").ClickAsync();
+
+        // One recorded parent — the placeholder — and therefore one empty slot,
+        // rather than the two empty slots a lost link would leave.
+        await Assertions.Expect(page.GetByTestId("parent-unknown-slot")).ToHaveCountAsync(1);
+        await Assertions.Expect(page.GetByTestId("parents-list")).ToContainTextAsync("Unknown");
     }
 
     [Fact]

@@ -16,5 +16,15 @@ namespace FamilyTree.Application.Common;
 /// </remarks>
 public static class TreeSchema
 {
-    public const int Version = 1;
+    /// <summary>
+    /// 2 — phantoms.
+    /// </summary>
+    /// <remarks>
+    /// Version 1 files carry no <c>phantoms</c> section and no link that names
+    /// one, which is exactly what a version 1 export was: import reads them
+    /// unchanged, finds no phantoms, and behaves as it always did. The bump is
+    /// so a version 1 <em>app</em> cannot read a version 2 file and silently
+    /// discard the placeholders and their links as orphans.
+    /// </remarks>
+    public const int Version = 2;
 }
