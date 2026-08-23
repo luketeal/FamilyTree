@@ -115,7 +115,11 @@ A note on the numbers above: GitHub Pages negotiates gzip but not brotli, so gzi
 
 **Harder:**
 
-- We own the layout algorithm, including its bugs. The prototype already shows one: couple merging pairs each person with their *first* spouse only, so a remarriage leaves the second spouse non-adjacent and draws a long marriage edge across the diagram (visible in `results/hand-small.png` and `results/dagre-small.png`). **This is unsolved and PR 10 must address it** — a person in two couples cannot be adjacent to both, so it needs a deliberate rule, most likely ordering the ex-spouse, the person and the current spouse as a run of three.
+- We own the layout algorithm, including its bugs. The prototype already shows one: couple merging pairs each person with their *first* spouse only — `spouseOf` is a first-wins pairwise map — so a remarriage leaves the second spouse non-adjacent and draws a long marriage edge across the diagram (visible in `results/hand-small.png` and `results/dagre-small.png`). **PR 10 must address it**, and the shape of the fix is worth stating precisely, because it is more tractable than a first look suggests:
+
+  Adjacency within a row is a one-dimensional ordering, so every person has two slots, left and right. All marriage-adjacency constraints in a row are satisfiable **exactly when that row's marriage graph is a disjoint union of simple paths**. Two marriages therefore fit — `A — P — B`, with each child group hanging under its own couple midpoint, which is how pedigree charts have always drawn remarriage. What is genuinely unsatisfiable is a vertex of degree three (a third marriage, which US-042 permits) or a cycle of marriages within one generation.
+
+  So the prototype's failure is a data-structure limit, not a geometric one: replace the pairwise map with couple *chains* and the common case resolves. The residual case — three or more marriages — needs a deliberate choice between drawing one long edge, duplicating the person, or introducing a union node.
 - Crossing reduction is a barycentre heuristic with four sweeps. It is not optimal and will occasionally produce an avoidable crossing. d3-dag's better decrossers are not an escape route: `decrossOpt` is documented as exponential and is unusable at this scale.
 - Accessibility, hit-testing and keyboard navigation are ours to build. Cytoscape would have given hit-testing for free.
 - If the tree ever needs to render far beyond 1000 nodes, SVG's per-element cost becomes the ceiling and a canvas renderer would have to be written. The layout would survive that change; the renderer would not.
@@ -126,6 +130,7 @@ A note on the numbers above: GitHub Pages negotiates gzip but not brotli, so gzi
 
 - **Fit-to-screen on a full 500-person tree is useless.** Seven generations of ~100 people each is roughly 40,400 × 1,030px, so fitting it to a 1440px viewport scales it to about 3.5% — an unreadable grey smear. This is a property of family trees, not of any candidate. It means the focused view (US-029) and `generationDepth` are the primary experience and the whole-tree view is a navigational overview at best. PR 10 should treat "fit to screen" as a way to locate yourself in the mini-map, not as a way to read the tree.
 - The zoom floor must sit below whatever fit-to-screen produces for the largest supported graph, or "fit" lands at a scale the zoom control cannot return to. A 1000-person tree fits at about 0.02.
+- **A union node is the escape hatch if remarriage adjacency gets worse than expected.** Making the marriage itself a node — spouses either side, children hanging beneath — is what GEDCOM's `FAM` record does and what most genealogy renderers draw. It handles multiple marriages far more gracefully than any ordering rule can. It is noted rather than adopted because it reaches past layout into the schema: ADR-003 chose separate tables per relationship type with no family entity, so today a union node would have to be constructed at render time. GEDCOM is PR 15, which is where this question arrives on its own.
 
 ## Reproducing
 
