@@ -1,0 +1,22 @@
+{
+  "name": "familytree-viz-spike",
+  "private": true,
+  "type": "module",
+  "description": "Throwaway prototype for PR 3 — evaluates tree visualisation options. Output is docs/decisions/ADR-005, not shipped code.",
+  "scripts": {
+    "build": "node build-vendor.mjs",
+    "measure": "node measure.mjs"
+  },
+  "devDependencies": {
+    "cytoscape": "^3.30.0",
+    "cytoscape-dagre": "^2.5.0",
+    "d3-dag": "^1.1.0",
+    "d3-selection": "^3.0.0",
+    "d3-shape": "^3.2.0",
+    "d3-zoom": "^3.0.0",
+    "dagre": "^0.8.5",
+    "elkjs": "^0.9.3",
+    "esbuild": "^0.25.0",
+    "playwright": "^1.49.0"
+  }
+}

@@ -157,6 +157,12 @@ The project's largest unknown, resolved before the tree is built. Evaluate again
 
 Output: `docs/decisions/ADR-005-tree-visualization-library.md`.
 
+**Done.** Four candidates were prototyped and measured against the same 500-person graph; the prototype and raw results are in `spikes/tree-visualization/`. The decision is to write the layout and the SVG renderer ourselves and take no visualisation library — a family tree turned out not to be a generic DAG drawing problem, and the family-aware layout is what keeps panning at 60 fps rather than merely what makes it tidier. Three findings change PR 10's shape:
+
+- Fit-to-screen on a full 500-person tree is unreadable (~40,400 × 1,030px, about 3.5% scale in a 1440px viewport). The focused view (US-029) and `generationDepth` are the primary experience; whole-tree fit is a mini-map orientation aid, not a way to read the tree.
+- Couple adjacency is unsolved for remarriage — a person in two couples cannot sit next to both, and the prototype draws a long marriage edge across the diagram as a result. PR 10 needs a deliberate ordering rule.
+- Blazor should pass `TreeGraphDto` straight across `IJSRuntime`: 64 ms once at 500 nodes, and interaction never re-enters .NET.
+
 ### PR 4 — Person CRUD, people list, and shared components
 **Stories:** US-001, US-002, US-003, US-004, US-006, US-041, US-044, US-052, US-053
 
@@ -292,7 +298,7 @@ PR 16 (feedback hardening) after the rest is deployed
 | ADR-002 | Decided | PartialDate value object |
 | ADR-003 | Decided | Separate tables per relationship type |
 | ADR-004 | Decided | Client-only Blazor WASM with local-first storage |
-| ADR-005 | PR 3 spike | Tree visualization library (DAG, 5 edge styles, phantom nodes, WASM-compatible) |
+| ADR-005 | Decided | Hand-written family layout with an SVG renderer, no visualization library |
 | ADR-006 | PR 14 spike | Photo crop approach (circular mask, drag + zoom) |
 | ADR-007 | Decided | Export file delivery (anchor download vs File System Access API) |
 

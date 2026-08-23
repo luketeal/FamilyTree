@@ -1,0 +1,166 @@
+/* Spike harness styling. Design tokens are copied from
+   src/FamilyTree.UI/wwwroot/css/tokens.css rather than imported, so the spike
+   stays self-contained and cannot break the app by being edited. */
+
+:root {
+    --paper: #fbfaf7;
+    --paper2: #f3f0e9;
+    --ink: #1c1a17;
+    --ink3: #6f6a5e;
+    --ink4: #9a9387;
+    --line2: #d8d2c4;
+    --coral: #c96442;
+    --teal: #3f7d6e;
+    --step: #8a8377;
+    --font-ui: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --dot-grid: radial-gradient(circle, #e3ddce 1px, transparent 1px) 0 0 / 18px 18px;
+}
+
+* { box-sizing: border-box; }
+
+body {
+    margin: 0;
+    font-family: var(--font-ui);
+    color: var(--ink);
+    background: var(--paper);
+}
+
+.stage {
+    position: relative;
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+    background-image: var(--dot-grid);
+    background-color: var(--paper);
+}
+
+.ft-canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+    touch-action: none;   /* the pan gesture is ours, not the browser's */
+    cursor: grab;
+}
+
+.ft-canvas:active { cursor: grabbing; }
+
+/* ---- Nodes ---------------------------------------------------------- */
+
+.ft-node__card {
+    fill: #ffffff;
+    stroke: var(--line2);
+    stroke-width: 1;
+}
+
+.ft-node__avatar { fill: var(--paper2); }
+.ft-node__initial { font-size: 14px; fill: var(--ink3); }
+.ft-node__name { font-size: 13px; font-weight: 500; fill: var(--ink); }
+.ft-node__years { font-size: 11px; fill: var(--ink3); }
+
+/* Phantom nodes: dashed border, hatched background, "?" avatar, never a real
+   name (US-054). */
+.ft-node--phantom .ft-node__card {
+    stroke: var(--ink4);
+    stroke-dasharray: 5 4;
+}
+.ft-node--phantom .ft-node__name { fill: var(--ink3); font-style: italic; }
+.ft-node--phantom .ft-node__avatar { fill: transparent; stroke: var(--ink4); stroke-dasharray: 3 3; }
+
+.ft-hatch-bg { fill: var(--paper2); }
+.ft-hatch-line { stroke: var(--ink4); stroke-width: 1; opacity: 0.45; }
+
+/* ---- The five edge styles ------------------------------------------- */
+/* These are the whole visual vocabulary of the tree (US-031). Each one has to
+   be distinguishable from the other four at a glance and at low zoom, which is
+   why they vary in colour AND in stroke pattern rather than in colour alone. */
+
+.ft-edge { fill: none; stroke-width: 1.5; }
+
+.ft-edge--biological { stroke: var(--ink3); }
+
+.ft-edge--adoptive {
+    stroke: var(--teal);
+    stroke-dasharray: 6 4;
+}
+
+/* A true double line, drawn as one stroke with a lighter core on top of a
+   heavier casing. SVG gets this from paint-order; a canvas renderer has to
+   draw the path twice. */
+.ft-edge--marriage {
+    stroke: var(--coral);
+    stroke-width: 4;
+    stroke-linecap: butt;
+}
+.ft-edges .ft-edge--marriage { paint-order: stroke; }
+
+.ft-edge--marriage-ended {
+    stroke: var(--coral);
+    stroke-width: 4;
+    stroke-dasharray: 10 6;
+    opacity: 0.75;
+}
+
+.ft-edge--stepparent {
+    stroke: var(--step);
+    stroke-dasharray: 1.5 4;
+    stroke-linecap: round;
+}
+
+/* ---- Mini-map -------------------------------------------------------- */
+
+.ft-minimap {
+    position: absolute;
+    right: 16px;
+    bottom: 16px;
+    width: 168px;
+    height: 118px;
+    background: rgba(251, 250, 247, 0.94);
+    border: 1px solid var(--line2);
+    border-radius: 6px;
+    box-shadow: 0 1px 2px rgba(28, 26, 23, 0.04), 0 4px 16px rgba(28, 26, 23, 0.05);
+    overflow: hidden;
+}
+
+.ft-mini__node { fill: var(--ink4); }
+.ft-mini__node--phantom { fill: none; stroke: var(--ink4); stroke-width: 0.5; }
+.ft-mini__view {
+    fill: rgba(201, 100, 66, 0.12);
+    stroke: var(--coral);
+    stroke-width: 1;
+}
+
+/* ---- Harness chrome -------------------------------------------------- */
+
+.hud {
+    position: absolute;
+    left: 16px;
+    top: 16px;
+    z-index: 5;
+    background: rgba(251, 250, 247, 0.94);
+    border: 1px solid var(--line2);
+    border-radius: 6px;
+    padding: 10px 12px;
+    font-size: 12px;
+    line-height: 1.5;
+    max-width: 280px;
+}
+
+.hud h1 { font-size: 13px; margin: 0 0 6px; }
+.hud dl { display: grid; grid-template-columns: auto auto; gap: 2px 10px; margin: 0; }
+.hud dt { color: var(--ink3); }
+.hud dd { margin: 0; font-variant-numeric: tabular-nums; }
+
+.legend {
+    position: absolute;
+    left: 16px;
+    bottom: 16px;
+    z-index: 5;
+    background: rgba(251, 250, 247, 0.94);
+    border: 1px solid var(--line2);
+    border-radius: 6px;
+    padding: 10px 12px;
+    font-size: 12px;
+}
+.legend ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 5px; }
+.legend li { display: flex; align-items: center; gap: 8px; }
+.legend svg { flex: none; }

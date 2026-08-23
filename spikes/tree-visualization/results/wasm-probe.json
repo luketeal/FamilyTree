@@ -1,0 +1,18 @@
+{
+  "generatedAt": "2026-08-09T22:53:29.031Z",
+  "nodeCount": 500,
+  "edgeCount": 770,
+  "buildMs": 27.2,
+  "objectArgMs": 60.6,
+  "jsonStringMs": 26.5,
+  "jsonSourceGenMs": 33.4,
+  "payloadBytes": 122182,
+  "layoutMs": 8.700000000186265,
+  "renderMs": 115.79999999981374,
+  "matchesJsGenerator": true,
+  "generatorMismatches": [],
+  "pan": {
+    "p50": 16.699999999720603,
+    "p95": 17
+  }
+}

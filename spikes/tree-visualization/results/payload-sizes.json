@@ -1,0 +1,22 @@
+{
+  "dagre": {
+    "minified": 86747,
+    "gzip": 31374,
+    "brotli": 27496
+  },
+  "d3-dag": {
+    "minified": 168265,
+    "gzip": 55567,
+    "brotli": 48346
+  },
+  "cytoscape": {
+    "minified": 535289,
+    "gzip": 174964,
+    "brotli": 147490
+  },
+  "elk": {
+    "minified": 1457810,
+    "gzip": 440491,
+    "brotli": 338637
+  }
+}

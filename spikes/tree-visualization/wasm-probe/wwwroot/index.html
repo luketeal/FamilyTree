@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Tree visualisation — WASM interop probe</title>
+    <base href="/" />
+    <link rel="stylesheet" href="viz/harness.css" />
+    <style>
+        /* The probe's own chrome. The stage is absolutely positioned beneath
+           the readout so the renderer gets a real viewport to fit into. */
+        .probe {
+            position: absolute;
+            left: 16px;
+            top: 16px;
+            z-index: 5;
+            background: rgba(251, 250, 247, 0.94);
+            border: 1px solid var(--line2);
+            border-radius: 6px;
+            padding: 12px 14px;
+            font-size: 12px;
+            font-family: var(--font-ui);
+        }
+        .probe h1 { font-size: 13px; margin: 0 0 8px; }
+        .probe dl { display: grid; grid-template-columns: auto auto; gap: 3px 14px; margin: 0; }
+        .probe dt { color: var(--ink3); }
+        .probe dd { margin: 0; font-variant-numeric: tabular-nums; }
+        .stage { position: absolute; inset: 0; z-index: 1; }
+    </style>
+</head>
+
+<body>
+    <div id="app"></div>
+
+    <div id="blazor-error-ui" style="display:none">
+        An unhandled error has occurred.
+        <a href="." class="reload">Reload</a>
+    </div>
+    <script src="_framework/blazor.webassembly.js"></script>
+</body>
+
+</html>
