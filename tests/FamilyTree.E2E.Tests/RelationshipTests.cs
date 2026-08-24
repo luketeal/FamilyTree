@@ -186,23 +186,49 @@ public class RelationshipTests(StaticSiteFixture fixture)
             .ToContainTextAsync("Daniel Whitfield");
     }
 
+    // The duplicate rule is not reachable from here, and that is the point: an
+    // already-recorded parent is filtered out of the search, so the wizard never
+    // offers a choice whose only outcome is an error.
+    //
+    // This started as a test that tried to save the duplicate and assert the
+    // refusal. It could not: the name was never in the list to click. The rule
+    // itself is covered in BiologicalRelationshipServiceTests, which is where it
+    // lives, and the dialog's behaviour on a refusal is covered by the cycle test
+    // below — that one is reachable, because a distant ancestor is not excluded.
     [Fact]
-    public async Task TheWizardRefusesADuplicateParentAndStaysOpen()
+    public async Task TheWizardDoesNotOfferAParentWhoIsAlreadyRecorded()
     {
         var page = await OpenAsync();
         await LoadSampleAsync(page);
         await OpenProfileAsync(page, "Daniel Whitfield");
 
         await page.GetByTestId("add-biological-parent").ClickAsync();
-        await page.GetByTestId("relationship-dialog-search-query").FillAsync("Arthur");
-        await page.GetByTestId("relationship-dialog-search-results")
-            .GetByText("Arthur Whitfield").First.ClickAsync();
-        await page.GetByTestId("relationship-dialog-next").ClickAsync();
-        await page.GetByTestId("relationship-dialog-save").ClickAsync();
+        await page.GetByTestId("relationship-dialog-search-query").FillAsync("Whitfield");
 
-        await Assertions.Expect(page.GetByTestId("relationship-dialog-error"))
-            .ToContainTextAsync("already recorded as a biological parent");
-        await Assertions.Expect(page.GetByTestId("relationship-dialog")).ToBeVisibleAsync();
+        // Vera shares the surname and is not linked to Daniel, so she proves the
+        // search is working and the list is populated — without which "Arthur is
+        // absent" would pass on an empty list.
+        await Assertions.Expect(page.GetByTestId("relationship-dialog-search-results"))
+            .ToContainTextAsync("Vera Whitfield");
+        await Assertions.Expect(page.GetByTestId("relationship-dialog-search-results"))
+            .Not.ToContainTextAsync("Arthur Whitfield");
+    }
+
+    // Neither is the subject themselves, which would be self-parenthood.
+    [Fact]
+    public async Task TheWizardDoesNotOfferTheSubjectThemselves()
+    {
+        var page = await OpenAsync();
+        await LoadSampleAsync(page);
+        await OpenProfileAsync(page, "Daniel Whitfield");
+
+        await page.GetByTestId("add-biological-parent").ClickAsync();
+        await page.GetByTestId("relationship-dialog-search-query").FillAsync("Whitfield");
+
+        await Assertions.Expect(page.GetByTestId("relationship-dialog-search-results"))
+            .ToContainTextAsync("Vera Whitfield");
+        await Assertions.Expect(page.GetByTestId("relationship-dialog-search-results"))
+            .Not.ToContainTextAsync("Daniel Whitfield");
     }
 
     // US-040 in a real browser: Arthur's granddaughter cannot become his mother.

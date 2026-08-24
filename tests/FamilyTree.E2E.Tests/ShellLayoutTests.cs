@@ -905,7 +905,16 @@ public class ShellLayoutTests(StaticSiteFixture fixture)
         var radius = await page.Locator("[data-testid^='parent-chip-']").First
             .EvaluateAsync<string>("el => getComputedStyle(el).borderRadius");
 
-        Assert.Equal("inline-flex", display);
+        // The stylesheet says inline-flex and the computed value is flex, which
+        // is correct rather than a bug: a flex item's display is blockified, and
+        // the row is a flex container. What matters is that it is a flex display
+        // at all — an unstyled chip would compute to `inline`, which is exactly
+        // what a ::deep that failed to match would leave behind.
+        Assert.Contains(display, new[] { "flex", "inline-flex" });
+
+        // The load-bearing half of this test. border-radius is not blockified,
+        // so it can only come from the scoped rule actually reaching the child
+        // component — the failure mode that has already cost two misdiagnoses.
         Assert.Equal("999px", radius);
     }
 }
