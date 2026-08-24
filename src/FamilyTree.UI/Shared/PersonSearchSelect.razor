@@ -123,9 +123,14 @@
                         data-testid="@($"{TestId}-create-save")" @onclick="CreateAsync">
                     Add and choose
                 </button>
+                @* Not "Cancel": the wizard hosting this has a Cancel of its own,
+                   and the two sat side by side meaning different things — one
+                   abandons the new person, the other abandons the whole
+                   relationship. Naming the destination rather than the act
+                   removes the ambiguity without a tooltip. *@
                 <button type="button" class="btn btn--ghost" disabled="@_busy"
                         data-testid="@($"{TestId}-create-cancel")" @onclick="() => _creating = false">
-                    Cancel
+                    Back to search
                 </button>
             </div>
         </div>
