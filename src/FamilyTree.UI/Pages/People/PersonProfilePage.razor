@@ -120,7 +120,18 @@
                                                 TestId="@($"parent-chip-{parent.Person.Id}")" />
                                 }
 
-                                <span class="relations__kind">(Biological)</span>
+                                @* A recorded placeholder and an empty slot below
+                                   both render as a dashed "Unknown" chip, and they
+                                   mean different things: somebody established that
+                                   this parent existed without identifying them,
+                                   versus nobody having recorded anything at all.
+                                   That distinction is the whole reason phantoms
+                                   are stored and, as of this PR, exported — so the
+                                   row has to say which it is rather than leaving it
+                                   to be inferred from whether the action reads
+                                   Remove or Add. Said in words rather than colour,
+                                   and it costs no width at 390px. *@
+                                <span class="relations__kind">@(parent.IsPhantom ? "(Biological · unidentified)" : "(Biological)")</span>
 
                                 <span class="relations__actions">
                                     <button type="button" class="relations__action"

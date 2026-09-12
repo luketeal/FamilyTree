@@ -172,6 +172,26 @@ public class PersonProfileRelationsTests : ShellTestContext
         Assert.Single(cut.FindAll("[data-testid='parent-unknown-slot']"));
     }
 
+    // The two rows above are both a dashed "Unknown" chip, so the label is the
+    // only thing saying which is a record and which is a gap. Asserting the
+    // recorded row alone would pass on a label applied to both, so the empty
+    // slot is checked in the same test.
+    [Fact]
+    public void MarksARecordedPhantomParentAsUnidentifiedAndLeavesTheEmptySlotPlain()
+    {
+        var margaret = Someone("Margaret");
+        var phantom = Phantom();
+        Link(phantom, margaret);
+
+        var cut = RenderProfile(margaret);
+
+        var recorded = cut.Find($"[data-testid='parent-{phantom.Id}']").TextContent;
+        var empty = cut.Find("[data-testid='parent-unknown-slot']").TextContent;
+
+        Assert.Contains("unidentified", recorded);
+        Assert.DoesNotContain("unidentified", empty);
+    }
+
     // ---- Children (US-012) ----
 
     [Fact]
