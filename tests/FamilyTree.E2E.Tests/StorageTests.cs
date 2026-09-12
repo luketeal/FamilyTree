@@ -219,7 +219,12 @@ public class StorageTests(StaticSiteFixture fixture)
             return JSON.stringify(rows.map(r => r.schemaVersion));
         }");
 
-        Assert.Equal("[1]", meta);
+        // Written out rather than read from TreeSchema.Version: this project
+        // deliberately has no reference to the app, because it tests the
+        // published site rather than the code that produced it. The cost is
+        // that a schema bump has to be made here too — PR 7 raised this to 2
+        // when phantoms entered the export format (ADR-007).
+        Assert.Equal("[2]", meta);
     }
 
     // Asserts that the request happens and a real answer comes back, not that

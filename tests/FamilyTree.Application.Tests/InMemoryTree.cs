@@ -33,6 +33,9 @@ internal sealed class InMemoryTree
     /// </remarks>
     public int ReplaceCount { get; private set; }
 
+    /// <summary>How many times a biological parent was swapped through the atomic path.</summary>
+    public int BiologicalReplaceCount { get; set; }
+
     public IPersonRepository PersonRepository => new FakePersonRepository(this);
 
     public IBiologicalRelationshipRepository BiologicalRepository => new FakeBiologicalRepository(this);
@@ -71,6 +74,10 @@ internal sealed class InMemoryTree
     {
         public Task<Person?> GetByIdAsync(Guid id, CancellationToken ct = default) =>
             Task.FromResult(tree.People.FirstOrDefault(p => p.Id == id));
+
+        public Task<IReadOnlyList<Person>> GetByIdsAsync(
+            IReadOnlyCollection<Guid> ids, CancellationToken ct = default) =>
+            Task.FromResult<IReadOnlyList<Person>>([.. tree.People.Where(p => ids.Contains(p.Id))]);
 
         public Task<IReadOnlyList<Person>> GetAllAsync(CancellationToken ct = default) =>
             Task.FromResult<IReadOnlyList<Person>>([.. tree.People]);
@@ -131,6 +138,20 @@ internal sealed class InMemoryTree
         public Task DeleteAsync(Guid id, CancellationToken ct = default)
         {
             tree.BiologicalLinks.RemoveAll(l => l.Id == id);
+            return Task.CompletedTask;
+        }
+
+        /// <summary>
+        /// Both halves together, matching the single IndexedDB transaction the
+        /// real implementation uses. Counted, because "one call" is the property
+        /// the seam discipline asks for and a test can only see it here.
+        /// </summary>
+        public Task ReplaceParentAsync(
+            Guid oldLinkId, BiologicalParentChild newLink, CancellationToken ct = default)
+        {
+            tree.BiologicalReplaceCount++;
+            tree.BiologicalLinks.RemoveAll(l => l.Id == oldLinkId);
+            tree.BiologicalLinks.Add(newLink);
             return Task.CompletedTask;
         }
     }

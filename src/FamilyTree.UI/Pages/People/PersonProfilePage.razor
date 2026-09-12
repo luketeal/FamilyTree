@@ -1,5 +1,6 @@
 @page "/people/{Id:guid}"
 @inject PersonService People
+@inject BiologicalRelationshipService Relationships
 @inject TreeDataNotifier Notifier
 @inject ToastService Toasts
 @inject NavigationManager Nav
@@ -73,20 +74,212 @@
             }
         </dl>
 
-        @* Relationship sections are stubs until PRs 7–9. They are rendered
-           rather than omitted so the profile's shape is reviewable now, and so
-           the empty states get designed before there is data to hide them. *@
         <div class="profile__relations">
-            @foreach (var stub in RelationshipStubs)
-            {
-                <section class="profile__relation" data-testid="@($"relation-{stub.TestId}")">
-                    <h2>@stub.Title</h2>
-                    <p class="profile__relation-empty">@stub.Pending</p>
-                </section>
-            }
+            @* US-008. Two slots, always both shown: a parent nobody has
+               identified is the normal state of a genealogy record, so an empty
+               slot reads as "Unknown, add one" rather than as something missing. *@
+            <section class="profile__relation" data-testid="relation-parents">
+                <div class="profile__relation-head">
+                    <h2>Biological parents</h2>
+                    @if (_relations.UnknownParentSlots > 0)
+                    {
+                        <button type="button" class="btn btn--secondary btn--small"
+                                data-testid="add-biological-parent"
+                                @onclick="() => OpenDialog(AddRelationshipDialog.RelationshipKind.BiologicalParent)">
+                            Add parent
+                        </button>
+                    }
+                </div>
+
+                @if (_relationsLoading)
+                {
+                    <p class="profile__relation-empty" data-testid="relations-loading">Loading…</p>
+                }
+                else
+                {
+                    <ul class="relations" data-testid="parents-list">
+                        @foreach (var parent in _relations.Parents)
+                        {
+                            <li class="relations__row" data-testid="@($"parent-{parent.Person.Id}")">
+                                @if (parent.IsPhantom)
+                                {
+                                    @* A phantom is a real stored record standing
+                                       for an ancestor known to exist, which is
+                                       not the same thing as an empty slot — so
+                                       it can be removed, and PR 10 will let it
+                                       be identified. *@
+                                    <PersonChip Variant="PersonChip.ChipVariant.Phantom"
+                                                TestId="@($"parent-chip-{parent.Person.Id}")" />
+                                }
+                                else
+                                {
+                                    <PersonChip Variant="PersonChip.ChipVariant.Biological"
+                                                Name="@parent.Person.DisplayName"
+                                                Detail="@parent.Person.LifeSpan"
+                                                Href="@($"people/{parent.Person.Id}")"
+                                                TestId="@($"parent-chip-{parent.Person.Id}")" />
+                                }
+
+                                @* A recorded placeholder and an empty slot below
+                                   both render as a dashed "Unknown" chip, and they
+                                   mean different things: somebody established that
+                                   this parent existed without identifying them,
+                                   versus nobody having recorded anything at all.
+                                   That distinction is the whole reason phantoms
+                                   are stored and, as of this PR, exported — so the
+                                   row has to say which it is rather than leaving it
+                                   to be inferred from whether the action reads
+                                   Remove or Add. Said in words rather than colour,
+                                   and it costs no width at 390px. *@
+                                <span class="relations__kind">@(parent.IsPhantom ? "(Biological · unidentified)" : "(Biological)")</span>
+
+                                <span class="relations__actions">
+                                    <button type="button" class="relations__action"
+                                            data-testid="@($"replace-parent-{parent.Person.Id}")"
+                                            @onclick="() => StartReplace(parent)">
+                                        Replace
+                                    </button>
+                                    <button type="button" class="relations__action relations__action--warn"
+                                            data-testid="@($"remove-parent-{parent.Person.Id}")"
+                                            @onclick="() => StartRemove(parent, isParent: true)">
+                                        Remove
+                                    </button>
+                                </span>
+                            </li>
+                        }
+
+                        @for (var slot = 0; slot < _relations.UnknownParentSlots; slot++)
+                        {
+                            <li class="relations__row" data-testid="parent-unknown-slot">
+                                <PersonChip Variant="PersonChip.ChipVariant.Phantom" TestId="parent-unknown" />
+                                <span class="relations__actions">
+                                    <button type="button" class="relations__action"
+                                            data-testid="add-parent-in-slot"
+                                            @onclick="() => OpenDialog(AddRelationshipDialog.RelationshipKind.BiologicalParent)">
+                                        Add
+                                    </button>
+                                </span>
+                            </li>
+                        }
+                    </ul>
+                }
+            </section>
+
+            @* US-012. The Add button is outside the empty check on purpose: the
+               story asks for it to be visible always, and building the tree
+               downwards starts from a person with no children yet. *@
+            <section class="profile__relation" data-testid="relation-children">
+                <div class="profile__relation-head">
+                    <h2>Biological children</h2>
+                    <button type="button" class="btn btn--secondary btn--small"
+                            data-testid="add-biological-child"
+                            @onclick="() => OpenDialog(AddRelationshipDialog.RelationshipKind.BiologicalChild)">
+                        Add child
+                    </button>
+                </div>
+
+                @if (_relationsLoading)
+                {
+                    <p class="profile__relation-empty">Loading…</p>
+                }
+                else if (_relations.Children.Count == 0)
+                {
+                    <p class="profile__relation-empty" data-testid="children-empty">No children recorded.</p>
+                }
+                else
+                {
+                    <ul class="relations" data-testid="children-list">
+                        @foreach (var child in _relations.Children)
+                        {
+                            <li class="relations__row" data-testid="@($"child-{child.Person.Id}")">
+                                <PersonChip Variant="PersonChip.ChipVariant.Biological"
+                                            Name="@child.Person.DisplayName"
+                                            Detail="@child.Person.LifeSpan"
+                                            Href="@($"people/{child.Person.Id}")"
+                                            TestId="@($"child-chip-{child.Person.Id}")" />
+                                <span class="relations__kind">(Biological)</span>
+                                <span class="relations__actions">
+                                    <button type="button" class="relations__action relations__action--warn"
+                                            data-testid="@($"remove-child-{child.Person.Id}")"
+                                            @onclick="() => StartRemove(child, isParent: false)">
+                                        Remove
+                                    </button>
+                                </span>
+                            </li>
+                        }
+                    </ul>
+                }
+            </section>
+
+            @* US-051, US-037. Derived rather than stored: there is no sibling
+               record to add or remove, so this section navigates and nothing
+               else. Full siblings first, then half, each by birth date. *@
+            <section class="profile__relation" data-testid="relation-siblings">
+                <h2>Siblings</h2>
+
+                @if (_relationsLoading)
+                {
+                    <p class="profile__relation-empty">Loading…</p>
+                }
+                else if (_relations.Siblings.Count == 0)
+                {
+                    <p class="profile__relation-empty" data-testid="siblings-empty">No known siblings</p>
+                }
+                else
+                {
+                    <ul class="relations" data-testid="siblings-list">
+                        @foreach (var sibling in _relations.Siblings)
+                        {
+                            <li class="relations__row" data-testid="@($"sibling-{sibling.Person.Id}")">
+                                <PersonChip Variant="PersonChip.ChipVariant.Biological"
+                                            Name="@sibling.Person.DisplayName"
+                                            Detail="@sibling.Person.LifeSpan"
+                                            Href="@($"people/{sibling.Person.Id}")"
+                                            TestId="@($"sibling-chip-{sibling.Person.Id}")" />
+                                <span class="relations__kind"
+                                      data-testid="@($"sibling-kind-{sibling.Person.Id}")">
+                                    @(sibling.Kind == SiblingKind.Full ? "(Full)" : "(Half)")
+                                </span>
+                                <span class="relations__shared"
+                                      data-testid="@($"sibling-shared-{sibling.Person.Id}")">
+                                    via @string.Join(" and ", sibling.SharedParentNames)
+                                </span>
+                            </li>
+                        }
+                    </ul>
+                }
+            </section>
+
+            @* Still a stub: marriages and stepchildren arrive in PR 9. Rendered
+               rather than omitted so the profile's shape stays reviewable. *@
+            <section class="profile__relation" data-testid="relation-marriages">
+                <h2>Marriages and partnerships</h2>
+                <p class="profile__relation-empty">Marriages arrive with PR 9.</p>
+            </section>
         </div>
     }
 </section>
+
+<AddRelationshipDialog Visible="_dialogVisible"
+                       VisibleChanged="v => _dialogVisible = v"
+                       SubjectId="Id"
+                       SubjectName="@(_person?.DisplayName ?? "this person")"
+                       Kinds="_dialogKinds"
+                       Exclude="AlreadyLinked"
+                       ReplacingParentId="_replacingParentId"
+                       ReplacingParentName="@_replacingParentName"
+                       Saved="LoadRelationshipsAsync" />
+
+<DeleteConfirmModal Visible="_removing is not null"
+                    Busy="_busy"
+                    TestId="remove-link-modal"
+                    ConfirmTestIdOverride="confirm-remove-link"
+                    CancelTestIdOverride="cancel-remove-link"
+                    Title="@RemoveTitle"
+                    Body="@RemoveBody"
+                    ConfirmLabel="Remove"
+                    Confirm="RemoveLinkAsync"
+                    Cancel="() => _removing = null" />
 
 <DeleteConfirmModal Visible="_confirmingDelete"
                     Name="@_person?.DisplayName"
@@ -95,26 +288,64 @@
                     Cancel="() => _confirmingDelete = false" />
 
 @code {
-    private sealed record RelationSection(string TestId, string Title, string Pending);
-
-    private static readonly RelationSection[] RelationshipStubs =
-    [
-        new("parents", "Parents", "Biological parents arrive with relationships."),
-        new("children", "Children", "Children arrive with relationships."),
-        new("siblings", "Siblings", "Siblings are derived from shared parents."),
-        new("marriages", "Marriages and partnerships", "Marriages arrive with relationships."),
-    ];
-
     private PersonDetailDto? _person;
+    private BiologicalRelationshipsDto _relations = BiologicalRelationshipsDto.Empty;
     private string? _error;
     private bool _loading = true;
+    private bool _relationsLoading = true;
     private bool _busy;
     private bool _confirmingDelete;
+
+    private bool _dialogVisible;
+    private IReadOnlyCollection<AddRelationshipDialog.RelationshipKind> _dialogKinds = [];
+    private Guid? _replacingParentId;
+    private string? _replacingParentName;
+
+    /// <summary>The link awaiting confirmation, and which section it came from.</summary>
+    private RelatedPersonDto? _removing;
+    private bool _removingIsParent;
 
     [Parameter] public Guid Id { get; set; }
 
     /// <summary>Renders as the tree's side panel rather than a full page (PR 10).</summary>
     [Parameter] public bool Panel { get; set; }
+
+    /// <summary>
+    /// Everybody the relationship dialog must not offer: the subject, and
+    /// anyone already on either end of a link with them.
+    /// </summary>
+    /// <remarks>
+    /// The service refuses a duplicate anyway, and would refuse self-parenthood
+    /// and a cycle. Filtering here is not the guard — it is so the list does not
+    /// offer choices whose only outcome is an error.
+    /// </remarks>
+    private IReadOnlyCollection<Guid> AlreadyLinked =>
+    [
+        Id,
+        .. _relations.Parents.Select(p => p.Person.Id),
+        .. _relations.Children.Select(c => c.Person.Id),
+    ];
+
+    private string RemoveTitle => _removing is null
+        ? "Remove this link?"
+        : $"Remove {DescribeRemoval(_removing)}?";
+
+    /// <summary>
+    /// Says plainly that nobody is being deleted. US-010 and US-013 both make
+    /// that the point of the confirmation: the risk is somebody reading "Remove"
+    /// as "Delete" and expecting the person to survive it — or not to.
+    /// </summary>
+    private string RemoveBody => _removing is null
+        ? string.Empty
+        : $"This removes the relationship only. Neither {_person?.DisplayName} nor "
+            + $"{NameOf(_removing)} is deleted, and either can be linked again.";
+
+    private string DescribeRemoval(RelatedPersonDto link) => _removingIsParent
+        ? $"{NameOf(link)} as a parent of {_person?.DisplayName}"
+        : $"{NameOf(link)} as a child of {_person?.DisplayName}";
+
+    private static string NameOf(RelatedPersonDto link) =>
+        link.IsPhantom ? "the unidentified ancestor" : link.Person.DisplayName;
 
     protected override async Task OnParametersSetAsync()
     {
@@ -133,6 +364,105 @@
         }
 
         _loading = false;
+
+        if (_person is not null)
+        {
+            await LoadRelationshipsAsync();
+        }
+    }
+
+    /// <summary>
+    /// One service call for all three sections.
+    /// </summary>
+    /// <remarks>
+    /// They share their reads — the subject's parent links feed both the parents
+    /// section and the sibling search — so asking three times would re-read the
+    /// same links and resolve the same people up to three times over.
+    /// </remarks>
+    private async Task LoadRelationshipsAsync()
+    {
+        _relationsLoading = true;
+        var result = await Relationships.GetForPersonAsync(Id);
+
+        if (result.IsSuccess)
+        {
+            _relations = result.Value!;
+        }
+        else
+        {
+            _relations = BiologicalRelationshipsDto.Empty;
+            _error = result.Error;
+        }
+
+        _relationsLoading = false;
+    }
+
+    private void OpenDialog(AddRelationshipDialog.RelationshipKind kind)
+    {
+        // One kind per entry point rather than a chooser: the button already said
+        // which, and re-asking on the next screen is a step that exists for the
+        // component's convenience. The dialog drops its first step when handed
+        // one kind, which is how the same wizard serves both.
+        _dialogKinds = [kind];
+        _replacingParentId = null;
+        _replacingParentName = null;
+        _dialogVisible = true;
+    }
+
+    /// <summary>
+    /// US-009. The correction runs through the same wizard, whose final step
+    /// names both the old parent and the new before anything is written.
+    /// </summary>
+    private void StartReplace(RelatedPersonDto parent)
+    {
+        _dialogKinds = [AddRelationshipDialog.RelationshipKind.BiologicalParent];
+        _replacingParentId = parent.Person.Id;
+        _replacingParentName = NameOf(parent);
+        _dialogVisible = true;
+    }
+
+    private void StartRemove(RelatedPersonDto link, bool isParent)
+    {
+        _removing = link;
+        _removingIsParent = isParent;
+    }
+
+    private async Task RemoveLinkAsync()
+    {
+        if (_removing is not { } link)
+        {
+            return;
+        }
+
+        _busy = true;
+        try
+        {
+            // One record is both directions, so severing it removes the
+            // reciprocal entry by construction rather than by a second call that
+            // could fail on its own.
+            var (parentId, childId) = _removingIsParent
+                ? (link.Person.Id, Id)
+                : (Id, link.Person.Id);
+
+            var result = await Relationships.RemoveAsync(parentId, childId);
+
+            if (!result.IsSuccess)
+            {
+                _error = result.Error;
+                _removing = null;
+                return;
+            }
+
+            var name = NameOf(link);
+            _removing = null;
+            await Notifier.NotifyChangedAsync();
+            await LoadRelationshipsAsync();
+            Toasts.Show($"{name} is no longer linked to {_person?.DisplayName}.");
+        }
+        finally
+        {
+            _busy = false;
+        }
     }
 
     /// <summary>

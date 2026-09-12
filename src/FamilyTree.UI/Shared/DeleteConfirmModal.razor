@@ -1,27 +1,32 @@
-@* Deleting a person is unrecoverable: there is no export yet and Undo lands in
-   PR 13. The prompt therefore names who is being deleted rather than asking a
-   generic "are you sure", the same rule the Settings wipe follows. *@
+@* Deleting a person is unrecoverable: Undo lands in PR 13. The prompt therefore
+   names who is being deleted rather than asking a generic "are you sure", the
+   same rule the Settings wipe follows.
+
+   Severing a relationship (US-010, US-013) needs the same confirmation and the
+   same overlay behaviour — the viewport tracking, the scroll lock, the focus
+   move, the release on navigate — so it says its own sentence through this
+   component rather than growing a second copy of all that. *@
 
 @inject IOverlayInterop Overlay
 @implements IAsyncDisposable
 
 @if (Visible)
 {
-    <div class="modal" data-testid="delete-modal" data-overlay @ref="_overlay"
+    <div class="modal" data-testid="@TestId" data-overlay @ref="_overlay"
          @onclick="() => Cancel.InvokeAsync()">
         <div class="modal__panel" role="alertdialog" aria-modal="true" aria-labelledby="@_titleId"
              tabindex="-1" @ref="_panel" @onkeydown="OnKeyDown"
              @onclick:stopPropagation="true">
-            <h2 id="@_titleId" class="modal__title">Delete @Name?</h2>
-            <p class="modal__body" data-testid="delete-modal-body">
-                This permanently removes @Name from your tree. There is no undo.
+            <h2 id="@_titleId" class="modal__title">@(Title ?? $"Delete {Name}?")</h2>
+            <p class="modal__body" data-testid="@($"{TestId}-body")">
+                @(Body ?? $"This permanently removes {Name} from your tree. There is no undo.")
             </p>
             <div class="modal__actions">
-                <button type="button" class="btn btn--destructive" data-testid="confirm-delete"
+                <button type="button" class="btn btn--destructive" data-testid="@ConfirmTestId"
                         disabled="@Busy" @onclick="() => Confirm.InvokeAsync()">
-                    Delete
+                    @ConfirmLabel
                 </button>
-                <button type="button" class="btn btn--secondary" data-testid="cancel-delete"
+                <button type="button" class="btn btn--secondary" data-testid="@CancelTestId"
                         disabled="@Busy" @onclick="() => Cancel.InvokeAsync()">
                     Cancel
                 </button>
@@ -41,6 +46,35 @@
     [Parameter] public string? Name { get; set; }
 
     [Parameter] public bool Busy { get; set; }
+
+    /// <summary>Overrides the heading. Defaults to "Delete {Name}?".</summary>
+    [Parameter] public string? Title { get; set; }
+
+    /// <summary>
+    /// Overrides the sentence explaining what is about to happen. It must say
+    /// what is destroyed and what is not — the difference between severing a
+    /// link and deleting a person is exactly what somebody needs to be sure of
+    /// before clicking.
+    /// </summary>
+    [Parameter] public string? Body { get; set; }
+
+    [Parameter] public string ConfirmLabel { get; set; } = "Delete";
+
+    /// <summary>
+    /// Defaults to the person-delete ids, so the existing callers and the tests
+    /// that address them are unchanged. Other callers pass their own, because a
+    /// profile can host two of these at once and a shared id would let a test
+    /// click whichever rendered first.
+    /// </summary>
+    [Parameter] public string TestId { get; set; } = "delete-modal";
+
+    [Parameter] public string? ConfirmTestIdOverride { get; set; }
+
+    [Parameter] public string? CancelTestIdOverride { get; set; }
+
+    private string ConfirmTestId => ConfirmTestIdOverride ?? "confirm-delete";
+
+    private string CancelTestId => CancelTestIdOverride ?? "cancel-delete";
 
     [Parameter] public EventCallback Confirm { get; set; }
 

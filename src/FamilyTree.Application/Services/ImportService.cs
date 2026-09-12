@@ -31,7 +31,16 @@ public sealed record ImportPreviewDto(
     int People,
     int Relationships,
     int RecordsRejected,
-    IReadOnlyList<string> Warnings);
+    IReadOnlyList<string> Warnings)
+{
+    /// <summary>
+    /// Unidentified ancestors in the file. Reported separately from
+    /// <see cref="People"/> for the same reason the export summary separates
+    /// them: they are records that will be restored, but they are not people
+    /// anybody could name.
+    /// </summary>
+    public int Phantoms { get; init; }
+}
 
 /// <summary>What an import actually did.</summary>
 public sealed record ImportResultDto(
@@ -125,7 +134,10 @@ public sealed class ImportService(
             file.People.Count,
             file.BiologicalLinks.Count + file.AdoptiveLinks.Count + file.Marriages.Count,
             file.Rejected,
-            file.Warnings.Messages));
+            file.Warnings.Messages)
+        {
+            Phantoms = file.Phantoms.Count,
+        });
     }
 
     public async Task<Result<ImportResultDto>> ImportAsync(
@@ -151,7 +163,13 @@ public sealed class ImportService(
         var existingAdoptive = await adoptive.GetAllAsync(ct);
         var existingMarriages = await marriages.GetAllAsync(ct);
 
-        var finalPeople = Combine(existingPeople, file.People, p => p.Id, resolution);
+        // Phantoms are combined alongside the named people rather than after
+        // them. Under Overwrite the final set is the file's set, so leaving them
+        // out here would delete every placeholder the file was carrying and take
+        // the links naming them with it — the very loss the section was added to
+        // stop.
+        var importedPeople = file.AllPeople;
+        var finalPeople = Combine(existingPeople, importedPeople, p => p.Id, resolution);
         var bioCombined = Combine(existingBio, file.BiologicalLinks, l => l.Id, resolution);
         var adoptiveCombined = Combine(existingAdoptive, file.AdoptiveLinks, l => l.Id, resolution);
         var marriagesCombined = Combine(existingMarriages, file.Marriages, m => m.Id, resolution);
@@ -199,7 +217,7 @@ public sealed class ImportService(
         // as added that were then dropped — a summary claiming a relationship was
         // restored when it was not, on the one page whose job is proving a backup
         // came back intact.
-        var peopleTally = Count(existingPeople, file.People, finalPeople, p => p.Id);
+        var peopleTally = Count(existingPeople, importedPeople, finalPeople, p => p.Id);
         var relationshipTally = Count(existingBio, file.BiologicalLinks, bioLinks, l => l.Id)
             .Plus(Count(existingAdoptive, file.AdoptiveLinks, adoptiveLinks, l => l.Id))
             .Plus(Count(existingMarriages, file.Marriages, marriageList, m => m.Id));
@@ -396,11 +414,24 @@ public sealed class ImportService(
         int SchemaVersion,
         DateTimeOffset? ExportedAt,
         IReadOnlyList<Person> People,
+        IReadOnlyList<Person> Phantoms,
         IReadOnlyList<BiologicalParentChild> BiologicalLinks,
         IReadOnlyList<AdoptiveParentChild> AdoptiveLinks,
         IReadOnlyList<Marriage> Marriages,
         WarningLog Warnings,
-        int Rejected);
+        int Rejected)
+    {
+        /// <summary>
+        /// Everybody the links may legitimately point at.
+        /// </summary>
+        /// <remarks>
+        /// One list, because the orphan check asks "is this endpoint in the
+        /// tree" and a phantom is in the tree. Keeping them apart all the way
+        /// through and only joining here is what stops a phantom leaking into
+        /// anything that reads the people section.
+        /// </remarks>
+        public IReadOnlyList<Person> AllPeople => [.. People, .. Phantoms];
+    }
 
     private static Result<ParsedFile> Parse(string json)
     {
@@ -448,6 +479,7 @@ public sealed class ImportService(
         }
 
         if (document.People is null
+            && document.Phantoms is null
             && document.BiologicalLinks is null
             && document.AdoptiveLinks is null
             && document.Marriages is null)
@@ -460,10 +492,15 @@ public sealed class ImportService(
         var rejected = 0;
 
         var parsedPeople = ReadPeople(document.People, warnings, ref rejected);
+        var parsedPhantoms = ReadPhantoms(document.Phantoms, parsedPeople, warnings, ref rejected);
         var parsedBio = ReadBiologicalLinks(document.BiologicalLinks, warnings, ref rejected);
         var parsedAdoptive = ReadAdoptiveLinks(document.AdoptiveLinks, warnings, ref rejected);
         var parsedMarriages = ReadMarriages(document.Marriages, warnings, ref rejected);
 
+        // Phantoms deliberately do not count towards "there is something here".
+        // A file of nothing but unnamed placeholders restores nothing anybody
+        // can read, and treating it as importable would let it overwrite a real
+        // tree with a set of empty slots.
         if (parsedPeople.Count == 0
             && parsedBio.Count == 0
             && parsedAdoptive.Count == 0
@@ -478,6 +515,7 @@ public sealed class ImportService(
             version,
             document.ExportedAt,
             parsedPeople,
+            parsedPhantoms,
             parsedBio,
             parsedAdoptive,
             parsedMarriages,
@@ -557,6 +595,55 @@ public sealed class ImportService(
                 row.PhotoPath,
                 row.Notes,
                 isPhantom: false));
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Reads the placeholders for ancestors nobody has identified.
+    /// </summary>
+    /// <remarks>
+    /// Nothing to validate but the id, because a phantom has nothing else: no
+    /// name, no dates. The one real check is that the file has not put the same
+    /// id in both sections, which would leave the tree holding two records for
+    /// one person and no way to say which the links meant.
+    /// <para>
+    /// Version 1 files have no phantoms section at all. That is not an error and
+    /// not a migration — it is a file from before placeholders were carried, and
+    /// it reads exactly as it always did.
+    /// </para>
+    /// </remarks>
+    private static List<Person> ReadPhantoms(
+        IReadOnlyList<ExportedPhantom>? source,
+        IReadOnlyList<Person> named,
+        WarningLog warnings,
+        ref int rejected)
+    {
+        var result = new List<Person>();
+        var seen = named.Select(p => p.Id).ToHashSet();
+
+        foreach (var row in source ?? [])
+        {
+            if (row.Id == Guid.Empty)
+            {
+                Reject(warnings, ref rejected, "Skipped an unidentified ancestor: the record has no id.");
+                continue;
+            }
+
+            if (!seen.Add(row.Id))
+            {
+                Reject(
+                    warnings,
+                    ref rejected,
+                    $"Skipped unidentified ancestor {row.Id}: the file already uses that id.");
+                continue;
+            }
+
+            result.Add(Person.Rehydrate(
+                row.Id, string.Empty, string.Empty, null,
+                null, null, null, null,
+                Gender.Unknown, null, null, isPhantom: true));
         }
 
         return result;

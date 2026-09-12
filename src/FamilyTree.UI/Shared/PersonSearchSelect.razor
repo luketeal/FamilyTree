@@ -1,0 +1,470 @@
+@inject PersonService People
+@inject TreeDataNotifier Notifier
+@implements IDisposable
+
+@* Finding somebody already in the tree, or adding them without leaving what you
+   were doing. Used by AddRelationshipDialog and, from PR 10, by the phantom
+   Identify dialog.
+
+   Inline rather than a modal of its own: it is always opened from inside
+   something that is already a dialog, and a dialog stacked on a dialog has two
+   Escape targets and two focus traps. *@
+
+<div class="psearch" data-testid="@TestId">
+    <label class="field-label" for="@_inputId">@Label</label>
+    <div class="input">
+        <input id="@_inputId"
+               type="text"
+               autocomplete="off"
+               placeholder="Search by name"
+               value="@_query"
+               data-testid="@($"{TestId}-query")"
+               @ref="_input"
+               @oninput="OnQueryInputAsync" />
+    </div>
+
+    @if (_error is not null)
+    {
+        <ErrorAlert Message="@_error" TestId="@($"{TestId}-error")" />
+    }
+
+    @if (_loading)
+    {
+        <p class="psearch__status" data-testid="@($"{TestId}-loading")">Loading…</p>
+    }
+    else if (_matches.Count == 0)
+    {
+        <p class="psearch__status" data-testid="@($"{TestId}-empty")">
+            @(_applied.Length == 0
+                ? "Nobody else in this tree can be chosen here."
+                : $"Nobody matching “{_applied}”. Create them below.")
+        </p>
+    }
+    else
+    {
+        <ul class="psearch__results" data-testid="@($"{TestId}-results")">
+            @foreach (var person in _matches)
+            {
+                <li>
+                    @* aria-pressed rather than a radio group: these are actions
+                       that also show state, and a radio would need a label per
+                       row that duplicates the button's own text. *@
+                    <button type="button"
+                            class="psearch__result @(Selected?.Id == person.Id ? "psearch__result--on" : null)"
+                            data-testid="@($"{TestId}-option-{person.Id}")"
+                            aria-pressed="@(Selected?.Id == person.Id ? "true" : "false")"
+                            @onclick="() => ChooseAsync(person)">
+                        <span class="psearch__name">@person.DisplayName</span>
+                        @if (person.LifeSpan.Length > 0)
+                        {
+                            <span class="psearch__span">@person.LifeSpan</span>
+                        }
+                    </button>
+                </li>
+            }
+        </ul>
+
+        @if (_truncated > 0)
+        {
+            @* Said out loud rather than silently cut. Somebody who cannot find a
+               name needs to know the list is not the whole answer. *@
+            <p class="psearch__status" data-testid="@($"{TestId}-truncated")">
+                @_truncated more not shown — keep typing to narrow it down.
+            </p>
+        }
+    }
+
+    @if (_creating)
+    {
+        @* Inline rather than the quick-add popover, which is itself an overlay:
+           opening one from inside a dialog would stack two focus traps and leave
+           Escape ambiguous. The fields are the shortest set that still makes a
+           findable record; everything else is an edit away. *@
+        <div class="psearch__create" data-testid="@($"{TestId}-create-form")">
+            <div class="psearch__pair">
+                <div class="psearch__field">
+                    <label class="field-label field-label--required" for="@_firstId">First name</label>
+                    <div class="input">
+                        <input id="@_firstId" type="text" autocomplete="off"
+                               data-testid="@($"{TestId}-create-first")"
+                               value="@_newFirstName" @ref="_firstInput"
+                               @oninput="e => _newFirstName = e.Value?.ToString() ?? string.Empty" />
+                    </div>
+                </div>
+
+                <div class="psearch__field">
+                    <label class="field-label field-label--required" for="@_lastId">Last name</label>
+                    <div class="input">
+                        <input id="@_lastId" type="text" autocomplete="off"
+                               data-testid="@($"{TestId}-create-last")"
+                               value="@_newLastName"
+                               @oninput="e => _newLastName = e.Value?.ToString() ?? string.Empty" />
+                    </div>
+                </div>
+            </div>
+
+            @* Text with inputmode rather than type="number": a number input
+               reports an empty value for anything non-numeric, so it cannot show
+               back the typo it is complaining about, and it puts the field under
+               native constraint validation that blocks submit before Blazor
+               runs. Same reasoning as PartialDateInput. *@
+            <div class="psearch__field">
+                <label class="field-label" for="@_bornId">Born</label>
+                <div class="input">
+                    <input id="@_bornId" type="text" inputmode="numeric" placeholder="Year"
+                           data-testid="@($"{TestId}-create-born")"
+                           value="@_newBirthYear"
+                           @oninput="e => _newBirthYear = e.Value?.ToString() ?? string.Empty" />
+                </div>
+            </div>
+
+            <div class="psearch__actions">
+                <button type="button" class="btn btn--primary" disabled="@_busy"
+                        data-testid="@($"{TestId}-create-save")" @onclick="CreateAsync">
+                    Add and choose
+                </button>
+                @* Not "Cancel": the wizard hosting this has a Cancel of its own,
+                   and the two sat side by side meaning different things — one
+                   abandons the new person, the other abandons the whole
+                   relationship. Naming the destination rather than the act
+                   removes the ambiguity without a tooltip. *@
+                <button type="button" class="btn btn--ghost" disabled="@_busy"
+                        data-testid="@($"{TestId}-create-cancel")" @onclick="() => _creating = false">
+                    Back to search
+                </button>
+            </div>
+        </div>
+    }
+    else
+    {
+        <button type="button" class="psearch__open-create"
+                data-testid="@($"{TestId}-create")" @onclick="StartCreatingAsync">
+            Create new person…
+        </button>
+    }
+</div>
+
+@code {
+    private readonly string _inputId = $"psearch-{Guid.NewGuid():N}";
+    private readonly string _firstId = $"psearch-first-{Guid.NewGuid():N}";
+    private readonly string _lastId = $"psearch-last-{Guid.NewGuid():N}";
+    private readonly string _bornId = $"psearch-born-{Guid.NewGuid():N}";
+
+    /// <summary>
+    /// How many rows are worth rendering before the answer is "type more".
+    /// </summary>
+    /// <remarks>
+    /// A tree can hold hundreds of people and this list lives inside a dialog.
+    /// Rendering all of them costs a long scroll nobody reads and, on a phone,
+    /// a dialog taller than the screen.
+    /// </remarks>
+    private const int MaxResults = 25;
+
+    private ElementReference _input;
+    private ElementReference _firstInput;
+
+    private IReadOnlyList<PersonSummaryDto> _roster = [];
+    private List<PersonSummaryDto> _matches = [];
+    private string _query = string.Empty;
+
+    /// <summary>The query the visible results were computed from, which lags <c>_query</c> by the debounce.</summary>
+    private string _applied = string.Empty;
+
+    private int _truncated;
+    private bool _loading = true;
+    private bool _busy;
+    private bool _creating;
+    private bool _focusCreate;
+    private string? _error;
+
+    private string _newFirstName = string.Empty;
+    private string _newLastName = string.Empty;
+    private string _newBirthYear = string.Empty;
+
+    private CancellationTokenSource? _debounce;
+
+    [Parameter] public string Label { get; set; } = "Person";
+
+    [Parameter] public string TestId { get; set; } = "person-search";
+
+    /// <summary>People who must not be offered — the subject, and anyone already linked.</summary>
+    [Parameter] public IReadOnlyCollection<Guid> Exclude { get; set; } = [];
+
+    [Parameter] public PersonSummaryDto? Selected { get; set; }
+
+    [Parameter] public EventCallback<PersonSummaryDto?> SelectedChanged { get; set; }
+
+    /// <summary>
+    /// How long to wait after a keystroke before filtering, in milliseconds.
+    /// </summary>
+    /// <remarks>
+    /// A parameter so a test can shorten it, and because the number is a
+    /// judgement rather than a constant. It looks pointless today — the roster
+    /// is already in memory, so filtering is free — and it is not: PR 12
+    /// replaces the in-memory filter with <c>PersonSearchService</c>, at which
+    /// point every keystroke is a query and, once the seam is swapped, a
+    /// request. Building the control without it would mean rediscovering that
+    /// there and reshaping this component under a deadline.
+    /// </remarks>
+    [Parameter] public int DebounceMilliseconds { get; set; } = 250;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // One read for the whole roster, then filtered in memory. The alternative
+        // — a query per keystroke — is the access pattern the seam discipline
+        // exists to keep out, and PR 12's search service is where a real query
+        // belongs.
+        await LoadAsync();
+        Notifier.Changed += OnTreeChangedAsync;
+    }
+
+    /// <summary>
+    /// Re-filters when the caller changes the exclusions, but never while a
+    /// keystroke is still waiting out its debounce — a re-render for an
+    /// unrelated reason would otherwise apply the pending query early and make
+    /// the delay depend on what the parent happened to be doing.
+    /// </summary>
+    protected override void OnParametersSet()
+    {
+        // A query still waiting out its debounce is exactly the case where the
+        // applied text has fallen behind what is typed. Filtering here would
+        // apply it early and make the delay depend on whatever the parent
+        // happened to re-render for.
+        if (_applied != _query.Trim())
+        {
+            return;
+        }
+
+        ApplyFilter();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        var result = await People.GetAllAsync();
+
+        if (result.IsSuccess)
+        {
+            // Phantoms are already absent: PersonService.GetAllAsync excludes
+            // them, and an unnamed placeholder is not something anybody could
+            // search for by name.
+            _roster = result.Value!;
+            _error = null;
+        }
+        else
+        {
+            _roster = [];
+            _error = result.Error;
+        }
+
+        _loading = false;
+        ApplyFilter();
+    }
+
+    private async Task OnTreeChangedAsync()
+    {
+        await LoadAsync();
+        StateHasChanged();
+    }
+
+    /// <summary>
+    /// Restarts the wait on every keystroke, so the filter runs once the typing
+    /// stops rather than once per character.
+    /// </summary>
+    private async Task OnQueryInputAsync(ChangeEventArgs args)
+    {
+        _query = args.Value?.ToString() ?? string.Empty;
+
+        _debounce?.Cancel();
+        _debounce?.Dispose();
+        var cts = new CancellationTokenSource();
+        _debounce = cts;
+
+        if (DebounceMilliseconds <= 0)
+        {
+            ApplyFilter();
+            return;
+        }
+
+        try
+        {
+            await Task.Delay(DebounceMilliseconds, cts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            // Superseded by a later keystroke; that one will render.
+            return;
+        }
+
+        ApplyFilter();
+        StateHasChanged();
+    }
+
+    private void ApplyFilter()
+    {
+        _applied = _query.Trim();
+        var excluded = Exclude as IReadOnlySet<Guid> ?? Exclude.ToHashSet();
+
+        var matching = _roster
+            .Where(p => !excluded.Contains(p.Id))
+            .Where(p => Matches(p, _applied))
+            .OrderBy(p => p.LastName, StringComparer.CurrentCultureIgnoreCase)
+            .ThenBy(p => p.FirstName, StringComparer.CurrentCultureIgnoreCase)
+            .ToList();
+
+        _truncated = Math.Max(0, matching.Count - MaxResults);
+        _matches = matching.Take(MaxResults).ToList();
+    }
+
+    /// <summary>
+    /// Case-insensitive partial match against any of the names somebody may be
+    /// known by, including the one they were born with.
+    /// </summary>
+    private static bool Matches(PersonSummaryDto person, string query)
+    {
+        if (query.Length == 0)
+        {
+            return true;
+        }
+
+        return Contains(person.FirstName, query)
+            || Contains(person.LastName, query)
+            || Contains(person.BirthSurname, query)
+            || Contains($"{person.FirstName} {person.LastName}", query);
+    }
+
+    private static bool Contains(string? value, string query) =>
+        value is not null && value.Contains(query, StringComparison.CurrentCultureIgnoreCase);
+
+    private async Task ChooseAsync(PersonSummaryDto person)
+    {
+        // Clicking the chosen row again clears it, so a mis-tap is one tap to
+        // undo rather than a state the user cannot get out of.
+        Selected = Selected?.Id == person.Id ? null : person;
+        await SelectedChanged.InvokeAsync(Selected);
+    }
+
+    private Task StartCreatingAsync()
+    {
+        _creating = true;
+        _focusCreate = true;
+
+        // Whatever was typed into the search box is almost always the name being
+        // looked for, so it is carried across rather than retyped. Split on the
+        // first space: "Ada Lovelace" fills both boxes, "Ada" fills one.
+        //
+        // Read from _query rather than _applied: _applied lags by the debounce,
+        // so somebody who types a name and clicks Create straight away — which
+        // is the whole point of the button, since they already know the person
+        // is not there — would have got empty boxes and an error telling them a
+        // name they had just typed was required.
+        var typed = _query.Trim();
+        if (_newFirstName.Length == 0 && _newLastName.Length == 0 && typed.Length > 0)
+        {
+            var parts = typed.Split(' ', 2, StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+            _newFirstName = parts.Length > 0 ? parts[0] : string.Empty;
+            _newLastName = parts.Length > 1 ? parts[1] : string.Empty;
+        }
+
+        return Task.CompletedTask;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_focusCreate)
+        {
+            _focusCreate = false;
+            await _firstInput.FocusAsync();
+        }
+    }
+
+    private async Task CreateAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_newFirstName) || string.IsNullOrWhiteSpace(_newLastName))
+        {
+            _error = "First and last name are both required.";
+            return;
+        }
+
+        // Judged here rather than left to the service, so an out-of-range year is
+        // reported next to the box that holds it. PersonService enforces the same
+        // bound; this is the message, not the rule.
+        if (!TryReadYear(_newBirthYear, out var birthYear))
+        {
+            _error = $"Year must be between 1 and {PersonService.MaxYear}.";
+            return;
+        }
+
+        _busy = true;
+        try
+        {
+            var result = await People.CreateAsync(new PersonService.PersonInput(
+                _newFirstName.Trim(),
+                _newLastName.Trim(),
+                BirthDate: birthYear is int year ? PartialDate.FromYear(year) : null));
+
+            if (!result.IsSuccess)
+            {
+                _error = result.Error;
+                return;
+            }
+
+            _error = null;
+            _creating = false;
+            _newFirstName = string.Empty;
+            _newLastName = string.Empty;
+            _newBirthYear = string.Empty;
+
+            // Notified before selecting: the roster this control filters is
+            // rebuilt by the handler, and selecting first would leave the new
+            // person chosen but absent from the list behind the dialog.
+            await Notifier.NotifyChangedAsync();
+
+            var created = result.Value!;
+            Selected = new PersonSummaryDto(
+                created.Id, created.FirstName, created.LastName, created.BirthSurname,
+                created.BirthDate?.Year, created.DeathDate?.Year, created.IsDeceased);
+
+            await SelectedChanged.InvokeAsync(Selected);
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    /// <summary>
+    /// Reads the year from raw text, distinguishing "left blank" from "typed
+    /// something that is not a year".
+    /// </summary>
+    /// <remarks>
+    /// A nullable int cannot tell those apart — <c>int.TryParse</c> fails on
+    /// anything past <c>int.MaxValue</c> and yields the same null as an empty
+    /// box — and reading the second as the first is how an eleven-digit typo
+    /// used to be saved as a person with no birth date at all.
+    /// </remarks>
+    private static bool TryReadYear(string text, out int? year)
+    {
+        year = null;
+
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return true;
+        }
+
+        if (!int.TryParse(text, out var parsed) || parsed < 1 || parsed > PersonService.MaxYear)
+        {
+            return false;
+        }
+
+        year = parsed;
+        return true;
+    }
+
+    public void Dispose()
+    {
+        Notifier.Changed -= OnTreeChangedAsync;
+        _debounce?.Cancel();
+        _debounce?.Dispose();
+    }
+}

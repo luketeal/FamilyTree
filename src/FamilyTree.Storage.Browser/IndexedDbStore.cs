@@ -49,6 +49,19 @@ public sealed class IndexedDbStore(IJSRuntime js) : IAsyncDisposable
         return await module.InvokeAsync<T?>("get", ct, store, id);
     }
 
+    /// <summary>Several records by key, in one call and one transaction.</summary>
+    public async Task<IReadOnlyList<T>> GetManyAsync<T>(
+        string store, IReadOnlyCollection<Guid> ids, CancellationToken ct = default)
+    {
+        if (ids.Count == 0)
+        {
+            return [];
+        }
+
+        var module = await ModuleAsync();
+        return await module.InvokeAsync<T[]>("getMany", ct, store, ids);
+    }
+
     public async Task PutAsync<T>(string store, T record, CancellationToken ct = default)
     {
         var module = await ModuleAsync();
@@ -59,6 +72,19 @@ public sealed class IndexedDbStore(IJSRuntime js) : IAsyncDisposable
     {
         var module = await ModuleAsync();
         await module.InvokeVoidAsync("remove", ct, store, id);
+    }
+
+    /// <summary>
+    /// Removes one record and writes another in a single transaction.
+    /// </summary>
+    /// <remarks>
+    /// The atomic half of the repository's replace: as two calls it can
+    /// half-apply, leaving the old record gone and the new one never written.
+    /// </remarks>
+    public async Task ReplaceAsync<T>(string store, Guid deleteId, T record, CancellationToken ct = default)
+    {
+        var module = await ModuleAsync();
+        await module.InvokeVoidAsync("replaceOne", ct, store, deleteId, record);
     }
 
     /// <summary>Replaces every store in one transaction, so it cannot half-apply.</summary>

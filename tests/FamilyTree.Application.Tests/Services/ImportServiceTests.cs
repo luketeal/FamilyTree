@@ -33,6 +33,8 @@ public class ImportServiceTests
         Guid.Parse(id), first, last, null, null, null, null, null,
         Gender.Unknown, null, null, isPhantom: false);
 
+    private const string PhantomId = "44444444-4444-4444-4444-444444444444";
+
     // ---- The schema stamp. Import is the first code to read what PR 2 wrote. ----
 
     [Fact]
@@ -659,5 +661,134 @@ public class ImportServiceTests
 
         Assert.False(result.IsSuccess);
         Assert.Equal(0, _tree.ReplaceCount);
+    }
+
+    // ---- Unidentified ancestors (ADR-007, closed in PR 7) ----
+
+    // The round trip the export used to lose. A relationship to an unidentified
+    // ancestor is research, and it was disappearing between a backup and its
+    // restore because the file had nowhere to put the placeholder.
+    [Fact]
+    public async Task RestoresAPhantomAndTheLinkThatNamesIt()
+    {
+        var json = File($$"""
+            "people": [{"id": "{{AdaId}}", "firstName": "Ada", "lastName": "Lovelace"}],
+            "phantoms": [{"id": "{{PhantomId}}"}],
+            "biologicalLinks": [{"id": "{{LinkId}}", "parentId": "{{PhantomId}}", "childId": "{{AdaId}}"}]
+            """);
+
+        var result = await CreateService().ImportAsync(json, ImportConflictResolution.Overwrite);
+
+        Assert.True(result.IsSuccess);
+        Assert.Single(_tree.BiologicalLinks);
+        Assert.Contains(_tree.People, p => p.Id == Guid.Parse(PhantomId) && p.IsPhantom);
+    }
+
+    [Fact]
+    public async Task RestoresAPhantomWithNoNameAndNoDates()
+    {
+        var json = File($$"""
+            "people": [{"id": "{{AdaId}}", "firstName": "Ada", "lastName": "Lovelace"}],
+            "phantoms": [{"id": "{{PhantomId}}"}]
+            """);
+
+        await CreateService().ImportAsync(json, ImportConflictResolution.Overwrite);
+
+        var phantom = _tree.People.Single(p => p.IsPhantom);
+        Assert.Equal(string.Empty, phantom.FirstName);
+        Assert.Equal(string.Empty, phantom.LastName);
+        Assert.Null(phantom.BirthDate);
+    }
+
+    // Counted apart from people, so the preview's "1 person" matches what the
+    // app will show afterwards rather than the number of rows written.
+    [Fact]
+    public void CountsPhantomsApartFromPeopleInThePreview()
+    {
+        var json = File($$"""
+            "people": [{"id": "{{AdaId}}", "firstName": "Ada", "lastName": "Lovelace"}],
+            "phantoms": [{"id": "{{PhantomId}}"}]
+            """);
+
+        var result = CreateService().Preview(json);
+
+        Assert.Equal(1, result.Value!.People);
+        Assert.Equal(1, result.Value!.Phantoms);
+    }
+
+    // A version 1 file predates the section. It is not an error and not a
+    // migration — it simply has no placeholders, exactly as when it was written.
+    [Fact]
+    public async Task ReadsAVersionOneFileThatHasNoPhantomsSection()
+    {
+        var json = $$"""
+            {"schemaVersion": 1, "people": [{"id": "{{AdaId}}", "firstName": "Ada", "lastName": "Lovelace"}]}
+            """;
+
+        var result = await CreateService().ImportAsync(json, ImportConflictResolution.Overwrite);
+
+        Assert.True(result.IsSuccess);
+        Assert.Single(_tree.People);
+        Assert.DoesNotContain(_tree.People, p => p.IsPhantom);
+    }
+
+    // Under Overwrite the final set is the file's set. Leaving phantoms out of
+    // the merge would delete every placeholder the file carried and drop the
+    // links naming them as orphans — the loss the section exists to stop.
+    [Fact]
+    public async Task OverwriteKeepsThePhantomsTheFileCarries()
+    {
+        _tree.With(Stored(GraceId, "Grace", "Hopper"));
+
+        var json = File($$"""
+            "people": [{"id": "{{AdaId}}", "firstName": "Ada", "lastName": "Lovelace"}],
+            "phantoms": [{"id": "{{PhantomId}}"}],
+            "biologicalLinks": [{"id": "{{LinkId}}", "parentId": "{{PhantomId}}", "childId": "{{AdaId}}"}]
+            """);
+
+        await CreateService().ImportAsync(json, ImportConflictResolution.Overwrite);
+
+        Assert.DoesNotContain(_tree.People, p => p.Id == Guid.Parse(GraceId));
+        Assert.Contains(_tree.People, p => p.IsPhantom);
+        Assert.Single(_tree.BiologicalLinks);
+    }
+
+    // Skip leaves the tree alone, so a phantom already stored survives an import
+    // that does not mention it.
+    [Fact]
+    public async Task SkipLeavesAStoredPhantomInPlace()
+    {
+        _tree.With(Person.CreatePhantom());
+
+        await CreateService().ImportAsync(OnePerson(), ImportConflictResolution.Skip);
+
+        Assert.Contains(_tree.People, p => p.IsPhantom);
+    }
+
+    // One id cannot name both a person and a placeholder: the tree would hold
+    // two records for one node and the links could not say which they meant.
+    [Fact]
+    public void RejectsAPhantomThatReusesAPersonId()
+    {
+        var json = File($$"""
+            "people": [{"id": "{{AdaId}}", "firstName": "Ada", "lastName": "Lovelace"}],
+            "phantoms": [{"id": "{{AdaId}}"}]
+            """);
+
+        var result = CreateService().Preview(json);
+
+        Assert.Equal(1, result.Value!.RecordsRejected);
+        Assert.Equal(0, result.Value!.Phantoms);
+    }
+
+    // A file of nothing but empty slots restores nothing anybody can read, and
+    // importing it over a real tree would replace it with a set of blanks.
+    [Fact]
+    public void RefusesAFileOfNothingButPhantoms()
+    {
+        var result = CreateService().Preview(File($$""" "phantoms": [{"id": "{{PhantomId}}"}] """));
+
+        Assert.False(result.IsSuccess);
+        Assert.Contains("nothing to import", result.Error);
     }
 }

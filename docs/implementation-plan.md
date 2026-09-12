@@ -204,6 +204,13 @@ Extends `PartialDateInput.razor` in place. Year → Month → Day → Circa; cle
 - `Shared/AddRelationshipDialog.razor` — unified 3-step wizard (kind → person → details incl. subtype, certainty, dates, note); replaces all per-type modals
 - Extend export coverage
 
+**Done.** Three things from this PR change what PRs 8 and 9 have to do:
+
+- **Two repository methods were added, and both are the seam rather than convenience.** `IBiologicalRelationshipRepository.ReplaceParentAsync(oldLinkId, newLink)` exists because the interface could not express a multi-record mutation as one call, so `ReplaceParentAsync` would have been the half-failing delete-then-add the API-seam rule exists to prevent; the IndexedDB implementation does both halves in one transaction. `IPersonRepository.GetByIdsAsync(ids)` exists because a profile names a handful of relatives and the alternatives were one read each (N+1) or the whole table. **PR 8 needs the equivalent replace on `IAdoptiveRelationshipRepository`, and PR 9 on the marriage and stepparent repositories** — the same reasoning applies unchanged.
+- **The phantom-export gap is closed and `schemaVersion` is 2.** Exports carry a `phantoms` section and no longer drop links naming one. Every later PR that extends export coverage inherits this: a relationship to an unidentified ancestor is exportable like any other. See the PR 7 amendment in ADR-007.
+- **`AddRelationshipDialog` is built to be extended, not rewritten.** Adding a kind is an entry in its `Catalogue`, a branch in `SaveAsync`, and any extra fields in the details step. Nothing above that is shaped around biology. A free-text relationship note is deliberately *not* built: no relationship entity carries one, and a box that accepted research and discarded it on save would be worse than no box. It arrives with a field to hold it.
+
+
 ### PR 8 — Adoptive relationships
 **Stories:** US-014 – US-020, US-039 (adoptive)
 
@@ -216,7 +223,7 @@ Same guards as biological, **no upper cap**; adoption date optional ("Date unkno
 - `MarriageService` — self-reference check, active-duplicate check, overlap warning, end-after-start validation, `SuggestEndDateFromSpouseDeathAsync` (US-026)
 - `StepparentService` — validates the marriage involves a parent of the stepchild
 - Profile: "Marriages / Partnerships" and "Stepchildren"; dialog step 3 extended for marriage fields
-- Give `TreeStatsService` a cached read invalidated by `TreeDataNotifier`, before a third component subscribes. Each subscriber currently reads all four repositories in full, so every save costs one complete read of the store per listener — free against IndexedDB, four HTTP round trips each once the seam is swapped, which is the pattern the service's own docstring exists to watch for
+- ~~Give `TreeStatsService` a cached read invalidated by `TreeDataNotifier`~~ — **already done, in PR 5.** The backup reminder became the third subscriber there, which is the condition this item was waiting for, so the cache was built at the same time rather than left to make one save cost twelve reads for four PRs
 - Extend `TreeStatsService` to count stepparent links — the relationship total omits them by design until this PR, and starts silently under-reporting the moment they are written
 - Extend export coverage
 
@@ -313,7 +320,7 @@ ADR-004 resolved the production-host question outright, so no host ADR is needed
 - **Every PR is reviewed against the API-Seam Discipline and Durability Requirements above**
 - Any PR adding a persisted shape extends export coverage and bumps `schemaVersion` in the same PR
 - UI never references domain entities directly; DTOs only
-- Phantom persons (`IsPhantom = true`) are excluded from all lists, search results, and exports — visible only in the tree and the Identify dialog
+- Phantom persons (`IsPhantom = true`) are excluded from all lists and search results — visible only in the tree, the Identify dialog, and a profile's parent slots. They are **included** in exports, in a separate `phantoms` section, so the relationships naming them survive a backup round trip (ADR-007, amended in PR 7)
 - Certainty defaults to `Confirmed`; Likely and Speculative are visually indicated everywhere relationships appear
 - Branch naming: `claude/<short-kebab-description>-<4-char-suffix>` per CLAUDE.md
 - All UI matches the design tokens and component conventions in `.design/Family Tree Application.zip`

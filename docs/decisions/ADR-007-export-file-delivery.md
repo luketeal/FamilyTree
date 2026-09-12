@@ -41,4 +41,20 @@ Storing the handle in IndexedDB and reusing it silently was considered and rejec
 Two decisions about the file itself, recorded here because they are the kind of thing a future reader will ask about:
 
 - **The format is indented JSON with enum names, not ordinals.** Indentation costs bytes on a file nobody transmits and buys a backup a person can read, diff and repair by hand. Enum names matter more: inserting a member into `Gender` would renumber every later one, silently changing the meaning of every file already written.
-- **Exports exclude phantom persons and any relationship that names one**, per the cross-cutting rule that keeps unidentified ancestors out of lists, searches and exports. This is a real gap in the durability story, not a tidy-up: restoring the sample family from its own export returns 13 relationships rather than 14, because the link to the unidentified grandmother has nowhere to live in a file that does not contain her. It is surfaced to the user in the export summary rather than subtracted quietly, and pinned by tests so it cannot change unnoticed. It should be resolved when relationships become editable in PR 7 — most likely by carrying phantoms in a separate section of the file, so they stay out of lists without being lost.
+- **Exports excluded phantom persons and any relationship that named one**, per the cross-cutting rule that keeps unidentified ancestors out of lists, searches and exports. This was a real gap in the durability story, not a tidy-up: restoring the sample family from its own export returned 13 relationships rather than 14, because the link to the unidentified grandmother had nowhere to live in a file that did not contain her. **Resolved in PR 7** — see the amendment below.
+
+## Amendment (PR 7): phantoms are carried in their own section
+
+**Date:** 2026-08-23
+
+The gap above is closed, along the lines this ADR anticipated. `ExportDocument` gains a `phantoms` array alongside `people`, and links naming a phantom are no longer filtered out. `schemaVersion` goes to 2.
+
+A phantom is written as nothing but an id, because that is genuinely all there is — no name, no dates, nothing anybody recorded. The id is the point: it is what the links refer to.
+
+**Why a separate section rather than an `isPhantom` flag on `ExportedPerson`.** The rule that matters is that nothing treats a placeholder as a person. A flag makes that a thing every reader has to remember to check, and the first one that forgets shows an unnamed row in a list of people. Two sections make it structural: anything reading `people` sees only people, and a reader that does not know about `phantoms` ignores them rather than mishandling them. It also keeps the count honest — the export summary reports people and phantoms separately, so the file's totals match what the app displays.
+
+**Why not leave it.** This project treats silent data loss as a defect class, and a relationship to an unidentified ancestor is research: somebody established that Margaret had a mother without establishing who she was. Losing one relationship per phantom on every backup round trip is exactly the failure export exists to prevent, and it was being lost quietly enough that only a test constant recorded it.
+
+**Backwards compatibility is free rather than engineered.** A version 1 file has no `phantoms` array and, by construction, no link that names one — that is what a version 1 export was. Import reads it unchanged. The version bump exists so a version 1 *app* cannot read a version 2 file and drop the placeholders and their links as orphans while reporting success.
+
+**Consequences.** Restoring the sample family now returns 11 records' worth of people-and-placeholders and all 14 relationships. `RestoredStats` in `tests/FamilyTree.E2E.Tests/ExportImportTests.cs` is no longer a smaller number than `SampleStats`; it is the same constant, and the test that used to pin the loss now pins its absence. A file of nothing but phantoms is still refused on both sides: it restores nothing anybody can read, and accepting it would let a set of empty slots overwrite a real tree.

@@ -18,6 +18,12 @@ public sealed class BrowserPersonRepository(IndexedDbStore store) : IPersonRepos
     public async Task<Person?> GetByIdAsync(Guid id, CancellationToken ct = default) =>
         (await store.GetAsync<PersonRecord>(IndexedDbStore.People, id, ct))?.ToDomain();
 
+    public async Task<IReadOnlyList<Person>> GetByIdsAsync(
+        IReadOnlyCollection<Guid> ids, CancellationToken ct = default) =>
+        (await store.GetManyAsync<PersonRecord>(IndexedDbStore.People, ids, ct))
+        .Select(r => r.ToDomain())
+        .ToList();
+
     public async Task<IReadOnlyList<Person>> GetAllAsync(CancellationToken ct = default) =>
         (await store.GetAllAsync<PersonRecord>(IndexedDbStore.People, ct))
         .Select(r => r.ToDomain())
@@ -73,6 +79,15 @@ public sealed class BrowserBiologicalRelationshipRepository(IndexedDbStore store
 
     public Task DeleteAsync(Guid id, CancellationToken ct = default) =>
         store.DeleteAsync(IndexedDbStore.BiologicalLinks, id, ct);
+
+    /// <summary>
+    /// One IndexedDB transaction, so the correction cannot leave the child with
+    /// neither the old parent nor the new one.
+    /// </summary>
+    public Task ReplaceParentAsync(
+        Guid oldLinkId, BiologicalParentChild newLink, CancellationToken ct = default) =>
+        store.ReplaceAsync(
+            IndexedDbStore.BiologicalLinks, oldLinkId, BiologicalLinkRecord.From(newLink), ct);
 }
 
 public sealed class BrowserAdoptiveRelationshipRepository(IndexedDbStore store)

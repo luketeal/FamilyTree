@@ -40,7 +40,22 @@ public abstract class ShellTestContext : BunitContext
     protected ShellTestContext()
     {
         People.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync([]);
+        // Answered from the same list the tests seed, so a component reading a
+        // batch sees what a component reading everything would.
+        People.Setup(r => r.GetByIdsAsync(It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyCollection<Guid> ids, CancellationToken ct) =>
+                People.Object.GetAllAsync(ct).Result.Where(p => ids.Contains(p.Id)).ToList());
         Biological.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync([]);
+        Biological.Setup(r => r.GetParentLinksForChildAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
+        Biological.Setup(r => r.GetChildLinksForParentAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
+        Biological.Setup(r => r.GetParentLinksForChildrenAsync(
+                It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
+        Adoptive.Setup(r => r.GetParentLinksForChildrenAsync(
+                It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
         Adoptive.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync([]);
         Marriages.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync([]);
 
@@ -55,6 +70,8 @@ public abstract class ShellTestContext : BunitContext
         // The top bar hosts the quick-add popover, and the layout hosts toasts,
         // so shell tests now need both even when asserting only on markup.
         Services.AddSingleton<PersonService>();
+        Services.AddSingleton<CircularReferenceChecker>();
+        Services.AddSingleton<BiologicalRelationshipService>();
         Services.AddSingleton<ToastService>();
         Services.AddSingleton<ExportService>();
         Services.AddSingleton<ImportService>();
