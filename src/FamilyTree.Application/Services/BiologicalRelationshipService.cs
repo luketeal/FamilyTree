@@ -213,14 +213,19 @@ public sealed class BiologicalRelationshipService(
         CancellationToken ct,
         Guid? ignoringLinkId = null)
     {
-        if (parentId == childId)
-        {
-            return Result<Addable>.Failure("A person cannot be their own biological parent.");
-        }
-
+        // Emptiness first: two empty ids are equal, so the self-parenthood check
+        // would otherwise claim somebody was their own parent when in fact
+        // nobody was chosen at all. Defensive either way — the entity guards
+        // both and the UI cannot produce it — so this is only about which
+        // sentence a future caller reads.
         if (parentId == Guid.Empty || childId == Guid.Empty)
         {
             return Result<Addable>.Failure("Both a parent and a child must be chosen.");
+        }
+
+        if (parentId == childId)
+        {
+            return Result<Addable>.Failure("A person cannot be their own biological parent.");
         }
 
         // Both people in one read rather than two, and it doubles as the
@@ -289,10 +294,20 @@ public sealed class BiologicalRelationshipService(
             return Result<Guid>.Success(linkId);
         }
 
-        return Result<Guid>.SuccessWithWarning(
-            linkId,
-            $"{Name(parent)} was born in {parent.BirthDate.Year}, after {Name(child)} "
-            + $"in {child.BirthDate.Year}. Saved anyway — check the dates.");
+        // Same year at different precisions is still worth flagging, but not as
+        // "after". PartialDate ranks a year-only date before a fully dated one
+        // in the same year, so a parent dated 1920-03-05 against a child dated
+        // 1920 compares greater — and the sentence then read "born in 1920,
+        // after … in 1920", which reads as a bug in the app rather than as a
+        // problem with the data, on a message whose only job is to get the dates
+        // looked at.
+        var message = parent.BirthDate.Year == child.BirthDate.Year
+            ? $"{Name(parent)} and {Name(child)} are both recorded as born in "
+                + $"{parent.BirthDate.Year}. Saved anyway — check the dates."
+            : $"{Name(parent)} was born in {parent.BirthDate.Year}, after {Name(child)} "
+                + $"in {child.BirthDate.Year}. Saved anyway — check the dates.";
+
+        return Result<Guid>.SuccessWithWarning(linkId, message);
     }
 
     /// <summary>Sibling candidates and how they are connected, before any person is resolved.</summary>

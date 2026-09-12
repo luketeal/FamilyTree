@@ -150,8 +150,9 @@ public class ExportServiceTests
     [Fact]
     public async Task WritesPhantomsToTheirOwnSection()
     {
+        var ada = Ada();
         var phantom = Person.CreatePhantom();
-        _tree.With(Ada(), phantom);
+        _tree.With(ada, phantom).With(new BiologicalParentChild(phantom.Id, ada.Id));
 
         using var json = await ExportAsync();
 
@@ -165,12 +166,47 @@ public class ExportServiceTests
     [Fact]
     public async Task WritesNothingButAnIdForAPhantom()
     {
+        var ada = Ada();
+        var phantom = Person.CreatePhantom();
+        _tree.With(ada, phantom).With(new BiologicalParentChild(phantom.Id, ada.Id));
+
+        using var json = await ExportAsync();
+
+        var written = json.RootElement.GetProperty("phantoms")[0];
+        Assert.Equal(["id"], written.EnumerateObject().Select(p => p.Name).ToArray());
+    }
+
+    // A placeholder's whole content is being the far end of a link, so one with
+    // no links left is residue rather than a record — and nothing in the app can
+    // reach it to delete it. While exports excluded phantoms outright a round
+    // trip swept these by accident; carrying them removed that, so the filter
+    // has to be deliberate or every removed unidentified parent leaves something
+    // that survives each later backup.
+    [Fact]
+    public async Task LeavesOutAPhantomNothingPointsAt()
+    {
         _tree.With(Ada(), Person.CreatePhantom());
 
         using var json = await ExportAsync();
 
-        var phantom = json.RootElement.GetProperty("phantoms")[0];
-        Assert.Equal(["id"], phantom.EnumerateObject().Select(p => p.Name).ToArray());
+        Assert.Equal(0, json.RootElement.GetProperty("phantoms").GetArrayLength());
+    }
+
+    // The orphan filter must not take the linked ones with it, which is the
+    // regression that would quietly undo the whole phantom section.
+    [Fact]
+    public async Task KeepsALinkedPhantomWhileDroppingAnOrphanedOne()
+    {
+        var ada = Ada();
+        var linked = Person.CreatePhantom();
+        var orphan = Person.CreatePhantom();
+        _tree.With(ada, linked, orphan).With(new BiologicalParentChild(linked.Id, ada.Id));
+
+        using var json = await ExportAsync();
+
+        var phantoms = json.RootElement.GetProperty("phantoms");
+        Assert.Equal(1, phantoms.GetArrayLength());
+        Assert.Equal(linked.Id, phantoms[0].GetProperty("id").GetGuid());
     }
 
     // The link that used to be dropped. It is the whole reason the section

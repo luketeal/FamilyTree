@@ -285,6 +285,39 @@ public class PersonSearchSelectTests : ShellTestContext
         Assert.Equal("Ada Lovelace", chosen?.DisplayName);
     }
 
+    // The banner sits above the results rather than inside the form, so closing
+    // the form without clearing it left the complaint on screen with nothing to
+    // explain it — and still showing when the form reopened, so a fresh attempt
+    // started out looking failed.
+    [Fact]
+    public void BackToSearchTakesTheCreateFormsErrorWithIt()
+    {
+        GivenRoster();
+        var cut = RenderSelect();
+
+        cut.Find("[data-testid='person-search-create']").Click();
+        cut.Find("[data-testid='person-search-create-save']").Click();
+        Assert.Contains("required", cut.Find("[data-testid='person-search-error']").TextContent);
+
+        cut.Find("[data-testid='person-search-create-cancel']").Click();
+
+        Assert.Empty(cut.FindAll("[data-testid='person-search-error']"));
+    }
+
+    [Fact]
+    public void ReopeningTheCreateFormDoesNotShowTheLastAttemptsError()
+    {
+        GivenRoster();
+        var cut = RenderSelect();
+
+        cut.Find("[data-testid='person-search-create']").Click();
+        cut.Find("[data-testid='person-search-create-save']").Click();
+        cut.Find("[data-testid='person-search-create-cancel']").Click();
+        cut.Find("[data-testid='person-search-create']").Click();
+
+        Assert.Empty(cut.FindAll("[data-testid='person-search-error']"));
+    }
+
     // The number of controls does not exceed 16px by accident. Every input here
     // is wrapped in .input so the phone rules in app.css reach it — a bare one
     // would be missed, and iOS would zoom the page on focus.

@@ -205,6 +205,22 @@ public sealed class ImportService(
         adoptiveLinks = Connected(adoptiveLinks, l => (l.ParentId, l.ChildId), "adoptive link", personIds, warnings, out var adoptiveOrphans);
         marriageList = Connected(marriageList, m => (m.Spouse1Id, m.Spouse2Id), "marriage", personIds, warnings, out var marriageOrphans);
 
+        // The two-parent cap, which nothing else on this path enforces. A file can
+        // name three biological parents for one child, and until this ran the
+        // import stored all three: the profile then showed three rows, no Add
+        // button, and no way back to a legal state but removing links one at a
+        // time.
+        //
+        // It also protects a seam claim. BiologicalRelationshipService reads
+        // children-of once per parent and documents that loop as bounded by
+        // MaxParentsPerChild — two reads, not a walk. A stored third parent
+        // makes that one read per parent, which is the N+1 the discipline exists
+        // to keep out once these interfaces are backed by HTTP.
+        //
+        // Runs after Connected so a link about to be dropped for naming nobody
+        // cannot burn a slot that a valid one needed.
+        bioLinks = CapParentsPerChild(bioLinks, finalPeople, warnings, out var bioOverCap);
+
         // One call, one transaction. Four repository writes could half-apply and
         // leave links pointing at people who were never stored — which is the
         // failure mode this whole PR exists to prevent.
@@ -226,6 +242,7 @@ public sealed class ImportService(
         // dropped by the same filter was removed rather than refused, which the
         // tally already reports as such.
         var refused = FromFile(bioOrphans, file.BiologicalLinks)
+            + FromFile(bioOverCap, file.BiologicalLinks)
             + FromFile(adoptiveOrphans, file.AdoptiveLinks)
             + FromFile(marriageOrphans, file.Marriages);
         rejected += refused;
@@ -377,6 +394,51 @@ public sealed class ImportService(
 
             dropped.Add(record);
             warnings.Add($"Ignored a duplicate record: another one already has {describe}.");
+        }
+
+        return kept;
+    }
+
+    /// <summary>
+    /// Keeps at most <see cref="BiologicalParentChild.MaxParentsPerChild"/>
+    /// parents for any one child, reporting the rest.
+    /// </summary>
+    /// <remarks>
+    /// Whichever side <see cref="Combine"/> listed first keeps its slots, which
+    /// is the same rule the natural-key deduplication above follows: under Skip
+    /// the stored parents survive, and under Merge and Overwrite the file's do.
+    /// Anything else would let a file silently displace a recorded ancestor.
+    /// </remarks>
+    private static IReadOnlyList<BiologicalParentChild> CapParentsPerChild(
+        IReadOnlyList<BiologicalParentChild> links,
+        IReadOnlyList<Person> people,
+        WarningLog warnings,
+        out List<BiologicalParentChild> dropped)
+    {
+        var names = people.ToDictionary(p => p.Id, p => p.IsPhantom
+            ? "an unidentified ancestor"
+            : $"{p.FirstName} {p.LastName}".Trim());
+
+        var taken = new Dictionary<Guid, int>();
+        var kept = new List<BiologicalParentChild>(links.Count);
+        dropped = [];
+
+        foreach (var link in links)
+        {
+            taken.TryGetValue(link.ChildId, out var used);
+
+            if (used >= BiologicalParentChild.MaxParentsPerChild)
+            {
+                dropped.Add(link);
+                var child = names.TryGetValue(link.ChildId, out var name) ? name : link.ChildId.ToString();
+                warnings.Add(
+                    $"Dropped a biological link: {child} already has "
+                    + $"{BiologicalParentChild.MaxParentsPerChild} biological parents.");
+                continue;
+            }
+
+            taken[link.ChildId] = used + 1;
+            kept.Add(link);
         }
 
         return kept;

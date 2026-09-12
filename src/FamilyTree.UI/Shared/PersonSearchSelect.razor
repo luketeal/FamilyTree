@@ -129,7 +129,7 @@
                    relationship. Naming the destination rather than the act
                    removes the ambiguity without a tooltip. *@
                 <button type="button" class="btn btn--ghost" disabled="@_busy"
-                        data-testid="@($"{TestId}-create-cancel")" @onclick="() => _creating = false">
+                        data-testid="@($"{TestId}-create-cancel")" @onclick="CancelCreating">
                     Back to search
                 </button>
             </div>
@@ -344,10 +344,30 @@
         await SelectedChanged.InvokeAsync(Selected);
     }
 
+    /// <summary>
+    /// Closes the inline form and takes its complaint with it.
+    /// </summary>
+    /// <remarks>
+    /// The error banner renders above the results rather than inside the form,
+    /// so clearing only <c>_creating</c> left "First and last name are both
+    /// required" sitting over the search list with nothing on screen to explain
+    /// it — and still showing when the form was reopened, so a fresh attempt
+    /// started out looking failed.
+    /// </remarks>
+    private void CancelCreating()
+    {
+        _creating = false;
+        _error = null;
+    }
+
     private Task StartCreatingAsync()
     {
         _creating = true;
         _focusCreate = true;
+
+        // Cleared on the way in as well as the way out: the banner is shared
+        // with LoadAsync's failures, so it cannot simply be scoped to the form.
+        _error = null;
 
         // Whatever was typed into the search box is almost always the name being
         // looked for, so it is carried across rather than retyped. Split on the

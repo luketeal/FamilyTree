@@ -65,7 +65,24 @@ public sealed class ExportService(
         // its own backup the same size it went in. Excluding them outright cost
         // one relationship per unidentified ancestor on every round trip, which
         // is silent data loss rather than tidiness (ADR-007).
-        var phantoms = allPeople.Where(p => p.IsPhantom).ToList();
+        // Only the placeholders something still points at. A phantom carries no
+        // name, no dates and no id anybody has seen — its entire content is
+        // being the far end of a link, so one with no links left is not a record
+        // but residue, and nothing in the app can reach it to delete it.
+        //
+        // This matters more now than it did: while exports excluded phantoms
+        // outright, a round trip swept orphans by accident. Carrying them
+        // removed that accidental collection, so without this filter every
+        // removed or replaced unidentified parent would leave a record that
+        // persists through every later backup and pushes the summary's
+        // "N unidentified ancestors" up with nothing to explain it — on the page
+        // whose job is proving the file is intact.
+        var linkedIds = bio.SelectMany(l => new[] { l.ParentId, l.ChildId })
+            .Concat(adopt.SelectMany(l => new[] { l.ParentId, l.ChildId }))
+            .Concat(married.SelectMany(m => new[] { m.Spouse1Id, m.Spouse2Id }))
+            .ToHashSet();
+
+        var phantoms = allPeople.Where(p => p.IsPhantom && linkedIds.Contains(p.Id)).ToList();
         var realPeople = allPeople.Where(p => !p.IsPhantom).ToList();
 
         var relationships = bio.Count + adopt.Count + married.Count;

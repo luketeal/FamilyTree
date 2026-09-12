@@ -232,6 +232,41 @@ public class BiologicalRelationshipServiceTests
         Assert.Single(_tree.BiologicalLinks);
     }
 
+    // PartialDate ranks a year-only date before a fully dated one in the same
+    // year, so this fires — correctly, a parent and child sharing a birth year
+    // is worth a look. What it must not do is say one came "after" the other
+    // while naming the same year on both sides, which reads as a bug in the app
+    // rather than a problem with the data.
+    [Fact]
+    public async Task WordsTheWarningDifferentlyWhenParentAndChildShareABirthYear()
+    {
+        var child = Someone("Kid");
+        var parent = Someone("Mum");
+        child.UpdateDates(PartialDate.FromYear(1920), null, null, null);
+        parent.UpdateDates(PartialDate.FromYearMonthDay(1920, 3, 5), null, null, null);
+        _tree.With(child, parent);
+
+        var result = await CreateService().AddParentAsync(child.Id, parent.Id);
+
+        Assert.True(result.IsWarning);
+        Assert.DoesNotContain("after", result.Warning);
+        Assert.Contains("both recorded as born in 1920", result.Warning);
+    }
+
+    // The ordinary case keeps saying "after", so the fix above cannot have
+    // flattened every warning into the same sentence.
+    [Fact]
+    public async Task StillSaysAfterWhenTheParentIsBornInALaterYear()
+    {
+        var child = Someone("Kid", birthYear: 1948);
+        var parent = Someone("Mum", birthYear: 1970);
+        _tree.With(child, parent);
+
+        var result = await CreateService().AddParentAsync(child.Id, parent.Id);
+
+        Assert.Contains("after", result.Warning);
+    }
+
     [Fact]
     public async Task DoesNotWarnWhenTheParentIsOlder()
     {

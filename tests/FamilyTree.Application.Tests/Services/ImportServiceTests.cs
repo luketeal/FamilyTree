@@ -781,6 +781,82 @@ public class ImportServiceTests
         Assert.Equal(0, result.Value!.Phantoms);
     }
 
+    // ---- The two-parent cap, which import is the one path that skips ----
+
+    // A file can say a child has three biological parents. Until this was
+    // enforced the import stored all three, leaving a profile with three rows,
+    // no Add button, and no way back to a legal state but removing links singly.
+    [Fact]
+    public async Task KeepsOnlyTwoBiologicalParentsPerChild()
+    {
+        var json = File($$"""
+            "people": [
+              {"id": "{{AdaId}}", "firstName": "Ada", "lastName": "Lovelace"},
+              {"id": "{{GraceId}}", "firstName": "Grace", "lastName": "Hopper"},
+              {"id": "{{PhantomId}}", "firstName": "Mary", "lastName": "Somerville"},
+              {"id": "55555555-5555-5555-5555-555555555555", "firstName": "Anne", "lastName": "Byron"}
+            ],
+            "biologicalLinks": [
+              {"id": "{{LinkId}}", "parentId": "{{GraceId}}", "childId": "{{AdaId}}"},
+              {"id": "66666666-6666-6666-6666-666666666666", "parentId": "{{PhantomId}}", "childId": "{{AdaId}}"},
+              {"id": "77777777-7777-7777-7777-777777777777", "parentId": "55555555-5555-5555-5555-555555555555", "childId": "{{AdaId}}"}
+            ]
+            """);
+
+        var result = await CreateService().ImportAsync(json, ImportConflictResolution.Overwrite);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(2, _tree.BiologicalLinks.Count(l => l.ChildId == Guid.Parse(AdaId)));
+    }
+
+    // Reported rather than dropped quietly: the file said something the tree
+    // cannot hold, and the summary is where that has to surface.
+    [Fact]
+    public async Task ReportsTheParentLinksItHadToDrop()
+    {
+        var json = File($$"""
+            "people": [
+              {"id": "{{AdaId}}", "firstName": "Ada", "lastName": "Lovelace"},
+              {"id": "{{GraceId}}", "firstName": "Grace", "lastName": "Hopper"},
+              {"id": "{{PhantomId}}", "firstName": "Mary", "lastName": "Somerville"},
+              {"id": "55555555-5555-5555-5555-555555555555", "firstName": "Anne", "lastName": "Byron"}
+            ],
+            "biologicalLinks": [
+              {"id": "{{LinkId}}", "parentId": "{{GraceId}}", "childId": "{{AdaId}}"},
+              {"id": "66666666-6666-6666-6666-666666666666", "parentId": "{{PhantomId}}", "childId": "{{AdaId}}"},
+              {"id": "77777777-7777-7777-7777-777777777777", "parentId": "55555555-5555-5555-5555-555555555555", "childId": "{{AdaId}}"}
+            ]
+            """);
+
+        var result = await CreateService().ImportAsync(json, ImportConflictResolution.Overwrite);
+
+        Assert.Equal(1, result.Value!.RecordsRejected);
+        Assert.Contains(result.Value!.Warnings, w => w.Contains("Ada Lovelace") && w.Contains("already has 2"));
+    }
+
+    // Two is legal, so nothing is touched. Without this the cap test above would
+    // pass on an implementation that dropped every second parent.
+    [Fact]
+    public async Task LeavesAChildWithExactlyTwoParentsAlone()
+    {
+        var json = File($$"""
+            "people": [
+              {"id": "{{AdaId}}", "firstName": "Ada", "lastName": "Lovelace"},
+              {"id": "{{GraceId}}", "firstName": "Grace", "lastName": "Hopper"},
+              {"id": "{{PhantomId}}", "firstName": "Mary", "lastName": "Somerville"}
+            ],
+            "biologicalLinks": [
+              {"id": "{{LinkId}}", "parentId": "{{GraceId}}", "childId": "{{AdaId}}"},
+              {"id": "66666666-6666-6666-6666-666666666666", "parentId": "{{PhantomId}}", "childId": "{{AdaId}}"}
+            ]
+            """);
+
+        var result = await CreateService().ImportAsync(json, ImportConflictResolution.Overwrite);
+
+        Assert.Equal(2, _tree.BiologicalLinks.Count);
+        Assert.Equal(0, result.Value!.RecordsRejected);
+    }
+
     // A file of nothing but empty slots restores nothing anybody can read, and
     // importing it over a real tree would replace it with a set of blanks.
     [Fact]
