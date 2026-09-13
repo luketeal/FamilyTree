@@ -3,12 +3,12 @@ using Microsoft.Playwright;
 namespace FamilyTree.E2E.Tests;
 
 [Collection(nameof(StaticSiteCollection))]
-public class BootSmokeTests(StaticSiteFixture fixture)
+public class BootSmokeTests(StaticSiteFixture fixture) : BrowserTest(fixture)
 {
     private async Task<IPage> OpenAsync(string path = "")
     {
-        var page = await fixture.Browser.NewPageAsync();
-        await page.GotoAsync(fixture.BaseUrl + path, new PageGotoOptions
+        var page = await NewPageAsync();
+        await page.GotoAsync(Fixture.BaseUrl + path, new PageGotoOptions
         {
             WaitUntil = WaitUntilState.NetworkIdle,
         });
@@ -22,8 +22,8 @@ public class BootSmokeTests(StaticSiteFixture fixture)
     [Fact]
     public async Task Application_MakesNoThirdPartyRequests()
     {
-        var page = await fixture.Browser.NewPageAsync();
-        var origin = new Uri(fixture.BaseUrl).GetLeftPart(UriPartial.Authority);
+        var page = await NewPageAsync();
+        var origin = new Uri(Fixture.BaseUrl).GetLeftPart(UriPartial.Authority);
         var external = new List<string>();
 
         page.Request += (_, request) =>
@@ -34,7 +34,7 @@ public class BootSmokeTests(StaticSiteFixture fixture)
             }
         };
 
-        await page.GotoAsync(fixture.BaseUrl, new PageGotoOptions
+        await page.GotoAsync(Fixture.BaseUrl, new PageGotoOptions
         {
             WaitUntil = WaitUntilState.NetworkIdle,
         });
@@ -47,8 +47,8 @@ public class BootSmokeTests(StaticSiteFixture fixture)
     [Fact]
     public async Task SelfHostedFonts_AreActuallyApplied()
     {
-        var page = await fixture.Browser.NewPageAsync();
-        await page.GotoAsync(fixture.BaseUrl, new PageGotoOptions
+        var page = await NewPageAsync();
+        await page.GotoAsync(Fixture.BaseUrl, new PageGotoOptions
         {
             WaitUntil = WaitUntilState.NetworkIdle,
         });

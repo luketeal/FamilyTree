@@ -1,0 +1,167 @@
+.reldialog {
+    position: fixed;
+    /* Not `inset: 0`: the viewport tracker sets height and top, and a pinned
+       bottom would win over height and put the overlay back to layout-viewport
+       size. 100dvh is the pre-JS and no-VisualViewport fallback. */
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 100dvh;
+    z-index: 40;
+    display: grid;
+    place-items: center;
+    padding: 16px;
+    /* The dialog owns its scroll, so a tall panel never hands the gesture to the
+       page behind it. */
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    background: rgba(28, 26, 23, 0.35);
+}
+
+.reldialog__panel {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    /* min() rather than a fixed width: at 390px the panel is the screen less its
+       padding, and nothing inside may push it wider. */
+    width: min(460px, 100%);
+    min-width: 0;
+    padding: 20px;
+    background: var(--paper);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-pop);
+}
+
+.reldialog__title {
+    margin: 0;
+    font-family: var(--font-serif);
+    font-size: 18px;
+    color: var(--ink);
+}
+
+.reldialog__steps {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.reldialog__step {
+    padding: 3px 10px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: var(--paper2);
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--ink3);
+}
+
+.reldialog__step--on {
+    background: var(--coral-bg);
+    border-color: var(--coral-line);
+    color: var(--coral);
+}
+
+.reldialog__body {
+    min-width: 0;
+}
+
+.reldialog__kinds {
+    display: grid;
+    gap: 8px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    min-width: 0;
+}
+
+.reldialog__kinds legend {
+    margin-bottom: 6px;
+    padding: 0;
+}
+
+.reldialog__kind {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    width: 100%;
+    padding: 10px 12px;
+    background: var(--paper);
+    border: 1px solid var(--line2);
+    border-radius: var(--radius-md);
+    /* font rather than font-size alone: a button otherwise falls back to the
+       UA's control font, which is neither the app's family nor 16px on a phone
+       — and an undersized control is what makes iOS zoom on focus. */
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.reldialog__kind:hover {
+    background: var(--paper2);
+}
+
+.reldialog__kind--on {
+    border-color: var(--coral);
+    background: var(--coral-bg);
+}
+
+.reldialog__kind-title {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--ink);
+}
+
+.reldialog__kind-note {
+    font-size: 12px;
+    color: var(--ink3);
+}
+
+.reldialog__details {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    min-width: 0;
+}
+
+.reldialog__summary {
+    margin: 0;
+    padding: 10px 12px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    background: var(--paper2);
+    font-size: 13px;
+    color: var(--ink2);
+}
+
+.reldialog__field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+}
+
+.reldialog__select {
+    flex: 1;
+    min-width: 0;
+    border: 0;
+    outline: 0;
+    background: transparent;
+    /* Inherited, not set. A scoped stylesheet adds an attribute selector and so
+       outranks the bare `select` rule in app.css that lifts controls to 16px on
+       a phone — declaring a size here would quietly reintroduce the iOS
+       focus-zoom that rule exists to prevent. */
+    font: inherit;
+    color: inherit;
+}
+
+.reldialog__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}

@@ -1,0 +1,443 @@
+@inject BiologicalRelationshipService Relationships
+@inject TreeDataNotifier Notifier
+@inject ToastService Toasts
+@inject IOverlayInterop Overlay
+@implements IAsyncDisposable
+
+@* The one dialog for recording a relationship, whatever kind it is: kind →
+   person → details. It replaces the per-type modals the design originally had,
+   because those differ in three fields and agree on everything else — the
+   search, the exclusions, the guards, the focus handling and the mobile
+   layout — and four copies of that is four places for them to drift.
+
+   PR 8 adds adoptive kinds and PR 9 marriage and stepparent. Both are additions
+   to Catalogue plus a branch in SaveAsync and in the details step; nothing here
+   is shaped only around biology. *@
+
+@if (Visible)
+{
+    <div class="reldialog" data-testid="@TestId" data-overlay @ref="_overlay"
+         @onclick="CancelAsync">
+        <div class="reldialog__panel" role="dialog" aria-modal="true" aria-labelledby="@_titleId"
+             tabindex="-1" @ref="_panel" @onkeydown="OnKeyDownAsync"
+             @onclick:stopPropagation="true">
+
+            <h2 id="@_titleId" class="reldialog__title">
+                @(IsReplacing ? $"Replace a parent of {SubjectName}" : $"Add a relationship for {SubjectName}")
+            </h2>
+
+            <ol class="reldialog__steps" data-testid="@($"{TestId}-steps")">
+                @foreach (var step in VisibleSteps)
+                {
+                    <li class="reldialog__step @(step == _step ? "reldialog__step--on" : null)"
+                        aria-current="@(step == _step ? "step" : null)"
+                        data-testid="@($"{TestId}-step-{step.ToString().ToLowerInvariant()}")">
+                        @StepLabel(step)
+                    </li>
+                }
+            </ol>
+
+            <ErrorAlert Message="@_error" TestId="@($"{TestId}-error")" />
+
+            <div class="reldialog__body">
+                @if (_step == Step.Kind)
+                {
+                    <fieldset class="reldialog__kinds">
+                        <legend class="field-label">What kind of relationship?</legend>
+                        @foreach (var option in Offered)
+                        {
+                            <button type="button"
+                                    class="reldialog__kind @(_kind == option.Kind ? "reldialog__kind--on" : null)"
+                                    aria-pressed="@(_kind == option.Kind ? "true" : "false")"
+                                    data-testid="@($"{TestId}-kind-{option.Kind.ToString().ToLowerInvariant()}")"
+                                    @onclick="() => ChooseKind(option.Kind)">
+                                <span class="reldialog__kind-title">@option.Title</span>
+                                <span class="reldialog__kind-note">@option.Description</span>
+                            </button>
+                        }
+                    </fieldset>
+                }
+                else if (_step == Step.Person)
+                {
+                    <PersonSearchSelect Label="@PersonStepLabel"
+                                        TestId="@($"{TestId}-search")"
+                                        Exclude="Exclude"
+                                        Selected="_person"
+                                        SelectedChanged="OnPersonChosen" />
+                }
+                else
+                {
+                    <div class="reldialog__details">
+                        <p class="reldialog__summary" data-testid="@($"{TestId}-summary")">@SummarySentence</p>
+
+                        @* Certainty is collected here for every kind. The lighter
+                           strokes and badges that make Likely and Speculative
+                           legible at a glance are PR 13 — this is the value, not
+                           its treatment, and a plain select is the honest
+                           placeholder for a segmented control that does not
+                           exist yet. *@
+                        <div class="reldialog__field">
+                            <label class="field-label" for="@_certaintyId">How certain is this?</label>
+                            <div class="input">
+                                <select id="@_certaintyId" class="reldialog__select"
+                                        data-testid="@($"{TestId}-certainty")"
+                                        @onchange="OnCertaintyChanged">
+                                    @foreach (var value in Enum.GetValues<RelationshipCertainty>())
+                                    {
+                                        <option value="@value" selected="@(_certainty == value)">
+                                            @Humanise(value)
+                                        </option>
+                                    }
+                                </select>
+                            </div>
+                        </div>
+
+                        @* PR 8 adds an optional adoption date here for the
+                           adoptive kinds, and PR 9 the marriage dates, place and
+                           end reason. Both are a branch on _kind in this block;
+                           nothing above it has to change.
+
+                           A free-text note is deliberately absent: no
+                           relationship entity carries one, so a box for it would
+                           accept research and discard it on save. It arrives
+                           when a field exists to hold it. *@
+                    </div>
+                }
+            </div>
+
+            <div class="reldialog__actions">
+                @if (CanGoBack)
+                {
+                    <button type="button" class="btn btn--secondary" disabled="@_busy"
+                            data-testid="@($"{TestId}-back")" @onclick="Back">
+                        Back
+                    </button>
+                }
+
+                @if (_step == Step.Details)
+                {
+                    <button type="button" class="btn btn--primary" disabled="@_busy"
+                            data-testid="@($"{TestId}-save")" @onclick="SaveAsync">
+                        @(IsReplacing ? "Replace" : "Save")
+                    </button>
+                }
+                else
+                {
+                    <button type="button" class="btn btn--primary" disabled="@(_busy || !CanGoNext)"
+                            data-testid="@($"{TestId}-next")" @onclick="Next">
+                        Next
+                    </button>
+                }
+
+                <button type="button" class="btn btn--ghost" disabled="@_busy"
+                        data-testid="@($"{TestId}-cancel")" @onclick="CancelAsync">
+                    Cancel
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    /// <summary>The kinds of relationship the wizard can record.</summary>
+    /// <remarks>
+    /// PR 7 offers the biological pair. The adoptive and marriage members are
+    /// declared but not yet listed by any caller — declaring them here is what
+    /// makes the extension a one-line change to <see cref="Catalogue"/> rather
+    /// than a reshape of the wizard.
+    /// </remarks>
+    public enum RelationshipKind
+    {
+        BiologicalParent,
+        BiologicalChild,
+    }
+
+    private enum Step
+    {
+        Kind,
+        Person,
+        Details,
+    }
+
+    /// <summary>What each kind is called and what it means, in one place.</summary>
+    public sealed record KindOption(RelationshipKind Kind, string Title, string Description);
+
+    private static readonly IReadOnlyList<KindOption> Catalogue =
+    [
+        new(RelationshipKind.BiologicalParent, "Biological parent",
+            "Someone this person is descended from. At most two."),
+        new(RelationshipKind.BiologicalChild, "Biological child",
+            "Someone descended from this person."),
+    ];
+
+    private readonly string _titleId = $"reldialog-{Guid.NewGuid():N}";
+    private readonly string _certaintyId = $"certainty-{Guid.NewGuid():N}";
+
+    private ElementReference _overlay;
+    private ElementReference _panel;
+    private bool _wasVisible;
+
+    private Step _step = Step.Kind;
+    private RelationshipKind _kind = RelationshipKind.BiologicalParent;
+    private PersonSummaryDto? _person;
+    private RelationshipCertainty _certainty = RelationshipCertainty.Confirmed;
+    private string? _error;
+    private bool _busy;
+
+    [Parameter] public bool Visible { get; set; }
+
+    [Parameter] public EventCallback<bool> VisibleChanged { get; set; }
+
+    [Parameter] public Guid SubjectId { get; set; }
+
+    [Parameter] public string SubjectName { get; set; } = "this person";
+
+    /// <summary>Which kinds this caller offers. Trimmed to one, the first step is skipped.</summary>
+    [Parameter] public IReadOnlyCollection<RelationshipKind> Kinds { get; set; } =
+        [RelationshipKind.BiologicalParent, RelationshipKind.BiologicalChild];
+
+    /// <summary>People who must not be offered — the subject, and anyone already linked.</summary>
+    [Parameter] public IReadOnlyCollection<Guid> Exclude { get; set; } = [];
+
+    /// <summary>
+    /// The parent being corrected, when this dialog is replacing one rather than
+    /// adding. US-009 asks for a confirmation naming the old parent and the new,
+    /// which is what the details step becomes in this mode.
+    /// </summary>
+    [Parameter] public Guid? ReplacingParentId { get; set; }
+
+    [Parameter] public string? ReplacingParentName { get; set; }
+
+    /// <summary>Raised after a successful save so the caller can reload.</summary>
+    [Parameter] public EventCallback Saved { get; set; }
+
+    [Parameter] public string TestId { get; set; } = "relationship-dialog";
+
+    private bool IsReplacing => ReplacingParentId is not null;
+
+    private IReadOnlyList<KindOption> Offered =>
+        [.. Catalogue.Where(o => Kinds.Contains(o.Kind))];
+
+    /// <summary>
+    /// The kind step disappears when there is nothing to choose. Making somebody
+    /// confirm the only option is a step that exists for the code's convenience
+    /// rather than theirs.
+    /// </summary>
+    private bool SkipKindStep => Offered.Count <= 1;
+
+    private IReadOnlyList<Step> VisibleSteps => SkipKindStep
+        ? [Step.Person, Step.Details]
+        : [Step.Kind, Step.Person, Step.Details];
+
+    private bool CanGoBack => _step != VisibleSteps[0];
+
+    private bool CanGoNext => _step switch
+    {
+        Step.Kind => true,
+        Step.Person => _person is not null,
+        _ => false,
+    };
+
+    private string PersonStepLabel => _kind switch
+    {
+        RelationshipKind.BiologicalChild => "Who is the child?",
+        _ => "Who is the parent?",
+    };
+
+    private string SummarySentence
+    {
+        get
+        {
+            var name = _person?.DisplayName ?? "Nobody";
+
+            if (IsReplacing)
+            {
+                return $"{ReplacingParentName} will be replaced by {name} "
+                    + $"as a biological parent of {SubjectName}.";
+            }
+
+            return _kind switch
+            {
+                RelationshipKind.BiologicalChild =>
+                    $"{name} will be recorded as a biological child of {SubjectName}.",
+                _ => $"{name} will be recorded as a biological parent of {SubjectName}.",
+            };
+        }
+    }
+
+    private static string StepLabel(Step step) => step switch
+    {
+        Step.Kind => "Kind",
+        Step.Person => "Person",
+        _ => "Details",
+    };
+
+    private static string Humanise(RelationshipCertainty certainty) => certainty switch
+    {
+        RelationshipCertainty.Confirmed => "Confirmed",
+        RelationshipCertainty.Likely => "Likely",
+        _ => "Speculative",
+    };
+
+    protected override void OnParametersSet()
+    {
+        if (Visible && !_wasVisible)
+        {
+            Reset();
+        }
+    }
+
+    /// <summary>
+    /// Back to step one with nothing carried over.
+    /// </summary>
+    /// <remarks>
+    /// Run when the dialog opens rather than when it closes, so a cancel halfway
+    /// through cannot leave a person selected who is then saved against a
+    /// different subject the next time it is opened.
+    /// </remarks>
+    private void Reset()
+    {
+        _step = SkipKindStep ? Step.Person : Step.Kind;
+        _kind = Offered.Count > 0 ? Offered[0].Kind : RelationshipKind.BiologicalParent;
+        _person = null;
+        _certainty = RelationshipCertainty.Confirmed;
+        _error = null;
+    }
+
+    private void ChooseKind(RelationshipKind kind)
+    {
+        _kind = kind;
+        _error = null;
+    }
+
+    private Task OnPersonChosen(PersonSummaryDto? person)
+    {
+        _person = person;
+        _error = null;
+        return Task.CompletedTask;
+    }
+
+    private void OnCertaintyChanged(ChangeEventArgs args)
+    {
+        if (Enum.TryParse<RelationshipCertainty>(args.Value?.ToString(), out var certainty))
+        {
+            _certainty = certainty;
+        }
+    }
+
+    private void Next()
+    {
+        _error = null;
+        _step = _step == Step.Kind ? Step.Person : Step.Details;
+    }
+
+    private void Back()
+    {
+        _error = null;
+        _step = _step == Step.Details ? Step.Person : Step.Kind;
+    }
+
+    private async Task OnKeyDownAsync(KeyboardEventArgs args)
+    {
+        if (args.Key == "Escape")
+        {
+            await CancelAsync();
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (Visible && !_wasVisible)
+        {
+            _wasVisible = true;
+            // Before focus: focusing raises the soft keyboard, and the overlay
+            // must already be tracking the visual viewport when it shrinks.
+            await Overlay.OpenAsync(_overlay);
+            await _panel.FocusAsync();
+        }
+        else if (!Visible && _wasVisible)
+        {
+            _wasVisible = false;
+            await Overlay.CloseAsync(_overlay);
+        }
+    }
+
+    // Closing by navigation destroys the component without a further render, so
+    // the page would stay pinned unless the lock is released here too.
+    public async ValueTask DisposeAsync()
+    {
+        if (_wasVisible)
+        {
+            _wasVisible = false;
+            try
+            {
+                await Overlay.CloseAsync(_overlay);
+            }
+            catch (JSDisconnectedException)
+            {
+                // The page is going away; the lock goes with it.
+            }
+        }
+    }
+
+    private async Task CancelAsync()
+    {
+        Visible = false;
+        await VisibleChanged.InvokeAsync(false);
+    }
+
+    private async Task SaveAsync()
+    {
+        if (_person is null)
+        {
+            _error = "Choose a person first.";
+            _step = Step.Person;
+            return;
+        }
+
+        _busy = true;
+        try
+        {
+            // Every rule — the two-parent cap, duplicates, the cycle check — is
+            // enforced by the service rather than here. This is one of several
+            // ways into the same mutation (the tree's own actions arrive in
+            // PR 10), and a guard that lives in a component protects one of them.
+            var result = IsReplacing
+                ? await Relationships.ReplaceParentAsync(
+                    SubjectId, ReplacingParentId!.Value, _person.Id, _certainty)
+                : _kind switch
+                {
+                    RelationshipKind.BiologicalChild =>
+                        await Relationships.AddChildAsync(SubjectId, _person.Id, _certainty),
+                    _ => await Relationships.AddParentAsync(SubjectId, _person.Id, _certainty),
+                };
+
+            if (!result.IsSuccess)
+            {
+                // Kept open on the details step, showing the reason. Closing on a
+                // refusal would lose the chosen person and leave the user to
+                // rediscover the rule by repeating the whole wizard.
+                _error = result.Error;
+                return;
+            }
+
+            await Notifier.NotifyChangedAsync();
+            Toasts.Show(IsReplacing
+                ? $"{_person.DisplayName} replaced {ReplacingParentName}."
+                : $"{_person.DisplayName} linked to {SubjectName}.");
+
+            if (result.IsWarning)
+            {
+                Toasts.Show(result.Warning!, ToastLevel.Warning);
+            }
+
+            Visible = false;
+            await VisibleChanged.InvokeAsync(false);
+            await Saved.InvokeAsync();
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}

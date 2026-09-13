@@ -43,4 +43,4 @@ What does this decision make easier? What does it make harder or foreclose?
 | [ADR-003](ADR-003-relationship-schema.md) | Separate tables per relationship type | Decided |
 | [ADR-004](ADR-004-client-only-wasm-local-first.md) | Client-only Blazor WebAssembly with local-first storage | Decided |
 | [ADR-005](ADR-005-tree-visualization-library.md) | Hand-written family layout with an SVG renderer, no visualisation library | Decided |
-| [ADR-007](ADR-007-export-file-delivery.md) | Anchor download for export, not the File System Access API | Decided |
+| [ADR-007](ADR-007-export-file-delivery.md) | Anchor download for export, not the File System Access API | Decided (amended in PR 7: phantoms carried in the file) |

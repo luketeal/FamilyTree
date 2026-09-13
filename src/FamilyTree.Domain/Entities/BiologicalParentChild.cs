@@ -4,6 +4,17 @@ namespace FamilyTree.Domain.Entities;
 
 public sealed class BiologicalParentChild
 {
+    /// <summary>
+    /// Biology allows two, so the tree does too.
+    /// </summary>
+    /// <remarks>
+    /// Lives on the entity because it is a fact about the relationship rather
+    /// than a policy of any one screen, but it cannot be <em>enforced</em> here:
+    /// a link sees only itself, and the rule is about the set of links naming
+    /// one child. <c>BiologicalRelationshipService</c> is where that set exists.
+    /// </remarks>
+    public const int MaxParentsPerChild = 2;
+
     public Guid Id { get; private set; } = Guid.NewGuid();
     public Guid ParentId { get; private set; }
     public Guid ChildId { get; private set; }

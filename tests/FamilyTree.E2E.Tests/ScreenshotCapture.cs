@@ -10,7 +10,7 @@ namespace FamilyTree.E2E.Tests;
 /// suite while rendering unusably.
 /// </summary>
 [Collection(nameof(StaticSiteCollection))]
-public class ScreenshotCapture(StaticSiteFixture fixture)
+public class ScreenshotCapture(StaticSiteFixture fixture) : BrowserTest(fixture)
 {
     private static string OutputDirectory =>
         Environment.GetEnvironmentVariable("FAMILYTREE_SCREENSHOT_DIR")
@@ -23,12 +23,12 @@ public class ScreenshotCapture(StaticSiteFixture fixture)
     {
         Directory.CreateDirectory(OutputDirectory);
 
-        var page = await fixture.Browser.NewPageAsync(new BrowserNewPageOptions
+        var page = await NewPageAsync(new BrowserNewPageOptions
         {
             ViewportSize = new ViewportSize { Width = width, Height = height },
         });
 
-        await page.GotoAsync(fixture.BaseUrl, new PageGotoOptions
+        await page.GotoAsync(Fixture.BaseUrl, new PageGotoOptions
         {
             WaitUntil = WaitUntilState.NetworkIdle,
         });
@@ -51,13 +51,13 @@ public class ScreenshotCapture(StaticSiteFixture fixture)
     {
         Directory.CreateDirectory(OutputDirectory);
 
-        var context = await fixture.Browser.NewContextAsync(new BrowserNewContextOptions
+        var context = await NewContextAsync(new BrowserNewContextOptions
         {
             ViewportSize = new ViewportSize { Width = width, Height = height },
         });
         var page = await context.NewPageAsync();
 
-        await page.GotoAsync(fixture.BaseUrl + "settings", new PageGotoOptions
+        await page.GotoAsync(Fixture.BaseUrl + "settings", new PageGotoOptions
         {
             WaitUntil = WaitUntilState.NetworkIdle,
         });
@@ -85,13 +85,13 @@ public class ScreenshotCapture(StaticSiteFixture fixture)
     {
         Directory.CreateDirectory(OutputDirectory);
 
-        var context = await fixture.Browser.NewContextAsync(new BrowserNewContextOptions
+        var context = await NewContextAsync(new BrowserNewContextOptions
         {
             ViewportSize = new ViewportSize { Width = width, Height = height },
         });
         var page = await context.NewPageAsync();
 
-        await page.GotoAsync(fixture.BaseUrl + "people", new PageGotoOptions
+        await page.GotoAsync(Fixture.BaseUrl + "people", new PageGotoOptions
         {
             WaitUntil = WaitUntilState.NetworkIdle,
         });
@@ -102,7 +102,7 @@ public class ScreenshotCapture(StaticSiteFixture fixture)
             FullPage = true,
         });
 
-        await page.GotoAsync(fixture.BaseUrl + "people/add", new PageGotoOptions
+        await page.GotoAsync(Fixture.BaseUrl + "people/add", new PageGotoOptions
         {
             WaitUntil = WaitUntilState.NetworkIdle,
         });
@@ -137,7 +137,7 @@ public class ScreenshotCapture(StaticSiteFixture fixture)
         // button goes to the full form, which the capture above already covers.
         if (width > 768)
         {
-            await page.GotoAsync(fixture.BaseUrl + "people", new PageGotoOptions
+            await page.GotoAsync(Fixture.BaseUrl + "people", new PageGotoOptions
             {
                 WaitUntil = WaitUntilState.NetworkIdle,
             });
@@ -161,13 +161,13 @@ public class ScreenshotCapture(StaticSiteFixture fixture)
     {
         Directory.CreateDirectory(OutputDirectory);
 
-        var context = await fixture.Browser.NewContextAsync(new BrowserNewContextOptions
+        var context = await NewContextAsync(new BrowserNewContextOptions
         {
             ViewportSize = new ViewportSize { Width = width, Height = height },
         });
         var page = await context.NewPageAsync();
 
-        await page.GotoAsync(fixture.BaseUrl + "people/add", new PageGotoOptions
+        await page.GotoAsync(Fixture.BaseUrl + "people/add", new PageGotoOptions
         {
             WaitUntil = WaitUntilState.NetworkIdle,
         });
@@ -194,14 +194,14 @@ public class ScreenshotCapture(StaticSiteFixture fixture)
     {
         Directory.CreateDirectory(OutputDirectory);
 
-        var context = await fixture.Browser.NewContextAsync(new BrowserNewContextOptions
+        var context = await NewContextAsync(new BrowserNewContextOptions
         {
             ViewportSize = new ViewportSize { Width = width, Height = height },
             AcceptDownloads = true,
         });
         var page = await context.NewPageAsync();
 
-        await page.GotoAsync(fixture.BaseUrl + "settings", new PageGotoOptions
+        await page.GotoAsync(Fixture.BaseUrl + "settings", new PageGotoOptions
         {
             WaitUntil = WaitUntilState.NetworkIdle,
         });
@@ -218,7 +218,7 @@ public class ScreenshotCapture(StaticSiteFixture fixture)
             FullPage = true,
         });
 
-        await page.GotoAsync(fixture.BaseUrl + "export", new PageGotoOptions
+        await page.GotoAsync(Fixture.BaseUrl + "export", new PageGotoOptions
         {
             WaitUntil = WaitUntilState.NetworkIdle,
         });
@@ -243,7 +243,7 @@ public class ScreenshotCapture(StaticSiteFixture fixture)
         using var reader = new StreamReader(stream);
         var json = await reader.ReadToEndAsync();
 
-        await page.GotoAsync(fixture.BaseUrl + "import", new PageGotoOptions
+        await page.GotoAsync(Fixture.BaseUrl + "import", new PageGotoOptions
         {
             WaitUntil = WaitUntilState.NetworkIdle,
         });
@@ -296,14 +296,14 @@ public class ScreenshotCapture(StaticSiteFixture fixture)
     {
         Directory.CreateDirectory(OutputDirectory);
 
-        var context = await fixture.Browser.NewContextAsync(new BrowserNewContextOptions
+        var context = await NewContextAsync(new BrowserNewContextOptions
         {
             ViewportSize = new ViewportSize { Width = width, Height = height },
             AcceptDownloads = true,
         });
         var page = await context.NewPageAsync();
 
-        await page.GotoAsync(fixture.BaseUrl + "settings", new PageGotoOptions
+        await page.GotoAsync(Fixture.BaseUrl + "settings", new PageGotoOptions
         {
             WaitUntil = WaitUntilState.NetworkIdle,
         });
@@ -311,7 +311,7 @@ public class ScreenshotCapture(StaticSiteFixture fixture)
         await Assertions.Expect(page.GetByTestId("settings-stats"))
             .ToHaveTextAsync("10 people · 14 relationships");
 
-        await page.GotoAsync(fixture.BaseUrl + "export", new PageGotoOptions
+        await page.GotoAsync(Fixture.BaseUrl + "export", new PageGotoOptions
         {
             WaitUntil = WaitUntilState.NetworkIdle,
         });
@@ -323,7 +323,7 @@ public class ScreenshotCapture(StaticSiteFixture fixture)
 
         // An edit through the ordinary path, which is what puts the tree out of
         // step with the file that was just written.
-        await page.GotoAsync(fixture.BaseUrl + "people/add", new PageGotoOptions
+        await page.GotoAsync(Fixture.BaseUrl + "people/add", new PageGotoOptions
         {
             WaitUntil = WaitUntilState.NetworkIdle,
         });
@@ -340,13 +340,116 @@ public class ScreenshotCapture(StaticSiteFixture fixture)
         });
     }
 
+    // The relationship sections and the wizard. A profile with parents, children
+    // and siblings is a much denser page than the one PR 4 shipped, and the
+    // wizard is a modal with a search field — the shape that breaks at 390px.
+    // Neither exists without an interaction, so nothing else here would show it.
+    [Theory]
+    [InlineData("desktop", 1440, 900)]
+    [InlineData("mobile", 390, 844)]
+    public async Task CaptureRelationships(string name, int width, int height)
+    {
+        Directory.CreateDirectory(OutputDirectory);
+
+        var context = await NewContextAsync(new BrowserNewContextOptions
+        {
+            ViewportSize = new ViewportSize { Width = width, Height = height },
+        });
+        var page = await context.NewPageAsync();
+
+        await page.GotoAsync(Fixture.BaseUrl + "settings", new PageGotoOptions
+        {
+            WaitUntil = WaitUntilState.NetworkIdle,
+        });
+        await page.GetByTestId("load-sample").ClickAsync();
+        await Assertions.Expect(page.GetByTestId("settings-stats"))
+            .ToHaveTextAsync("10 people · 14 relationships");
+
+        // Susan has two parents, a child, a full sibling and a half-sibling, so
+        // every section has something in it at once.
+        await page.GotoAsync(Fixture.BaseUrl + "people", new PageGotoOptions
+        {
+            WaitUntil = WaitUntilState.NetworkIdle,
+        });
+        await page.GetByText("Susan Hartley").First.ClickAsync();
+        await Assertions.Expect(page.GetByTestId("siblings-list")).ToBeVisibleAsync();
+        await page.ScreenshotAsync(new PageScreenshotOptions
+        {
+            Path = Path.Combine(OutputDirectory, $"profile-relationships-{name}.png"),
+            FullPage = true,
+        });
+
+        // Margaret's mother is the unidentified ancestor, so this is the only
+        // profile where a phantom chip sits next to a genuinely empty slot.
+        await page.GotoAsync(Fixture.BaseUrl + "people", new PageGotoOptions
+        {
+            WaitUntil = WaitUntilState.NetworkIdle,
+        });
+        await page.GetByText("Margaret Whitfield").First.ClickAsync();
+        await Assertions.Expect(page.GetByTestId("parents-list")).ToBeVisibleAsync();
+        await page.ScreenshotAsync(new PageScreenshotOptions
+        {
+            Path = Path.Combine(OutputDirectory, $"profile-phantom-parent-{name}.png"),
+            FullPage = true,
+        });
+
+        // Daniel has an empty parent slot, so the wizard opens from his profile.
+        await page.GotoAsync(Fixture.BaseUrl + "people", new PageGotoOptions
+        {
+            WaitUntil = WaitUntilState.NetworkIdle,
+        });
+        await page.GetByText("Daniel Whitfield").First.ClickAsync();
+        await page.GetByTestId("add-biological-parent").ClickAsync();
+        await Assertions.Expect(page.GetByTestId("relationship-dialog")).ToBeVisibleAsync();
+        await page.ScreenshotAsync(new PageScreenshotOptions
+        {
+            Path = Path.Combine(OutputDirectory, $"relationship-wizard-person-{name}.png"),
+            FullPage = true,
+        });
+
+        // The inline create form, which is the tallest the dialog ever gets and
+        // the one most likely to run off the bottom of a phone.
+        await page.GetByTestId("relationship-dialog-search-create").ClickAsync();
+        await Assertions.Expect(page.GetByTestId("relationship-dialog-search-create-form"))
+            .ToBeVisibleAsync();
+        await page.ScreenshotAsync(new PageScreenshotOptions
+        {
+            Path = Path.Combine(OutputDirectory, $"relationship-wizard-create-{name}.png"),
+            FullPage = true,
+        });
+
+        await page.GetByTestId("relationship-dialog-search-create-cancel").ClickAsync();
+        await page.GetByTestId("relationship-dialog-search-results")
+            .GetByText("Vera Whitfield").First.ClickAsync();
+        await page.GetByTestId("relationship-dialog-next").ClickAsync();
+        await Assertions.Expect(page.GetByTestId("relationship-dialog-summary")).ToBeVisibleAsync();
+        await page.ScreenshotAsync(new PageScreenshotOptions
+        {
+            Path = Path.Combine(OutputDirectory, $"relationship-wizard-details-{name}.png"),
+            FullPage = true,
+        });
+
+        await page.GetByTestId("relationship-dialog-save").ClickAsync();
+        await Assertions.Expect(page.GetByTestId("relationship-dialog")).ToBeHiddenAsync();
+
+        // The removal confirmation, which is the last thing read before a link
+        // is severed and says in as many words that nobody is deleted.
+        await page.Locator("[data-testid^='remove-parent-']").First.ClickAsync();
+        await Assertions.Expect(page.GetByTestId("remove-link-modal")).ToBeVisibleAsync();
+        await page.ScreenshotAsync(new PageScreenshotOptions
+        {
+            Path = Path.Combine(OutputDirectory, $"remove-link-confirm-{name}.png"),
+            FullPage = true,
+        });
+    }
+
     // The one appearance check worth asserting: if the design tokens fail to
     // resolve, every component silently falls back to browser defaults.
     [Fact]
     public async Task DesignTokens_ResolveOnTheDeployedStylesheet()
     {
-        var page = await fixture.Browser.NewPageAsync();
-        await page.GotoAsync(fixture.BaseUrl, new PageGotoOptions
+        var page = await NewPageAsync();
+        await page.GotoAsync(Fixture.BaseUrl, new PageGotoOptions
         {
             WaitUntil = WaitUntilState.NetworkIdle,
         });

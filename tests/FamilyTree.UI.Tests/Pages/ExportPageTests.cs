@@ -181,15 +181,37 @@ public class ExportPageTests : ShellTestContext
     // A subtraction the user cannot see is one they will discover by noticing
     // the counts disagree, long after they could do anything about it.
     [Fact]
-    public void SaysWhenUnidentifiedAncestorsWereLeftOut()
+    public void SaysWhenUnidentifiedAncestorsAreInTheFile()
     {
-        GivenTreeContains(Ada(), Person.CreatePhantom());
+        var ada = Ada();
+        var phantom = Person.CreatePhantom();
+        GivenTreeContains(ada, phantom);
+        // Linked, because an orphaned placeholder is no longer exported at all —
+        // it has no name, no dates and nothing pointing at it, so there is
+        // nothing for a restore to put back.
+        Biological.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync([new BiologicalParentChild(phantom.Id, ada.Id)]);
+
         var cut = Render<ExportPage>();
 
         cut.Find("[data-testid=export-download]").Click();
 
         Assert.Contains("unidentified ancestor",
             cut.Find("[data-testid=export-phantom-note]").TextContent);
+    }
+
+    // The counterpart: with nothing pointing at it the placeholder is not in the
+    // file, so the note would be describing something that is not there.
+    [Fact]
+    public void SaysNothingAboutAnUnidentifiedAncestorNothingPointsAt()
+    {
+        GivenTreeContains(Ada(), Person.CreatePhantom());
+
+        var cut = Render<ExportPage>();
+
+        cut.Find("[data-testid=export-download]").Click();
+
+        Assert.Empty(cut.FindAll("[data-testid=export-phantom-note]"));
     }
 
     [Fact]
