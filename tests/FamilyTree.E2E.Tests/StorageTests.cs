@@ -8,14 +8,14 @@ namespace FamilyTree.E2E.Tests;
 /// there on the next.
 /// </summary>
 [Collection(nameof(StaticSiteCollection))]
-public class StorageTests(StaticSiteFixture fixture)
+public class StorageTests(StaticSiteFixture fixture) : BrowserTest(fixture)
 {
     private async Task<IPage> OpenSettingsAsync()
     {
         // A fresh context per test, so one test's data cannot leak into another.
-        var context = await fixture.Browser.NewContextAsync();
+        var context = await NewContextAsync();
         var page = await context.NewPageAsync();
-        await page.GotoAsync(fixture.BaseUrl + "settings", new PageGotoOptions
+        await page.GotoAsync(Fixture.BaseUrl + "settings", new PageGotoOptions
         {
             WaitUntil = WaitUntilState.NetworkIdle,
         });

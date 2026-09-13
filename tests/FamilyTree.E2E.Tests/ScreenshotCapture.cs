@@ -10,7 +10,7 @@ namespace FamilyTree.E2E.Tests;
 /// suite while rendering unusably.
 /// </summary>
 [Collection(nameof(StaticSiteCollection))]
-public class ScreenshotCapture(StaticSiteFixture fixture)
+public class ScreenshotCapture(StaticSiteFixture fixture) : BrowserTest(fixture)
 {
     private static string OutputDirectory =>
         Environment.GetEnvironmentVariable("FAMILYTREE_SCREENSHOT_DIR")
@@ -23,12 +23,12 @@ public class ScreenshotCapture(StaticSiteFixture fixture)
     {
         Directory.CreateDirectory(OutputDirectory);
 
-        var page = await fixture.Browser.NewPageAsync(new BrowserNewPageOptions
+        var page = await NewPageAsync(new BrowserNewPageOptions
         {
             ViewportSize = new ViewportSize { Width = width, Height = height },
         });
 
-        await page.GotoAsync(fixture.BaseUrl, new PageGotoOptions
+        await page.GotoAsync(Fixture.BaseUrl, new PageGotoOptions
         {
             WaitUntil = WaitUntilState.NetworkIdle,
         });
@@ -51,13 +51,13 @@ public class ScreenshotCapture(StaticSiteFixture fixture)
     {
         Directory.CreateDirectory(OutputDirectory);
 
-        var context = await fixture.Browser.NewContextAsync(new BrowserNewContextOptions
+        var context = await NewContextAsync(new BrowserNewContextOptions
         {
             ViewportSize = new ViewportSize { Width = width, Height = height },
         });
         var page = await context.NewPageAsync();
 
-        await page.GotoAsync(fixture.BaseUrl + "settings", new PageGotoOptions
+        await page.GotoAsync(Fixture.BaseUrl + "settings", new PageGotoOptions
         {
             WaitUntil = WaitUntilState.NetworkIdle,
         });
@@ -85,13 +85,13 @@ public class ScreenshotCapture(StaticSiteFixture fixture)
     {
         Directory.CreateDirectory(OutputDirectory);
 
-        var context = await fixture.Browser.NewContextAsync(new BrowserNewContextOptions
+        var context = await NewContextAsync(new BrowserNewContextOptions
         {
             ViewportSize = new ViewportSize { Width = width, Height = height },
         });
         var page = await context.NewPageAsync();
 
-        await page.GotoAsync(fixture.BaseUrl + "people", new PageGotoOptions
+        await page.GotoAsync(Fixture.BaseUrl + "people", new PageGotoOptions
         {
             WaitUntil = WaitUntilState.NetworkIdle,
         });
@@ -102,7 +102,7 @@ public class ScreenshotCapture(StaticSiteFixture fixture)
             FullPage = true,
         });
 
-        await page.GotoAsync(fixture.BaseUrl + "people/add", new PageGotoOptions
+        await page.GotoAsync(Fixture.BaseUrl + "people/add", new PageGotoOptions
         {
             WaitUntil = WaitUntilState.NetworkIdle,
         });
@@ -137,7 +137,7 @@ public class ScreenshotCapture(StaticSiteFixture fixture)
         // button goes to the full form, which the capture above already covers.
         if (width > 768)
         {
-            await page.GotoAsync(fixture.BaseUrl + "people", new PageGotoOptions
+            await page.GotoAsync(Fixture.BaseUrl + "people", new PageGotoOptions
             {
                 WaitUntil = WaitUntilState.NetworkIdle,
             });
@@ -161,13 +161,13 @@ public class ScreenshotCapture(StaticSiteFixture fixture)
     {
         Directory.CreateDirectory(OutputDirectory);
 
-        var context = await fixture.Browser.NewContextAsync(new BrowserNewContextOptions
+        var context = await NewContextAsync(new BrowserNewContextOptions
         {
             ViewportSize = new ViewportSize { Width = width, Height = height },
         });
         var page = await context.NewPageAsync();
 
-        await page.GotoAsync(fixture.BaseUrl + "people/add", new PageGotoOptions
+        await page.GotoAsync(Fixture.BaseUrl + "people/add", new PageGotoOptions
         {
             WaitUntil = WaitUntilState.NetworkIdle,
         });
@@ -194,14 +194,14 @@ public class ScreenshotCapture(StaticSiteFixture fixture)
     {
         Directory.CreateDirectory(OutputDirectory);
 
-        var context = await fixture.Browser.NewContextAsync(new BrowserNewContextOptions
+        var context = await NewContextAsync(new BrowserNewContextOptions
         {
             ViewportSize = new ViewportSize { Width = width, Height = height },
             AcceptDownloads = true,
         });
         var page = await context.NewPageAsync();
 
-        await page.GotoAsync(fixture.BaseUrl + "settings", new PageGotoOptions
+        await page.GotoAsync(Fixture.BaseUrl + "settings", new PageGotoOptions
         {
             WaitUntil = WaitUntilState.NetworkIdle,
         });
@@ -218,7 +218,7 @@ public class ScreenshotCapture(StaticSiteFixture fixture)
             FullPage = true,
         });
 
-        await page.GotoAsync(fixture.BaseUrl + "export", new PageGotoOptions
+        await page.GotoAsync(Fixture.BaseUrl + "export", new PageGotoOptions
         {
             WaitUntil = WaitUntilState.NetworkIdle,
         });
@@ -243,7 +243,7 @@ public class ScreenshotCapture(StaticSiteFixture fixture)
         using var reader = new StreamReader(stream);
         var json = await reader.ReadToEndAsync();
 
-        await page.GotoAsync(fixture.BaseUrl + "import", new PageGotoOptions
+        await page.GotoAsync(Fixture.BaseUrl + "import", new PageGotoOptions
         {
             WaitUntil = WaitUntilState.NetworkIdle,
         });
@@ -296,14 +296,14 @@ public class ScreenshotCapture(StaticSiteFixture fixture)
     {
         Directory.CreateDirectory(OutputDirectory);
 
-        var context = await fixture.Browser.NewContextAsync(new BrowserNewContextOptions
+        var context = await NewContextAsync(new BrowserNewContextOptions
         {
             ViewportSize = new ViewportSize { Width = width, Height = height },
             AcceptDownloads = true,
         });
         var page = await context.NewPageAsync();
 
-        await page.GotoAsync(fixture.BaseUrl + "settings", new PageGotoOptions
+        await page.GotoAsync(Fixture.BaseUrl + "settings", new PageGotoOptions
         {
             WaitUntil = WaitUntilState.NetworkIdle,
         });
@@ -311,7 +311,7 @@ public class ScreenshotCapture(StaticSiteFixture fixture)
         await Assertions.Expect(page.GetByTestId("settings-stats"))
             .ToHaveTextAsync("10 people · 14 relationships");
 
-        await page.GotoAsync(fixture.BaseUrl + "export", new PageGotoOptions
+        await page.GotoAsync(Fixture.BaseUrl + "export", new PageGotoOptions
         {
             WaitUntil = WaitUntilState.NetworkIdle,
         });
@@ -323,7 +323,7 @@ public class ScreenshotCapture(StaticSiteFixture fixture)
 
         // An edit through the ordinary path, which is what puts the tree out of
         // step with the file that was just written.
-        await page.GotoAsync(fixture.BaseUrl + "people/add", new PageGotoOptions
+        await page.GotoAsync(Fixture.BaseUrl + "people/add", new PageGotoOptions
         {
             WaitUntil = WaitUntilState.NetworkIdle,
         });
@@ -351,13 +351,13 @@ public class ScreenshotCapture(StaticSiteFixture fixture)
     {
         Directory.CreateDirectory(OutputDirectory);
 
-        var context = await fixture.Browser.NewContextAsync(new BrowserNewContextOptions
+        var context = await NewContextAsync(new BrowserNewContextOptions
         {
             ViewportSize = new ViewportSize { Width = width, Height = height },
         });
         var page = await context.NewPageAsync();
 
-        await page.GotoAsync(fixture.BaseUrl + "settings", new PageGotoOptions
+        await page.GotoAsync(Fixture.BaseUrl + "settings", new PageGotoOptions
         {
             WaitUntil = WaitUntilState.NetworkIdle,
         });
@@ -367,7 +367,7 @@ public class ScreenshotCapture(StaticSiteFixture fixture)
 
         // Susan has two parents, a child, a full sibling and a half-sibling, so
         // every section has something in it at once.
-        await page.GotoAsync(fixture.BaseUrl + "people", new PageGotoOptions
+        await page.GotoAsync(Fixture.BaseUrl + "people", new PageGotoOptions
         {
             WaitUntil = WaitUntilState.NetworkIdle,
         });
@@ -381,7 +381,7 @@ public class ScreenshotCapture(StaticSiteFixture fixture)
 
         // Margaret's mother is the unidentified ancestor, so this is the only
         // profile where a phantom chip sits next to a genuinely empty slot.
-        await page.GotoAsync(fixture.BaseUrl + "people", new PageGotoOptions
+        await page.GotoAsync(Fixture.BaseUrl + "people", new PageGotoOptions
         {
             WaitUntil = WaitUntilState.NetworkIdle,
         });
@@ -394,7 +394,7 @@ public class ScreenshotCapture(StaticSiteFixture fixture)
         });
 
         // Daniel has an empty parent slot, so the wizard opens from his profile.
-        await page.GotoAsync(fixture.BaseUrl + "people", new PageGotoOptions
+        await page.GotoAsync(Fixture.BaseUrl + "people", new PageGotoOptions
         {
             WaitUntil = WaitUntilState.NetworkIdle,
         });
@@ -448,8 +448,8 @@ public class ScreenshotCapture(StaticSiteFixture fixture)
     [Fact]
     public async Task DesignTokens_ResolveOnTheDeployedStylesheet()
     {
-        var page = await fixture.Browser.NewPageAsync();
-        await page.GotoAsync(fixture.BaseUrl, new PageGotoOptions
+        var page = await NewPageAsync();
+        await page.GotoAsync(Fixture.BaseUrl, new PageGotoOptions
         {
             WaitUntil = WaitUntilState.NetworkIdle,
         });

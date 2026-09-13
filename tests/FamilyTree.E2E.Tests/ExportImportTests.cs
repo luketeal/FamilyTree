@@ -14,7 +14,7 @@ namespace FamilyTree.E2E.Tests;
 /// IndexedDB in between.
 /// </remarks>
 [Collection(nameof(StaticSiteCollection))]
-public class ExportImportTests(StaticSiteFixture fixture)
+public class ExportImportTests(StaticSiteFixture fixture) : BrowserTest(fixture)
 {
     // The sample family holds 11 people, one of whom is an unidentified
     // ancestor, and 14 relationships, one of which is a link to her. The
@@ -27,12 +27,12 @@ public class ExportImportTests(StaticSiteFixture fixture)
 
     private async Task<IPage> OpenAsync(string path = "settings")
     {
-        var context = await fixture.Browser.NewContextAsync(new BrowserNewContextOptions
+        var context = await NewContextAsync(new BrowserNewContextOptions
         {
             AcceptDownloads = true,
         });
         var page = await context.NewPageAsync();
-        await page.GotoAsync(fixture.BaseUrl + path, new PageGotoOptions
+        await page.GotoAsync(Fixture.BaseUrl + path, new PageGotoOptions
         {
             WaitUntil = WaitUntilState.NetworkIdle,
         });
@@ -50,7 +50,7 @@ public class ExportImportTests(StaticSiteFixture fixture)
     {
         if (!page.Url.EndsWith("export", StringComparison.Ordinal))
         {
-            await page.GotoAsync(fixture.BaseUrl + "export", new PageGotoOptions
+            await page.GotoAsync(Fixture.BaseUrl + "export", new PageGotoOptions
             {
                 WaitUntil = WaitUntilState.NetworkIdle,
             });
@@ -165,7 +165,7 @@ public class ExportImportTests(StaticSiteFixture fixture)
         await LoadSampleAsync(page);
         var (_, json) = await DownloadAsync(page);
 
-        await page.GotoAsync(fixture.BaseUrl + "settings", new PageGotoOptions
+        await page.GotoAsync(Fixture.BaseUrl + "settings", new PageGotoOptions
         {
             WaitUntil = WaitUntilState.NetworkIdle,
         });
@@ -174,7 +174,7 @@ public class ExportImportTests(StaticSiteFixture fixture)
         await Assertions.Expect(page.GetByTestId("settings-stats"))
             .ToHaveTextAsync("0 people · 0 relationships");
 
-        await page.GotoAsync(fixture.BaseUrl + "import", new PageGotoOptions
+        await page.GotoAsync(Fixture.BaseUrl + "import", new PageGotoOptions
         {
             WaitUntil = WaitUntilState.NetworkIdle,
         });
@@ -194,7 +194,7 @@ public class ExportImportTests(StaticSiteFixture fixture)
         await LoadSampleAsync(page);
         var (_, json) = await DownloadAsync(page);
 
-        await page.GotoAsync(fixture.BaseUrl + "settings", new PageGotoOptions
+        await page.GotoAsync(Fixture.BaseUrl + "settings", new PageGotoOptions
         {
             WaitUntil = WaitUntilState.NetworkIdle,
         });
@@ -203,7 +203,7 @@ public class ExportImportTests(StaticSiteFixture fixture)
         await Assertions.Expect(page.GetByTestId("settings-stats"))
             .ToHaveTextAsync("0 people · 0 relationships");
 
-        await page.GotoAsync(fixture.BaseUrl + "import", new PageGotoOptions
+        await page.GotoAsync(Fixture.BaseUrl + "import", new PageGotoOptions
         {
             WaitUntil = WaitUntilState.NetworkIdle,
         });
@@ -211,7 +211,7 @@ public class ExportImportTests(StaticSiteFixture fixture)
         await page.GetByTestId("import-run").ClickAsync();
         await Assertions.Expect(page.GetByTestId("import-result")).ToBeVisibleAsync();
 
-        await page.GotoAsync(fixture.BaseUrl + "people", new PageGotoOptions
+        await page.GotoAsync(Fixture.BaseUrl + "people", new PageGotoOptions
         {
             WaitUntil = WaitUntilState.NetworkIdle,
         });
@@ -230,7 +230,7 @@ public class ExportImportTests(StaticSiteFixture fixture)
         await LoadSampleAsync(page);
         var (_, json) = await DownloadAsync(page);
 
-        await page.GotoAsync(fixture.BaseUrl + "settings", new PageGotoOptions
+        await page.GotoAsync(Fixture.BaseUrl + "settings", new PageGotoOptions
         {
             WaitUntil = WaitUntilState.NetworkIdle,
         });
@@ -239,7 +239,7 @@ public class ExportImportTests(StaticSiteFixture fixture)
         await Assertions.Expect(page.GetByTestId("settings-stats"))
             .ToHaveTextAsync("0 people · 0 relationships");
 
-        await page.GotoAsync(fixture.BaseUrl + "import", new PageGotoOptions
+        await page.GotoAsync(Fixture.BaseUrl + "import", new PageGotoOptions
         {
             WaitUntil = WaitUntilState.NetworkIdle,
         });
@@ -247,7 +247,7 @@ public class ExportImportTests(StaticSiteFixture fixture)
         await page.GetByTestId("import-run").ClickAsync();
         await Assertions.Expect(page.GetByTestId("import-result")).ToBeVisibleAsync();
 
-        await page.GotoAsync(fixture.BaseUrl + "people", new PageGotoOptions
+        await page.GotoAsync(Fixture.BaseUrl + "people", new PageGotoOptions
         {
             WaitUntil = WaitUntilState.NetworkIdle,
         });
@@ -267,7 +267,7 @@ public class ExportImportTests(StaticSiteFixture fixture)
         await LoadSampleAsync(page);
         var (_, json) = await DownloadAsync(page);
 
-        await page.GotoAsync(fixture.BaseUrl + "import", new PageGotoOptions
+        await page.GotoAsync(Fixture.BaseUrl + "import", new PageGotoOptions
         {
             WaitUntil = WaitUntilState.NetworkIdle,
         });
@@ -291,7 +291,7 @@ public class ExportImportTests(StaticSiteFixture fixture)
         await LoadSampleAsync(page);
         var (_, json) = await DownloadAsync(page);
 
-        await page.GotoAsync(fixture.BaseUrl + "import", new PageGotoOptions
+        await page.GotoAsync(Fixture.BaseUrl + "import", new PageGotoOptions
         {
             WaitUntil = WaitUntilState.NetworkIdle,
         });
@@ -314,9 +314,9 @@ public class ExportImportTests(StaticSiteFixture fixture)
     // These assertions cannot confirm Gecko or WebKit behave as documented. What
     // they can do is make the workarounds impossible to delete quietly, which is
     // the failure this file can actually prevent.
-    private static async Task<IPage> InstrumentedPageAsync(StaticSiteFixture fixture)
+    private async Task<IPage> InstrumentedPageAsync()
     {
-        var context = await fixture.Browser.NewContextAsync(new BrowserNewContextOptions
+        var context = await NewContextAsync(new BrowserNewContextOptions
         {
             AcceptDownloads = true,
         });
@@ -368,8 +368,8 @@ public class ExportImportTests(StaticSiteFixture fixture)
     [Fact]
     public async Task TheDownloadAnchorIsInTheDocumentWhenItIsClicked()
     {
-        var page = await InstrumentedPageAsync(fixture);
-        await page.GotoAsync(fixture.BaseUrl + "settings",
+        var page = await InstrumentedPageAsync();
+        await page.GotoAsync(Fixture.BaseUrl + "settings",
             new PageGotoOptions { WaitUntil = WaitUntilState.NetworkIdle });
         await LoadSampleAsync(page);
         await DownloadAsync(page);
@@ -387,8 +387,8 @@ public class ExportImportTests(StaticSiteFixture fixture)
     [Fact]
     public async Task TheObjectUrlOutlivesTheClickThatUsesIt()
     {
-        var page = await InstrumentedPageAsync(fixture);
-        await page.GotoAsync(fixture.BaseUrl + "settings",
+        var page = await InstrumentedPageAsync();
+        await page.GotoAsync(Fixture.BaseUrl + "settings",
             new PageGotoOptions { WaitUntil = WaitUntilState.NetworkIdle });
         await LoadSampleAsync(page);
         await DownloadAsync(page);
@@ -414,8 +414,8 @@ public class ExportImportTests(StaticSiteFixture fixture)
     [Fact]
     public async Task TheObjectUrlIsReleasedAfterTheDownload()
     {
-        var page = await InstrumentedPageAsync(fixture);
-        await page.GotoAsync(fixture.BaseUrl + "settings",
+        var page = await InstrumentedPageAsync();
+        await page.GotoAsync(Fixture.BaseUrl + "settings",
             new PageGotoOptions { WaitUntil = WaitUntilState.NetworkIdle });
         await LoadSampleAsync(page);
         await DownloadAsync(page);
@@ -433,7 +433,7 @@ public class ExportImportTests(StaticSiteFixture fixture)
         var page = await OpenAsync();
         await LoadSampleAsync(page);
 
-        await page.GotoAsync(fixture.BaseUrl + "import", new PageGotoOptions
+        await page.GotoAsync(Fixture.BaseUrl + "import", new PageGotoOptions
         {
             WaitUntil = WaitUntilState.NetworkIdle,
         });
@@ -473,7 +473,7 @@ public class ExportImportTests(StaticSiteFixture fixture)
         await LoadSampleAsync(page);
         var (_, json) = await DownloadAsync(page);
 
-        await page.GotoAsync(fixture.BaseUrl + "import", new PageGotoOptions
+        await page.GotoAsync(Fixture.BaseUrl + "import", new PageGotoOptions
         {
             WaitUntil = WaitUntilState.NetworkIdle,
         });
@@ -497,7 +497,7 @@ public class ExportImportTests(StaticSiteFixture fixture)
         await LoadSampleAsync(page);
         var (_, json) = await DownloadAsync(page);
 
-        await page.GotoAsync(fixture.BaseUrl + "import", new PageGotoOptions
+        await page.GotoAsync(Fixture.BaseUrl + "import", new PageGotoOptions
         {
             WaitUntil = WaitUntilState.NetworkIdle,
         });
@@ -629,7 +629,7 @@ public class ExportImportTests(StaticSiteFixture fixture)
 
         await DownloadAsync(page);
 
-        await page.GotoAsync(fixture.BaseUrl + "settings", new PageGotoOptions
+        await page.GotoAsync(Fixture.BaseUrl + "settings", new PageGotoOptions
         {
             WaitUntil = WaitUntilState.NetworkIdle,
         });

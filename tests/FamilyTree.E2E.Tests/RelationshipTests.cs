@@ -13,15 +13,15 @@ namespace FamilyTree.E2E.Tests;
 /// both.
 /// </remarks>
 [Collection(nameof(StaticSiteCollection))]
-public class RelationshipTests(StaticSiteFixture fixture)
+public class RelationshipTests(StaticSiteFixture fixture) : BrowserTest(fixture)
 {
     private async Task<IPage> OpenAsync(string path = "settings", int width = 1440, int height = 900)
     {
-        var page = await fixture.Browser.NewPageAsync(new BrowserNewPageOptions
+        var page = await NewPageAsync(new BrowserNewPageOptions
         {
             ViewportSize = new ViewportSize { Width = width, Height = height },
         });
-        await page.GotoAsync(fixture.BaseUrl + path, new PageGotoOptions
+        await page.GotoAsync(Fixture.BaseUrl + path, new PageGotoOptions
         {
             WaitUntil = WaitUntilState.NetworkIdle,
         });
@@ -39,7 +39,7 @@ public class RelationshipTests(StaticSiteFixture fixture)
     /// <summary>Opens somebody's profile from the people list, by the name shown there.</summary>
     private async Task OpenProfileAsync(IPage page, string displayName)
     {
-        await page.GotoAsync(fixture.BaseUrl + "people", new PageGotoOptions
+        await page.GotoAsync(Fixture.BaseUrl + "people", new PageGotoOptions
         {
             WaitUntil = WaitUntilState.NetworkIdle,
         });
@@ -307,7 +307,7 @@ public class RelationshipTests(StaticSiteFixture fixture)
 
         await Assertions.Expect(page.GetByTestId("parent-unknown-slot")).ToHaveCountAsync(2);
 
-        await page.GotoAsync(fixture.BaseUrl + "people", new PageGotoOptions
+        await page.GotoAsync(Fixture.BaseUrl + "people", new PageGotoOptions
         {
             WaitUntil = WaitUntilState.NetworkIdle,
         });

@@ -9,15 +9,15 @@ namespace FamilyTree.E2E.Tests;
 /// a markup-level test while rendering visibly broken in a browser.
 /// </summary>
 [Collection(nameof(StaticSiteCollection))]
-public class ShellLayoutTests(StaticSiteFixture fixture)
+public class ShellLayoutTests(StaticSiteFixture fixture) : BrowserTest(fixture)
 {
     private async Task<IPage> OpenAsync(int width = 1440, int height = 900, string path = "")
     {
-        var page = await fixture.Browser.NewPageAsync(new BrowserNewPageOptions
+        var page = await NewPageAsync(new BrowserNewPageOptions
         {
             ViewportSize = new ViewportSize { Width = width, Height = height },
         });
-        await page.GotoAsync(fixture.BaseUrl + path, new PageGotoOptions
+        await page.GotoAsync(Fixture.BaseUrl + path, new PageGotoOptions
         {
             WaitUntil = WaitUntilState.NetworkIdle,
         });
@@ -76,14 +76,14 @@ public class ShellLayoutTests(StaticSiteFixture fixture)
     [Fact]
     public async Task PreBootLoadingIndicator_IsStyled()
     {
-        var page = await fixture.Browser.NewPageAsync(new BrowserNewPageOptions
+        var page = await NewPageAsync(new BrowserNewPageOptions
         {
             ViewportSize = new ViewportSize { Width = 1440, Height = 900 },
         });
 
         // Never let the runtime load, so the pre-boot markup stays on screen.
         await page.RouteAsync("**/_framework/dotnet*.js", route => route.AbortAsync());
-        await page.GotoAsync(fixture.BaseUrl);
+        await page.GotoAsync(Fixture.BaseUrl);
         await page.Locator(".loading-progress").WaitForAsync();
 
         var svgWidth = await page.Locator(".loading-progress")
@@ -717,7 +717,7 @@ public class ShellLayoutTests(StaticSiteFixture fixture)
         await Assertions.Expect(page.GetByTestId("settings-stats"))
             .ToHaveTextAsync("10 people · 14 relationships");
 
-        await page.GotoAsync(fixture.BaseUrl + "people", new PageGotoOptions
+        await page.GotoAsync(Fixture.BaseUrl + "people", new PageGotoOptions
         {
             WaitUntil = WaitUntilState.NetworkIdle,
         });
@@ -848,7 +848,7 @@ public class ShellLayoutTests(StaticSiteFixture fixture)
         await Assertions.Expect(page.GetByTestId("settings-stats"))
             .ToHaveTextAsync("10 people · 14 relationships");
 
-        await page.GotoAsync(fixture.BaseUrl + "people", new PageGotoOptions
+        await page.GotoAsync(Fixture.BaseUrl + "people", new PageGotoOptions
         {
             WaitUntil = WaitUntilState.NetworkIdle,
         });
@@ -893,7 +893,7 @@ public class ShellLayoutTests(StaticSiteFixture fixture)
         await Assertions.Expect(page.GetByTestId("settings-stats"))
             .ToHaveTextAsync("10 people · 14 relationships");
 
-        await page.GotoAsync(fixture.BaseUrl + "people", new PageGotoOptions
+        await page.GotoAsync(Fixture.BaseUrl + "people", new PageGotoOptions
         {
             WaitUntil = WaitUntilState.NetworkIdle,
         });
