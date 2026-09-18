@@ -41,6 +41,31 @@ public sealed record ExportDocument
 
     public IReadOnlyList<ExportedMarriage>? Marriages { get; init; }
 
+    /// <summary>
+    /// Unidentified ancestors, kept apart from <see cref="People"/>.
+    /// </summary>
+    /// <remarks>
+    /// A phantom is a placeholder for an ancestor known to exist and not
+    /// identified (US-054). The cross-cutting rule keeps them out of lists,
+    /// searches and exports, and for lists and searches that is right — a row
+    /// with no name is not a person anybody was looking for.
+    /// <para>
+    /// Applying it to the file was a mistake, and a costly one: a relationship
+    /// naming a phantom had nowhere to live either, so restoring a tree came
+    /// back with fewer relationships than it left with. Silent round-trip loss
+    /// is the defect class this project's durability rule names. A separate
+    /// section resolves it the way ADR-007 anticipated — phantoms stay out of
+    /// the people list, so nothing reading the file treats them as people,
+    /// while the links that name them survive the trip.
+    /// </para>
+    /// <para>
+    /// A phantom carries no fields beyond its id, because that is genuinely all
+    /// there is: no name, no dates, nothing anybody recorded. The id is the
+    /// whole point — it is what the links point at.
+    /// </para>
+    /// </remarks>
+    public IReadOnlyList<ExportedPhantom>? Phantoms { get; init; }
+
     public const string ApplicationName = "FamilyTree";
 
     /// <summary>
@@ -100,9 +125,10 @@ public sealed record ExportedDate(int Year, int? Month, int? Day, bool IsApproxi
 }
 
 /// <summary>
-/// A person as exported. No <c>isPhantom</c> field: phantoms are unnamed
-/// placeholders for unidentified ancestors and are excluded from exports, so
-/// every person in a file is a real one.
+/// A person as exported. No <c>isPhantom</c> field: every entry here is an
+/// identified person, and unidentified ancestors live in
+/// <see cref="ExportDocument.Phantoms"/> instead. Keeping them in separate
+/// sections rather than behind a flag means a reader cannot forget to check it.
 /// </summary>
 public sealed record ExportedPerson
 {
@@ -117,6 +143,14 @@ public sealed record ExportedPerson
     public Gender? Gender { get; init; }
     public string? PhotoPath { get; init; }
     public string? Notes { get; init; }
+}
+
+/// <summary>
+/// An unidentified ancestor. Nothing but an id, because nothing else is known.
+/// </summary>
+public sealed record ExportedPhantom
+{
+    public Guid Id { get; init; }
 }
 
 public sealed record ExportedBiologicalLink

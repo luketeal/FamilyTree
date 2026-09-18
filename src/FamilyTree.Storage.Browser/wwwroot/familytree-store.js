@@ -86,6 +86,37 @@ export async function remove(store, id) {
     await done(transaction);
 }
 
+/**
+ * Several records from one store by key, in a single transaction.
+ *
+ * Keys that match nothing are simply absent from the result — a relationship
+ * pointing at a deleted person is a state the app can reach, and it is the
+ * caller's business to decide what to do about it.
+ */
+export async function getMany(store, ids) {
+    const db = await open();
+    const os = tx(db, [store], 'readonly').objectStore(store);
+    const found = await Promise.all(ids.map(id => request(os.get(id))));
+    return found.filter(record => record !== undefined && record !== null);
+}
+
+/**
+ * Deletes one record and writes another in the SAME transaction.
+ *
+ * Correcting a wrongly recorded parent touches two rows. As two calls it can
+ * half-apply — the delete commits, the put fails, and the child is left with a
+ * parent slot that silently emptied itself. IndexedDB gives atomicity for free
+ * within a transaction, so the operation is expressed as one.
+ */
+export async function replaceOne(store, deleteId, record) {
+    const db = await open();
+    const transaction = tx(db, [store], 'readwrite');
+    const os = transaction.objectStore(store);
+    os.delete(deleteId);
+    os.put(record);
+    await done(transaction);
+}
+
 /** Replaces the entire dataset atomically — used by import and sample data. */
 export async function replaceAll(payload) {
     const db = await open();

@@ -8,13 +8,13 @@ namespace FamilyTree.E2E.Tests;
 /// the part that matters and bUnit cannot reach it.
 /// </summary>
 [Collection(nameof(StaticSiteCollection))]
-public class PersonCrudTests(StaticSiteFixture fixture)
+public class PersonCrudTests(StaticSiteFixture fixture) : BrowserTest(fixture)
 {
     private async Task<IPage> OpenAsync(string path = "people")
     {
-        var context = await fixture.Browser.NewContextAsync();
+        var context = await NewContextAsync();
         var page = await context.NewPageAsync();
-        await page.GotoAsync(fixture.BaseUrl + path, new PageGotoOptions
+        await page.GotoAsync(Fixture.BaseUrl + path, new PageGotoOptions
         {
             WaitUntil = WaitUntilState.NetworkIdle,
         });
@@ -104,7 +104,7 @@ public class PersonCrudTests(StaticSiteFixture fixture)
         await page.GetByTestId("save-person").ClickAsync();
         await Assertions.Expect(page.GetByTestId("profile-name")).ToBeVisibleAsync();
 
-        await page.GotoAsync(fixture.BaseUrl + "people", new PageGotoOptions
+        await page.GotoAsync(Fixture.BaseUrl + "people", new PageGotoOptions
         {
             WaitUntil = WaitUntilState.NetworkIdle,
         });
@@ -252,7 +252,7 @@ public class PersonCrudTests(StaticSiteFixture fixture)
         await page.GetByTestId("save-person").ClickAsync();
         await Assertions.Expect(page.GetByTestId("profile-name")).ToBeVisibleAsync();
 
-        await page.GotoAsync(fixture.BaseUrl + "people/add", new PageGotoOptions
+        await page.GotoAsync(Fixture.BaseUrl + "people/add", new PageGotoOptions
         {
             WaitUntil = WaitUntilState.NetworkIdle,
         });
@@ -265,7 +265,7 @@ public class PersonCrudTests(StaticSiteFixture fixture)
             HasText = "already exists",
         })).ToBeVisibleAsync();
 
-        await page.GotoAsync(fixture.BaseUrl + "people", new PageGotoOptions
+        await page.GotoAsync(Fixture.BaseUrl + "people", new PageGotoOptions
         {
             WaitUntil = WaitUntilState.NetworkIdle,
         });
@@ -308,7 +308,7 @@ public class PersonCrudTests(StaticSiteFixture fixture)
         await page.GetByTestId("load-sample").ClickAsync();
         await Assertions.Expect(page.GetByTestId("settings-stats")).ToHaveTextAsync("10 people · 14 relationships");
 
-        await page.GotoAsync(fixture.BaseUrl + "people", new PageGotoOptions
+        await page.GotoAsync(Fixture.BaseUrl + "people", new PageGotoOptions
         {
             WaitUntil = WaitUntilState.NetworkIdle,
         });
@@ -560,7 +560,7 @@ public class PersonCrudTests(StaticSiteFixture fixture)
         await Assertions.Expect(page.Locator("#blazor-error-ui")).ToBeHiddenAsync();
 
         await page.GetByTestId("save-person").ClickAsync();
-        await page.GotoAsync(fixture.BaseUrl + "people", new PageGotoOptions
+        await page.GotoAsync(Fixture.BaseUrl + "people", new PageGotoOptions
         {
             WaitUntil = WaitUntilState.NetworkIdle,
         });
@@ -616,12 +616,12 @@ public class PersonCrudTests(StaticSiteFixture fixture)
     [Fact]
     public async Task OnANarrowScreenAddPersonGoesStraightToTheFullForm()
     {
-        var context = await fixture.Browser.NewContextAsync(new BrowserNewContextOptions
+        var context = await NewContextAsync(new BrowserNewContextOptions
         {
             ViewportSize = new ViewportSize { Width = 390, Height = 844 },
         });
         var page = await context.NewPageAsync();
-        await page.GotoAsync(fixture.BaseUrl + "settings", new PageGotoOptions
+        await page.GotoAsync(Fixture.BaseUrl + "settings", new PageGotoOptions
         {
             WaitUntil = WaitUntilState.NetworkIdle,
         });
@@ -636,12 +636,12 @@ public class PersonCrudTests(StaticSiteFixture fixture)
     [Fact]
     public async Task OnAWideScreenAddPersonStillOpensThePopover()
     {
-        var context = await fixture.Browser.NewContextAsync(new BrowserNewContextOptions
+        var context = await NewContextAsync(new BrowserNewContextOptions
         {
             ViewportSize = new ViewportSize { Width = 1440, Height = 900 },
         });
         var page = await context.NewPageAsync();
-        await page.GotoAsync(fixture.BaseUrl + "settings", new PageGotoOptions
+        await page.GotoAsync(Fixture.BaseUrl + "settings", new PageGotoOptions
         {
             WaitUntil = WaitUntilState.NetworkIdle,
         });
@@ -664,7 +664,7 @@ public class PersonCrudTests(StaticSiteFixture fixture)
 
         await Assertions.Expect(page.GetByTestId("error-input-birth-year")).ToBeVisibleAsync();
 
-        await page.GotoAsync(fixture.BaseUrl + "people", new PageGotoOptions
+        await page.GotoAsync(Fixture.BaseUrl + "people", new PageGotoOptions
         {
             WaitUntil = WaitUntilState.NetworkIdle,
         });
@@ -742,7 +742,7 @@ public class PersonCrudTests(StaticSiteFixture fixture)
 
         await Assertions.Expect(page.GetByTestId("form-error")).ToBeVisibleAsync();
 
-        await page.GotoAsync(fixture.BaseUrl + "people", new PageGotoOptions
+        await page.GotoAsync(Fixture.BaseUrl + "people", new PageGotoOptions
         {
             WaitUntil = WaitUntilState.NetworkIdle,
         });
@@ -798,7 +798,7 @@ public class PersonCrudTests(StaticSiteFixture fixture)
 
         await Assertions.Expect(page.GetByTestId("error-input-birth-year")).ToBeVisibleAsync();
 
-        await page.GotoAsync(fixture.BaseUrl + "people", new PageGotoOptions
+        await page.GotoAsync(Fixture.BaseUrl + "people", new PageGotoOptions
         {
             WaitUntil = WaitUntilState.NetworkIdle,
         });
