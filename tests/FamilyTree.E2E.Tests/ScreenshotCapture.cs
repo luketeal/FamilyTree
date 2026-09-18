@@ -443,6 +443,66 @@ public class ScreenshotCapture(StaticSiteFixture fixture) : BrowserTest(fixture)
         });
     }
 
+    // The adoptive sections and the extra field they put in the wizard. Both are
+    // rows that carry one more column than the biological ones — a date — which
+    // is exactly the sort of thing that fits on a desktop and wraps badly at
+    // 390px, and neither is reachable without loading the sample first.
+    [Theory]
+    [InlineData("desktop", 1440, 900)]
+    [InlineData("mobile", 390, 844)]
+    public async Task CaptureAdoptiveRelationships(string name, int width, int height)
+    {
+        Directory.CreateDirectory(OutputDirectory);
+
+        var context = await NewContextAsync(new BrowserNewContextOptions
+        {
+            ViewportSize = new ViewportSize { Width = width, Height = height },
+        });
+        var page = await context.NewPageAsync();
+
+        await page.GotoAsync(Fixture.BaseUrl + "settings", new PageGotoOptions
+        {
+            WaitUntil = WaitUntilState.NetworkIdle,
+        });
+        await page.GetByTestId("load-sample").ClickAsync();
+        await Assertions.Expect(page.GetByTestId("settings-stats"))
+            .ToHaveTextAsync("10 people · 14 relationships");
+
+        // Priya is the one person in the sample who carries both kinds of parent
+        // at once, which is US-039 on screen rather than described.
+        await page.GotoAsync(Fixture.BaseUrl + "people", new PageGotoOptions
+        {
+            WaitUntil = WaitUntilState.NetworkIdle,
+        });
+        await page.GetByText("Priya Hartley").First.ClickAsync();
+        await Assertions.Expect(page.GetByTestId("adoptive-parents-list")).ToBeVisibleAsync();
+
+        // The scroll container is inside the shell rather than the document, so
+        // FullPage captures one viewport and stops. On a phone that is the top
+        // of the profile — everything this capture exists for is below it.
+        await page.GetByTestId("relation-adoptive-parents").ScrollIntoViewIfNeededAsync();
+        await page.ScreenshotAsync(new PageScreenshotOptions
+        {
+            Path = Path.Combine(OutputDirectory, $"profile-adoptive-{name}.png"),
+            FullPage = true,
+        });
+
+        // The details step with the adoption date, which is the widest row the
+        // wizard has: four controls and a checkbox on one line.
+        await page.GetByTestId("add-adoptive-parent").ClickAsync();
+        await page.GetByTestId("relationship-dialog-search-query").FillAsync("Vera");
+        await page.GetByTestId("relationship-dialog-search-results")
+            .GetByText("Vera Whitfield").First.ClickAsync();
+        await page.GetByTestId("relationship-dialog-next").ClickAsync();
+        await Assertions.Expect(page.GetByTestId("relationship-dialog-adoption-date"))
+            .ToBeVisibleAsync();
+        await page.ScreenshotAsync(new PageScreenshotOptions
+        {
+            Path = Path.Combine(OutputDirectory, $"adoptive-wizard-details-{name}.png"),
+            FullPage = true,
+        });
+    }
+
     // The one appearance check worth asserting: if the design tokens fail to
     // resolve, every component silently falls back to browser defaults.
     [Fact]

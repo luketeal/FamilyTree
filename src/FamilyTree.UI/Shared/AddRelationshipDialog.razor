@@ -1,4 +1,5 @@
 @inject BiologicalRelationshipService Relationships
+@inject AdoptiveRelationshipService Adoptive
 @inject TreeDataNotifier Notifier
 @inject ToastService Toasts
 @inject IOverlayInterop Overlay
@@ -10,9 +11,9 @@
    search, the exclusions, the guards, the focus handling and the mobile
    layout — and four copies of that is four places for them to drift.
 
-   PR 8 adds adoptive kinds and PR 9 marriage and stepparent. Both are additions
-   to Catalogue plus a branch in SaveAsync and in the details step; nothing here
-   is shaped only around biology. *@
+   PR 8 added the adoptive kinds and cost exactly that: two Catalogue entries,
+   an adoption-date field in the details step and a branch in SaveAsync. PR 9
+   adds marriage and stepparent the same way. *@
 
 @if (Visible)
 {
@@ -23,7 +24,7 @@
              @onclick:stopPropagation="true">
 
             <h2 id="@_titleId" class="reldialog__title">
-                @(IsReplacing ? $"Replace a parent of {SubjectName}" : $"Add a relationship for {SubjectName}")
+                @DialogTitle
             </h2>
 
             <ol class="reldialog__steps" data-testid="@($"{TestId}-steps")">
@@ -92,15 +93,33 @@
                             </div>
                         </div>
 
-                        @* PR 8 adds an optional adoption date here for the
-                           adoptive kinds, and PR 9 the marriage dates, place and
-                           end reason. Both are a branch on _kind in this block;
-                           nothing above it has to change.
+                        @* US-014, US-015. Optional by design, and empty means
+                           "Date unknown" rather than "not filled in yet": the
+                           date an adoption was finalised is frequently not in the
+                           record at all, and a required field would force
+                           somebody to invent one. The profile says so in words
+                           where the date would be.
+
+                           PR 9 adds the marriage dates, place and end reason as
+                           another branch in this same block.
 
                            A free-text note is deliberately absent: no
                            relationship entity carries one, so a box for it would
                            accept research and discard it on save. It arrives
                            when a field exists to hold it. *@
+                        @if (IsAdoptive)
+                        {
+                            <div class="reldialog__field" data-testid="@($"{TestId}-adoption-date-field")">
+                                <PartialDateInput Label="Adoption date (optional)"
+                                                  TestId="@($"{TestId}-adoption-date")"
+                                                  Seed="_adoptionDateSeed"
+                                                  ValueChanged="OnAdoptionDateChanged"
+                                                  InvalidChanged="v => _adoptionDateInvalid = v" />
+                                <p class="reldialog__hint">
+                                    Leave blank if the date is unknown.
+                                </p>
+                            </div>
+                        }
                     </div>
                 }
             </div>
@@ -116,9 +135,14 @@
 
                 @if (_step == Step.Details)
                 {
-                    <button type="button" class="btn btn--primary" disabled="@_busy"
+                    @* Disabled on an unparseable adoption date rather than
+                       failing on save: the control already says what is wrong
+                       with it, and a save that bounced off a date would report
+                       it a second time in a different place. *@
+                    <button type="button" class="btn btn--primary"
+                            disabled="@(_busy || _adoptionDateInvalid)"
                             data-testid="@($"{TestId}-save")" @onclick="SaveAsync">
-                        @(IsReplacing ? "Replace" : "Save")
+                        @SaveLabel
                     </button>
                 }
                 else
@@ -141,15 +165,15 @@
 @code {
     /// <summary>The kinds of relationship the wizard can record.</summary>
     /// <remarks>
-    /// PR 7 offers the biological pair. The adoptive and marriage members are
-    /// declared but not yet listed by any caller — declaring them here is what
-    /// makes the extension a one-line change to <see cref="Catalogue"/> rather
-    /// than a reshape of the wizard.
+    /// PR 7 offered the biological pair and PR 8 adds the adoptive one. Marriage
+    /// and stepparent arrive in PR 9 the same way.
     /// </remarks>
     public enum RelationshipKind
     {
         BiologicalParent,
         BiologicalChild,
+        AdoptiveParent,
+        AdoptiveChild,
     }
 
     private enum Step
@@ -162,12 +186,25 @@
     /// <summary>What each kind is called and what it means, in one place.</summary>
     public sealed record KindOption(RelationshipKind Kind, string Title, string Description);
 
+    /// <summary>
+    /// The adoptive link an edit opens on: who is recorded now, and the details
+    /// the form starts from. US-016.
+    /// </summary>
+    public sealed record AdoptiveEdit(
+        PersonSummaryDto Parent,
+        PartialDate? AdoptionDate,
+        RelationshipCertainty Certainty);
+
     private static readonly IReadOnlyList<KindOption> Catalogue =
     [
         new(RelationshipKind.BiologicalParent, "Biological parent",
             "Someone this person is descended from. At most two."),
         new(RelationshipKind.BiologicalChild, "Biological child",
             "Someone descended from this person."),
+        new(RelationshipKind.AdoptiveParent, "Adoptive parent",
+            "Someone who adopted this person. No limit on how many."),
+        new(RelationshipKind.AdoptiveChild, "Adoptive child",
+            "Someone this person adopted."),
     ];
 
     private readonly string _titleId = $"reldialog-{Guid.NewGuid():N}";
@@ -181,6 +218,9 @@
     private RelationshipKind _kind = RelationshipKind.BiologicalParent;
     private PersonSummaryDto? _person;
     private RelationshipCertainty _certainty = RelationshipCertainty.Confirmed;
+    private PartialDate? _adoptionDate;
+    private PartialDateText _adoptionDateSeed = PartialDateText.Empty;
+    private bool _adoptionDateInvalid;
     private string? _error;
     private bool _busy;
 
@@ -208,12 +248,47 @@
 
     [Parameter] public string? ReplacingParentName { get; set; }
 
+    /// <summary>
+    /// An existing adoptive link being corrected, rather than a new one being
+    /// added. US-016.
+    /// </summary>
+    /// <remarks>
+    /// Distinct from <see cref="ReplacingParentId"/>, which is the biological
+    /// correction, because the two stories ask for different things and the
+    /// difference is not cosmetic. US-009 replaces one of two fixed parent slots,
+    /// so the person must change and there is nothing else on the link to edit.
+    /// US-016 asks for one control that can change the person <em>or</em> the
+    /// adoption date, so it opens with the person already chosen and leaving them
+    /// alone is a legitimate outcome — which is why this mode seeds
+    /// <c>_person</c> and that one does not.
+    /// </remarks>
+    [Parameter] public AdoptiveEdit? Editing { get; set; }
+
     /// <summary>Raised after a successful save so the caller can reload.</summary>
     [Parameter] public EventCallback Saved { get; set; }
 
     [Parameter] public string TestId { get; set; } = "relationship-dialog";
 
     private bool IsReplacing => ReplacingParentId is not null;
+
+    private bool IsEditing => Editing is not null;
+
+    private bool IsAdoptive =>
+        _kind is RelationshipKind.AdoptiveParent or RelationshipKind.AdoptiveChild;
+
+    private string DialogTitle => (IsReplacing, IsEditing) switch
+    {
+        (true, _) => $"Replace a parent of {SubjectName}",
+        (_, true) => $"Edit an adoptive parent of {SubjectName}",
+        _ => $"Add a relationship for {SubjectName}",
+    };
+
+    private string SaveLabel => (IsReplacing, IsEditing) switch
+    {
+        (true, _) => "Replace",
+        (_, true) => "Save changes",
+        _ => "Save",
+    };
 
     private IReadOnlyList<KindOption> Offered =>
         [.. Catalogue.Where(o => Kinds.Contains(o.Kind))];
@@ -241,6 +316,8 @@
     private string PersonStepLabel => _kind switch
     {
         RelationshipKind.BiologicalChild => "Who is the child?",
+        RelationshipKind.AdoptiveChild => "Who is the adopted child?",
+        RelationshipKind.AdoptiveParent => "Who is the adoptive parent?",
         _ => "Who is the parent?",
     };
 
@@ -256,10 +333,25 @@
                     + $"as a biological parent of {SubjectName}.";
             }
 
+            // In edit mode the chosen person may be the one already recorded, in
+            // which case nothing is being replaced and saying so would be a lie
+            // about what the button is about to do.
+            if (IsEditing)
+            {
+                return _person?.Id == Editing!.Parent.Id
+                    ? $"{name} stays an adoptive parent of {SubjectName}, with the details below."
+                    : $"{Editing!.Parent.DisplayName} will be replaced by {name} "
+                        + $"as an adoptive parent of {SubjectName}.";
+            }
+
             return _kind switch
             {
                 RelationshipKind.BiologicalChild =>
                     $"{name} will be recorded as a biological child of {SubjectName}.",
+                RelationshipKind.AdoptiveChild =>
+                    $"{name} will be recorded as an adoptive child of {SubjectName}.",
+                RelationshipKind.AdoptiveParent =>
+                    $"{name} will be recorded as an adoptive parent of {SubjectName}.",
                 _ => $"{name} will be recorded as a biological parent of {SubjectName}.",
             };
         }
@@ -299,8 +391,17 @@
     {
         _step = SkipKindStep ? Step.Person : Step.Kind;
         _kind = Offered.Count > 0 ? Offered[0].Kind : RelationshipKind.BiologicalParent;
-        _person = null;
-        _certainty = RelationshipCertainty.Confirmed;
+
+        // An edit opens on what is already recorded, so leaving every field
+        // alone is a no-op rather than a way to blank the link. Seeding the date
+        // as text rather than as a PartialDate is the PR 6 contract: a stored
+        // value this control cannot express would otherwise have to be dropped
+        // before the control ever saw it.
+        _person = Editing?.Parent;
+        _certainty = Editing?.Certainty ?? RelationshipCertainty.Confirmed;
+        _adoptionDate = Editing?.AdoptionDate;
+        _adoptionDateSeed = PartialDateText.From(Editing?.AdoptionDate);
+        _adoptionDateInvalid = false;
         _error = null;
     }
 
@@ -315,6 +416,12 @@
         _person = person;
         _error = null;
         return Task.CompletedTask;
+    }
+
+    private void OnAdoptionDateChanged(PartialDate? date)
+    {
+        _adoptionDate = date;
+        _error = null;
     }
 
     private void OnCertaintyChanged(ChangeEventArgs args)
@@ -386,6 +493,77 @@
         await VisibleChanged.InvokeAsync(false);
     }
 
+    /// <summary>
+    /// The one mutation this wizard is about to perform, chosen from its mode and
+    /// its kind.
+    /// </summary>
+    /// <remarks>
+    /// Returns the non-generic <see cref="Result"/> because the callers disagree
+    /// about what they return — the adds and replaces hand back a new link id,
+    /// the edit has none to hand back — and the dialog uses none of it. Flattening
+    /// here keeps <see cref="SaveAsync"/> about what to do with success and
+    /// failure rather than about which overload produced them.
+    /// </remarks>
+    private async Task<Result> SaveResultAsync()
+    {
+        var chosen = _person!;
+
+        if (IsReplacing)
+        {
+            return Flatten(await Relationships.ReplaceParentAsync(
+                SubjectId, ReplacingParentId!.Value, chosen.Id, _certainty));
+        }
+
+        if (IsEditing)
+        {
+            // Same person: the date or the certainty changed, and nothing about
+            // who this is. Sending that through the replace path would delete a
+            // link and write a new one with a new id to record a corrected year.
+            return chosen.Id == Editing!.Parent.Id
+                // (parent, child), in that order: this mode edits an adoptive
+                // parent of the subject, so the subject is the child.
+                ? await Adoptive.UpdateAsync(Editing.Parent.Id, SubjectId, _adoptionDate, _certainty)
+                : Flatten(await Adoptive.ReplaceParentAsync(
+                    SubjectId, Editing.Parent.Id, chosen.Id, _adoptionDate, _certainty));
+        }
+
+        return _kind switch
+        {
+            RelationshipKind.BiologicalChild =>
+                Flatten(await Relationships.AddChildAsync(SubjectId, chosen.Id, _certainty)),
+            RelationshipKind.AdoptiveParent =>
+                Flatten(await Adoptive.AddParentAsync(SubjectId, chosen.Id, _adoptionDate, _certainty)),
+            RelationshipKind.AdoptiveChild =>
+                Flatten(await Adoptive.AddChildAsync(SubjectId, chosen.Id, _adoptionDate, _certainty)),
+            _ => Flatten(await Relationships.AddParentAsync(SubjectId, chosen.Id, _certainty)),
+        };
+    }
+
+    /// <summary>Drops a link id the dialog has no use for, keeping the warning.</summary>
+    private static Result Flatten<T>(Result<T> result) => result switch
+    {
+        { IsSuccess: false } => Result.Failure(result.Error!),
+        { IsWarning: true } => Result.SuccessWithWarning(result.Warning!),
+        _ => Result.Success(),
+    };
+
+    private string SavedMessage(PersonSummaryDto chosen)
+    {
+        if (IsReplacing)
+        {
+            return $"{chosen.DisplayName} replaced {ReplacingParentName}.";
+        }
+
+        if (IsEditing)
+        {
+            return chosen.Id == Editing!.Parent.Id
+                ? $"{chosen.DisplayName}'s adoption details updated."
+                : $"{chosen.DisplayName} replaced {Editing.Parent.DisplayName}.";
+        }
+
+        return $"{chosen.DisplayName} linked to {SubjectName}.";
+    }
+
     private async Task SaveAsync()
     {
         if (_person is null)
@@ -402,15 +580,7 @@
             // enforced by the service rather than here. This is one of several
             // ways into the same mutation (the tree's own actions arrive in
             // PR 10), and a guard that lives in a component protects one of them.
-            var result = IsReplacing
-                ? await Relationships.ReplaceParentAsync(
-                    SubjectId, ReplacingParentId!.Value, _person.Id, _certainty)
-                : _kind switch
-                {
-                    RelationshipKind.BiologicalChild =>
-                        await Relationships.AddChildAsync(SubjectId, _person.Id, _certainty),
-                    _ => await Relationships.AddParentAsync(SubjectId, _person.Id, _certainty),
-                };
+            var result = await SaveResultAsync();
 
             if (!result.IsSuccess)
             {
@@ -422,9 +592,7 @@
             }
 
             await Notifier.NotifyChangedAsync();
-            Toasts.Show(IsReplacing
-                ? $"{_person.DisplayName} replaced {ReplacingParentName}."
-                : $"{_person.DisplayName} linked to {SubjectName}.");
+            Toasts.Show(SavedMessage(_person));
 
             if (result.IsWarning)
             {

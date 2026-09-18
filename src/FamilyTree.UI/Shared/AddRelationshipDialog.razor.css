@@ -146,6 +146,15 @@
     min-width: 0;
 }
 
+/* The adoption date is optional and empty means "unknown", which is a thing the
+   form has to say rather than imply — an optional field with no note reads as
+   one somebody forgot to fill in. */
+.reldialog__hint {
+    margin: 0;
+    font-size: 12px;
+    color: var(--ink3);
+}
+
 .reldialog__select {
     flex: 1;
     min-width: 0;

@@ -216,6 +216,17 @@ Extends `PartialDateInput.razor` in place. Year → Month → Day → Circa; cle
 
 Same guards as biological, **no upper cap**; adoption date optional ("Date unknown"); dashed-teal chips with "(A)". Extend export coverage.
 
+**Done.** Three things from this PR change what PR 9 has to do:
+
+- **`IAdoptiveRelationshipRepository.ReplaceParentAsync` exists, for the reason PR 7 gave.** **PR 9 still needs the equivalent on the marriage and stepparent repositories** — ending one marriage record and writing another is the same multi-record mutation, and a delete-then-add there has the same half-applied failure.
+- **`schemaVersion` stays at 2, and that is not an oversight.** Adoptive links have been persisted since PR 2 and exported since PR 5, so this PR adds no persisted shape — it is the first that can *create* one through the UI. "Already covered" is now pinned by an E2E test that records an adoption in the browser and finds it in the downloaded file, rather than by reading the export code. **PR 9 is different: the stepparent repository is new, so it bumps the version and extends `TreeSnapshot` in the same PR, or import silently discards every stepparent link.**
+- **The wizard has two correction modes, not one.** US-009 replaces a parent; US-016 edits an adoptive link, which may change the date, the person, or both — so it opens with the person already chosen and dispatches to `UpdateAsync` or `ReplaceParentAsync` depending on what actually changed. Editing a date does not rewrite the link's identity. PR 9's "end a marriage" is a third shape again: it edits a record without touching who it names.
+
+Two things worth knowing before extending the profile:
+
+- **The dialog's exclusion list is scoped to the kind being recorded, not to the person.** US-039 makes a biological parent and an adoptive parent different facts about the same child, so excluding everyone already linked in any capacity would refuse to record that a biological parent later adopted their own child. PR 9 needs the same care: a spouse is not excluded from being a stepparent.
+- **`AdoptiveRelationshipService` is a sibling of `BiologicalRelationshipService`, deliberately not a shared base class.** The two agree on their guards and disagree on everything the guards are for — no cap, a date of its own, no implied siblings. Factoring the agreement out would leave a base class whose every method took a flag. What is genuinely shared is shared properly: `CircularReferenceChecker` already walks both edge types together.
+
 ### PR 9 — Marriage and stepparent relationships
 **Stories:** US-021 – US-027, US-038, US-042, US-044
 

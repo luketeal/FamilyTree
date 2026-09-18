@@ -7,7 +7,13 @@ using Moq;
 
 namespace FamilyTree.UI.Tests.Shared;
 
+using FamilyTree.Application.Common;
+
 using Kind = AddRelationshipDialog.RelationshipKind;
+
+// The entity name says which table it lives in; in a test about a dialog, what
+// matters is that it is the adoptive link.
+using AdoptiveLink = FamilyTree.Domain.Entities.AdoptiveParentChild;
 
 public class AddRelationshipDialogTests : ShellTestContext
 {
@@ -22,6 +28,7 @@ public class AddRelationshipDialogTests : ShellTestContext
         IReadOnlyCollection<Kind>? kinds = null,
         Guid? replacing = null,
         string? replacingName = null,
+        AddRelationshipDialog.AdoptiveEdit? editing = null,
         Action? onSaved = null) =>
         Render<AddRelationshipDialog>(p =>
         {
@@ -31,6 +38,7 @@ public class AddRelationshipDialogTests : ShellTestContext
             p.Add(c => c.Kinds, kinds ?? [Kind.BiologicalParent, Kind.BiologicalChild]);
             p.Add(c => c.ReplacingParentId, replacing);
             p.Add(c => c.ReplacingParentName, replacingName);
+            p.Add(c => c.Editing, editing);
             if (onSaved is not null)
             {
                 p.Add(c => c.Saved, onSaved);
@@ -347,5 +355,238 @@ public class AddRelationshipDialogTests : ShellTestContext
         var cut = RenderDialog();
 
         Assert.NotNull(cut.Find("[data-overlay]"));
+    }
+
+    // ---- The adoptive kinds (US-014, US-018) ----
+
+    [Fact]
+    public void OffersTheAdoptiveKinds()
+    {
+        GivenRoster();
+
+        var cut = RenderDialog(kinds: [Kind.AdoptiveParent, Kind.AdoptiveChild]);
+
+        Assert.NotNull(cut.Find("[data-testid='relationship-dialog-kind-adoptiveparent']"));
+        Assert.NotNull(cut.Find("[data-testid='relationship-dialog-kind-adoptivechild']"));
+    }
+
+    [Fact]
+    public void AsksWhoTheAdoptiveParentIs()
+    {
+        GivenRoster();
+
+        var cut = RenderDialog(kinds: [Kind.AdoptiveParent]);
+
+        Assert.Contains("Who is the adoptive parent?", cut.Markup);
+    }
+
+    [Fact]
+    public void AsksWhoTheAdoptedChildIs()
+    {
+        GivenRoster();
+
+        var cut = RenderDialog(kinds: [Kind.AdoptiveChild]);
+
+        Assert.Contains("Who is the adopted child?", cut.Markup);
+    }
+
+    [Fact]
+    public void SummarisesAnAdoptiveParent()
+    {
+        GivenRoster();
+
+        var cut = RenderDialog(kinds: [Kind.AdoptiveParent]);
+        ChooseCandidate(cut);
+
+        Assert.Contains(
+            "Arthur Whitfield will be recorded as an adoptive parent of Susan Hartley.",
+            cut.Find("[data-testid='relationship-dialog-summary']").TextContent);
+    }
+
+    [Fact]
+    public void SummarisesAnAdoptiveChild()
+    {
+        GivenRoster();
+
+        var cut = RenderDialog(kinds: [Kind.AdoptiveChild]);
+        ChooseCandidate(cut);
+
+        Assert.Contains(
+            "Arthur Whitfield will be recorded as an adoptive child of Susan Hartley.",
+            cut.Find("[data-testid='relationship-dialog-summary']").TextContent);
+    }
+
+    // ---- The adoption date (US-014, US-015) ----
+
+    [Fact]
+    public void OffersAnAdoptionDateOnTheAdoptiveKinds()
+    {
+        GivenRoster();
+
+        var cut = RenderDialog(kinds: [Kind.AdoptiveParent]);
+        ChooseCandidate(cut);
+
+        Assert.NotNull(cut.Find("[data-testid='relationship-dialog-adoption-date']"));
+    }
+
+    // A biological link has no date to carry, so a box for one would collect a
+    // value with nowhere to go.
+    [Fact]
+    public void DoesNotOfferAnAdoptionDateOnTheBiologicalKinds()
+    {
+        GivenRoster();
+
+        var cut = RenderDialog(kinds: [Kind.BiologicalParent]);
+        ChooseCandidate(cut);
+
+        Assert.Empty(cut.FindAll("[data-testid='relationship-dialog-adoption-date']"));
+    }
+
+    // Empty means "Date unknown" rather than "not filled in yet": the date an
+    // adoption was finalised is frequently not in the record at all.
+    [Fact]
+    public void SavesAnAdoptiveLinkWithNoDate()
+    {
+        GivenRoster();
+        AdoptiveLink? saved = null;
+        Adoptive.Setup(r => r.AddAsync(It.IsAny<AdoptiveLink>(), It.IsAny<CancellationToken>()))
+            .Callback((AdoptiveLink l, CancellationToken _) => saved = l)
+            .Returns(Task.CompletedTask);
+
+        var cut = RenderDialog(kinds: [Kind.AdoptiveParent]);
+        ChooseCandidate(cut);
+        cut.Find("[data-testid='relationship-dialog-save']").Click();
+
+        Assert.NotNull(saved);
+        Assert.Null(saved!.AdoptionDate);
+    }
+
+    [Fact]
+    public void CarriesTheTypedAdoptionDateThrough()
+    {
+        GivenRoster();
+        AdoptiveLink? saved = null;
+        Adoptive.Setup(r => r.AddAsync(It.IsAny<AdoptiveLink>(), It.IsAny<CancellationToken>()))
+            .Callback((AdoptiveLink l, CancellationToken _) => saved = l)
+            .Returns(Task.CompletedTask);
+
+        var cut = RenderDialog(kinds: [Kind.AdoptiveParent]);
+        ChooseCandidate(cut);
+        cut.Find("[data-testid='relationship-dialog-adoption-date']").Input("1977");
+        cut.Find("[data-testid='relationship-dialog-save']").Click();
+
+        Assert.Equal(1977, saved!.AdoptionDate!.Year);
+    }
+
+    // The control already says what is wrong with the date; a save that bounced
+    // off it would report the same problem a second time somewhere else.
+    [Fact]
+    public void RefusesToSaveWhileTheAdoptionDateIsUnparseable()
+    {
+        GivenRoster();
+
+        var cut = RenderDialog(kinds: [Kind.AdoptiveParent]);
+        ChooseCandidate(cut);
+        cut.Find("[data-testid='relationship-dialog-adoption-date']").Input("not a year");
+
+        Assert.True(cut.Find("[data-testid='relationship-dialog-save']").HasAttribute("disabled"));
+    }
+
+    // ---- Editing an adoptive link (US-016) ----
+
+    private AddRelationshipDialog.AdoptiveEdit EditOf(Person parent, int? adoptionYear = null) =>
+        new(PersonSummaryDto.From(parent),
+            adoptionYear is int year ? PartialDate.FromYear(year) : null,
+            RelationshipCertainty.Confirmed);
+
+    // Opening on the recorded person is what lets US-016 offer one control for
+    // both corrections: leaving them alone and changing only the date has to be
+    // a legitimate outcome.
+    [Fact]
+    public void OpensAnEditOnTheDetailsOfTheRecordedLink()
+    {
+        GivenRoster();
+
+        var cut = RenderDialog(kinds: [Kind.AdoptiveParent], editing: EditOf(_candidate, 1977));
+
+        Assert.Contains("Edit an adoptive parent of Susan Hartley", cut.Markup);
+
+        // Straight to the details step: the person is already chosen, which is
+        // the whole difference between this mode and adding a link.
+        cut.Find("[data-testid='relationship-dialog-next']").Click();
+
+        Assert.Equal("1977",
+            cut.Find("[data-testid='relationship-dialog-adoption-date']").GetAttribute("value"));
+    }
+
+    [Fact]
+    public void SaysNothingIsBeingReplacedWhenThePersonIsUnchanged()
+    {
+        GivenRoster();
+
+        var cut = RenderDialog(kinds: [Kind.AdoptiveParent], editing: EditOf(_candidate, 1977));
+        cut.Find("[data-testid='relationship-dialog-next']").Click();
+
+        Assert.Contains("stays an adoptive parent of Susan Hartley",
+            cut.Find("[data-testid='relationship-dialog-summary']").TextContent);
+    }
+
+    // Editing a date must not delete the link and write a new one with a new id.
+    [Fact]
+    public void EditingTheDateUpdatesTheLinkInPlace()
+    {
+        GivenRoster();
+        var link = new AdoptiveLink(_candidate.Id, _subject.Id, PartialDate.FromYear(1970));
+        Adoptive.Setup(r => r.GetAsync(_candidate.Id, _subject.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(link);
+        AdoptiveLink? updated = null;
+        Adoptive.Setup(r => r.UpdateAsync(It.IsAny<AdoptiveLink>(), It.IsAny<CancellationToken>()))
+            .Callback((AdoptiveLink l, CancellationToken _) => updated = l)
+            .Returns(Task.CompletedTask);
+
+        var cut = RenderDialog(kinds: [Kind.AdoptiveParent], editing: EditOf(_candidate, 1970));
+        cut.Find("[data-testid='relationship-dialog-next']").Click();
+        cut.Find("[data-testid='relationship-dialog-adoption-date']").Input("1977");
+        cut.Find("[data-testid='relationship-dialog-save']").Click();
+
+        Assert.NotNull(updated);
+        Assert.Equal(link.Id, updated!.Id);
+        Assert.Equal(1977, updated.AdoptionDate!.Year);
+        Adoptive.Verify(
+            r => r.ReplaceParentAsync(It.IsAny<Guid>(), It.IsAny<AdoptiveLink>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    // The other half of US-016: changing who the adoptive parent is ends one
+    // relationship and starts another, through the atomic path.
+    [Fact]
+    public void ChangingThePersonGoesThroughTheAtomicReplace()
+    {
+        var other = new Person("Miriam", "Okonjo", Gender.Female);
+        GivenRoster(other);
+        var link = new AdoptiveLink(_candidate.Id, _subject.Id);
+        Adoptive.Setup(r => r.GetAsync(_candidate.Id, _subject.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(link);
+
+        var cut = RenderDialog(kinds: [Kind.AdoptiveParent], editing: EditOf(_candidate));
+        cut.Find($"[data-testid='relationship-dialog-search-option-{other.Id}']").Click();
+        cut.Find("[data-testid='relationship-dialog-next']").Click();
+        cut.Find("[data-testid='relationship-dialog-save']").Click();
+
+        Adoptive.Verify(
+            r => r.ReplaceParentAsync(link.Id, It.IsAny<AdoptiveLink>(), It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public void LabelsTheEditButtonAsSavingChanges()
+    {
+        GivenRoster();
+
+        var cut = RenderDialog(kinds: [Kind.AdoptiveParent], editing: EditOf(_candidate));
+        cut.Find("[data-testid='relationship-dialog-next']").Click();
+
+        Assert.Contains("Save changes",
+            cut.Find("[data-testid='relationship-dialog-save']").TextContent);
     }
 }

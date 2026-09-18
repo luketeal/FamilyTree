@@ -57,6 +57,12 @@ public abstract class ShellTestContext : BunitContext
                 It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync([]);
         Adoptive.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync([]);
+        // The profile reads both adoptive directions on every render, so an
+        // unconfigured method here is a null task rather than an empty section.
+        Adoptive.Setup(r => r.GetParentLinksForChildAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
+        Adoptive.Setup(r => r.GetChildLinksForParentAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
         Marriages.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync([]);
 
         JSInterop.Mode = JSRuntimeMode.Loose;
@@ -72,6 +78,7 @@ public abstract class ShellTestContext : BunitContext
         Services.AddSingleton<PersonService>();
         Services.AddSingleton<CircularReferenceChecker>();
         Services.AddSingleton<BiologicalRelationshipService>();
+        Services.AddSingleton<AdoptiveRelationshipService>();
         Services.AddSingleton<ToastService>();
         Services.AddSingleton<ExportService>();
         Services.AddSingleton<ImportService>();
