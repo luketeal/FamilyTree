@@ -288,19 +288,26 @@ public sealed class BiologicalRelationshipService(
     /// </remarks>
     private static Result<Guid> Warn(Guid linkId, Person parent, Person child)
     {
+        // Compared by year rather than by PartialDate.CompareTo, which is the
+        // right order for a list and the wrong test for this. CompareTo ranks a
+        // year-only date before a fully dated one in the same year, so a
+        // same-year pair — impossible whichever way round it is — surfaced only
+        // when the parent happened to carry the finer date: parent 1920-03-05
+        // against child 1920 warned, child 1920-03-05 against parent 1920 did
+        // not, and two year-only 1920s did not either. Whether the app notices
+        // an impossible pair must not depend on which record somebody has got
+        // round to dating precisely. Year is also the only thing either
+        // sentence below quotes, so gating on it is what the message means.
         if (parent.BirthDate is null || child.BirthDate is null
-            || parent.BirthDate.CompareTo(child.BirthDate) <= 0)
+            || parent.BirthDate.Year < child.BirthDate.Year)
         {
             return Result<Guid>.Success(linkId);
         }
 
-        // Same year at different precisions is still worth flagging, but not as
-        // "after". PartialDate ranks a year-only date before a fully dated one
-        // in the same year, so a parent dated 1920-03-05 against a child dated
-        // 1920 compares greater — and the sentence then read "born in 1920,
-        // after … in 1920", which reads as a bug in the app rather than as a
-        // problem with the data, on a message whose only job is to get the dates
-        // looked at.
+        // Same year is still worth flagging, but not as "after": "born in 1920,
+        // after … in 1920" reads as a bug in the app rather than as a problem
+        // with the data, on a message whose only job is to get the dates looked
+        // at.
         var message = parent.BirthDate.Year == child.BirthDate.Year
             ? $"{Name(parent)} and {Name(child)} are both recorded as born in "
                 + $"{parent.BirthDate.Year}. Saved anyway — check the dates."

@@ -232,11 +232,11 @@ public class BiologicalRelationshipServiceTests
         Assert.Single(_tree.BiologicalLinks);
     }
 
-    // PartialDate ranks a year-only date before a fully dated one in the same
-    // year, so this fires — correctly, a parent and child sharing a birth year
-    // is worth a look. What it must not do is say one came "after" the other
-    // while naming the same year on both sides, which reads as a bug in the app
-    // rather than a problem with the data.
+    // A parent and child sharing a birth year is worth a look whatever the
+    // precision on either side. What it must not do is say one came "after" the
+    // other while naming the same year on both sides, which reads as a bug in
+    // the app rather than a problem with the data. This orientation and the
+    // three below are the same impossible pair dated four different ways.
     [Fact]
     public async Task WordsTheWarningDifferentlyWhenParentAndChildShareABirthYear()
     {
@@ -250,6 +250,54 @@ public class BiologicalRelationshipServiceTests
 
         Assert.True(result.IsWarning);
         Assert.DoesNotContain("after", result.Warning);
+        Assert.Contains("both recorded as born in 1920", result.Warning);
+    }
+
+    // The mirror of the case above, and the one the follow-up review caught: the
+    // same impossible pair, differing only in which record happens to carry the
+    // finer date. Whether a same-year parent and child gets flagged must not
+    // depend on which of the two somebody has got round to dating precisely.
+    [Fact]
+    public async Task WarnsAboutASharedBirthYearWhenTheChildCarriesTheFinerDate()
+    {
+        var child = Someone("Kid");
+        var parent = Someone("Mum");
+        child.UpdateDates(PartialDate.FromYearMonthDay(1920, 3, 5), null, null, null);
+        parent.UpdateDates(PartialDate.FromYear(1920), null, null, null);
+        _tree.With(child, parent);
+
+        var result = await CreateService().AddParentAsync(child.Id, parent.Id);
+
+        Assert.Contains("both recorded as born in 1920", result.Warning);
+    }
+
+    // Neither date is more precise than the other, so nothing orders the pair at
+    // all — and a parent born the same year as their child is still impossible.
+    [Fact]
+    public async Task WarnsAboutASharedBirthYearWhenBothDatesAreYearOnly()
+    {
+        var child = Someone("Kid", birthYear: 1920);
+        var parent = Someone("Mum", birthYear: 1920);
+        _tree.With(child, parent);
+
+        var result = await CreateService().AddParentAsync(child.Id, parent.Id);
+
+        Assert.Contains("both recorded as born in 1920", result.Warning);
+    }
+
+    // Fully dated on both sides, parent genuinely earlier in the year — ordered
+    // correctly, and still nine months short of possible.
+    [Fact]
+    public async Task WarnsAboutASharedBirthYearWhenTheParentIsEarlierWithinIt()
+    {
+        var child = Someone("Kid");
+        var parent = Someone("Mum");
+        child.UpdateDates(PartialDate.FromYearMonthDay(1920, 6, 1), null, null, null);
+        parent.UpdateDates(PartialDate.FromYearMonthDay(1920, 3, 5), null, null, null);
+        _tree.With(child, parent);
+
+        var result = await CreateService().AddParentAsync(child.Id, parent.Id);
+
         Assert.Contains("both recorded as born in 1920", result.Warning);
     }
 
