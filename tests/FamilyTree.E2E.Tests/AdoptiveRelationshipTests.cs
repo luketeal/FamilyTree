@@ -403,4 +403,41 @@ public class AdoptiveRelationshipTests(StaticSiteFixture fixture) : BrowserTest(
         Assert.Contains("adoptiveLinks", json);
         Assert.Contains("1968", json);
     }
+
+    // ---- The adoption date across step navigation ----
+
+    // The wizard destroys and rebuilds the date control when it leaves and
+    // re-enters the Details step, so what the field shows and what the save
+    // writes can drift apart. They did: the field came back blank and the save
+    // still wrote the typed year. Covered in bUnit too; here because a value
+    // stored without being displayed is the durability failure this project
+    // treats as a defect, and this is the path a user actually walks.
+    [Fact]
+    public async Task ATypedAdoptionDateSurvivesSteppingBackAndForward()
+    {
+        var page = await OpenAsync();
+        await LoadSampleAsync(page);
+        await OpenProfileAsync(page, "Daniel Whitfield");
+
+        await page.GetByTestId("add-adoptive-parent").ClickAsync();
+        await page.GetByTestId("relationship-dialog-search-query").FillAsync("Vera");
+        await page.GetByTestId("relationship-dialog-search-results")
+            .GetByText("Vera Whitfield").First.ClickAsync();
+        await page.GetByTestId("relationship-dialog-next").ClickAsync();
+        await page.GetByTestId("relationship-dialog-adoption-date").FillAsync("1968");
+
+        await page.GetByTestId("relationship-dialog-back").ClickAsync();
+        await page.GetByTestId("relationship-dialog-next").ClickAsync();
+
+        // What the field shows is the assertion that matters: the stored value
+        // agreeing with a blank field would be a different bug, not a fix.
+        await Assertions.Expect(page.GetByTestId("relationship-dialog-adoption-date"))
+            .ToHaveValueAsync("1968");
+
+        await page.GetByTestId("relationship-dialog-save").ClickAsync();
+        await Assertions.Expect(page.GetByTestId("relationship-dialog")).ToBeHiddenAsync();
+
+        await Assertions.Expect(page.GetByTestId("adoptive-parents-list"))
+            .ToContainTextAsync("1968");
+    }
 }

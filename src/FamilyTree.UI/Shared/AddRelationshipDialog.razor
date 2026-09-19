@@ -110,9 +110,19 @@
                         @if (IsAdoptive)
                         {
                             <div class="reldialog__field" data-testid="@($"{TestId}-adoption-date-field")">
+                                @* Seed is tracked live rather than set once at
+                                   open. This control is destroyed when the
+                                   wizard leaves the Details step and rebuilt on
+                                   return, re-seeding from whatever it is handed
+                                   — so a stale seed makes the field disagree
+                                   with the value the dialog is about to save.
+                                   Tracking the raw text rather than the parsed
+                                   value is what carries half-typed and
+                                   unparseable input back intact. *@
                                 <PartialDateInput Label="Adoption date (optional)"
                                                   TestId="@($"{TestId}-adoption-date")"
                                                   Seed="_adoptionDateSeed"
+                                                  TextChanged="t => _adoptionDateSeed = t"
                                                   ValueChanged="OnAdoptionDateChanged"
                                                   InvalidChanged="v => _adoptionDateInvalid = v" />
                                 <p class="reldialog__hint">
@@ -138,9 +148,14 @@
                     @* Disabled on an unparseable adoption date rather than
                        failing on save: the control already says what is wrong
                        with it, and a save that bounced off a date would report
-                       it a second time in a different place. *@
+                       it a second time in a different place.
+
+                       Gated on the kind, because only the adoptive kinds have a
+                       date at all. Without that, a date left invalid before
+                       switching kind would disable Save on a biological link
+                       whose form shows no date field to correct. *@
                     <button type="button" class="btn btn--primary"
-                            disabled="@(_busy || _adoptionDateInvalid)"
+                            disabled="@(_busy || (IsAdoptive && _adoptionDateInvalid))"
                             data-testid="@($"{TestId}-save")" @onclick="SaveAsync">
                         @SaveLabel
                     </button>

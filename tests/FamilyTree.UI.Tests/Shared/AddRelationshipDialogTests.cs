@@ -589,4 +589,128 @@ public class AddRelationshipDialogTests : ShellTestContext
         Assert.Contains("Save changes",
             cut.Find("[data-testid='relationship-dialog-save']").TextContent);
     }
+
+    // ---- The adoption date across step navigation ----
+    //
+    // PartialDateInput is destroyed when the wizard leaves the Details step and
+    // rebuilt on return, so whatever the dialog remembers and whatever the
+    // control displays have to be the same thing. They were not: the dialog kept
+    // the parsed value while the control re-seeded from the seed it was first
+    // given, and the two drifted apart in three separate ways.
+
+    // The serious one. A save that writes a value the user cannot see is the
+    // silent-data-loss class this project treats as a defect, not an edge case.
+    [Fact]
+    public void KeepsTheTypedAdoptionDateAcrossAStepChange()
+    {
+        GivenRoster();
+        AdoptiveLink? saved = null;
+        Adoptive.Setup(r => r.AddAsync(It.IsAny<AdoptiveLink>(), It.IsAny<CancellationToken>()))
+            .Callback((AdoptiveLink l, CancellationToken _) => saved = l)
+            .Returns(Task.CompletedTask);
+
+        var cut = RenderDialog(kinds: [Kind.AdoptiveParent]);
+        ChooseCandidate(cut);
+        cut.Find("[data-testid='relationship-dialog-adoption-date']").Input("1977");
+        cut.Find("[data-testid='relationship-dialog-back']").Click();
+        cut.Find("[data-testid='relationship-dialog-next']").Click();
+
+        // Displayed and stored agree, which is the actual requirement — blanking
+        // the field and saving null would agree too, and would throw away what
+        // the user typed.
+        Assert.Equal("1977",
+            cut.Find("[data-testid='relationship-dialog-adoption-date']").GetAttribute("value"));
+
+        cut.Find("[data-testid='relationship-dialog-save']").Click();
+
+        Assert.Equal(1977, saved!.AdoptionDate!.Year);
+    }
+
+    // Unparseable text survives too. PartialDateText exists precisely to carry a
+    // value the domain type cannot express, so re-seeding from the parsed value
+    // would discard exactly what it is for.
+    [Fact]
+    public void KeepsUnparseableAdoptionDateTextAcrossAStepChange()
+    {
+        GivenRoster();
+
+        var cut = RenderDialog(kinds: [Kind.AdoptiveParent]);
+        ChooseCandidate(cut);
+        cut.Find("[data-testid='relationship-dialog-adoption-date']").Input("not a year");
+        cut.Find("[data-testid='relationship-dialog-back']").Click();
+        cut.Find("[data-testid='relationship-dialog-next']").Click();
+
+        Assert.Equal("not a year",
+            cut.Find("[data-testid='relationship-dialog-adoption-date']").GetAttribute("value"));
+    }
+
+    // Save stays disabled on an invalid date, but the reason has to be on screen.
+    // A dead button next to a blank field is unescapable except by cancelling.
+    [Fact]
+    public void ShowsWhySaveIsDisabledAfterReturningToAnInvalidDate()
+    {
+        GivenRoster();
+
+        var cut = RenderDialog(kinds: [Kind.AdoptiveParent]);
+        ChooseCandidate(cut);
+        cut.Find("[data-testid='relationship-dialog-adoption-date']").Input("not a year");
+        cut.Find("[data-testid='relationship-dialog-back']").Click();
+        cut.Find("[data-testid='relationship-dialog-next']").Click();
+
+        Assert.True(cut.Find("[data-testid='relationship-dialog-save']").HasAttribute("disabled"));
+        Assert.NotEmpty(cut.FindAll("[data-testid='error-relationship-dialog-adoption-date']"));
+    }
+
+    // Clearing a date is a legitimate correction, and a step change must not
+    // quietly undo it by re-seeding from what was originally recorded.
+    [Fact]
+    public void KeepsAClearedAdoptionDateClearedAcrossAStepChange()
+    {
+        GivenRoster();
+        var link = new AdoptiveLink(_candidate.Id, _subject.Id, PartialDate.FromYear(1990));
+        Adoptive.Setup(r => r.GetAsync(_candidate.Id, _subject.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(link);
+        AdoptiveLink? updated = null;
+        Adoptive.Setup(r => r.UpdateAsync(It.IsAny<AdoptiveLink>(), It.IsAny<CancellationToken>()))
+            .Callback((AdoptiveLink l, CancellationToken _) => updated = l)
+            .Returns(Task.CompletedTask);
+
+        var cut = RenderDialog(kinds: [Kind.AdoptiveParent], editing: EditOf(_candidate, 1990));
+        cut.Find("[data-testid='relationship-dialog-next']").Click();
+        cut.Find("[data-testid='relationship-dialog-adoption-date']").Input(string.Empty);
+        cut.Find("[data-testid='relationship-dialog-back']").Click();
+        cut.Find("[data-testid='relationship-dialog-next']").Click();
+
+        Assert.Equal(string.Empty,
+            cut.Find("[data-testid='relationship-dialog-adoption-date']").GetAttribute("value"));
+
+        cut.Find("[data-testid='relationship-dialog-save']").Click();
+
+        Assert.NotNull(updated);
+        Assert.Null(updated!.AdoptionDate);
+    }
+
+    // A biological link has no date field, so a date left invalid on an adoptive
+    // kind must not disable its save. Not reachable from the profile today, which
+    // passes one kind per entry point — but this component offers the kind step
+    // to anyone who asks for more than one.
+    [Fact]
+    public void AnInvalidAdoptionDateDoesNotBlockSavingABiologicalLink()
+    {
+        GivenRoster();
+
+        var cut = RenderDialog(kinds: [Kind.AdoptiveParent, Kind.BiologicalParent]);
+        cut.Find("[data-testid='relationship-dialog-kind-adoptiveparent']").Click();
+        ChooseCandidate(cut);
+        cut.Find("[data-testid='relationship-dialog-adoption-date']").Input("not a year");
+
+        cut.Find("[data-testid='relationship-dialog-back']").Click();
+        cut.Find("[data-testid='relationship-dialog-back']").Click();
+        cut.Find("[data-testid='relationship-dialog-kind-biologicalparent']").Click();
+        cut.Find("[data-testid='relationship-dialog-next']").Click();
+        cut.Find("[data-testid='relationship-dialog-next']").Click();
+
+        Assert.Empty(cut.FindAll("[data-testid='relationship-dialog-adoption-date']"));
+        Assert.False(cut.Find("[data-testid='relationship-dialog-save']").HasAttribute("disabled"));
+    }
 }
