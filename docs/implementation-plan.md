@@ -281,6 +281,14 @@ Back in scope because IndexedDB stores blobs. Circular crop dialog per the desig
 
 Deliberately reserved and unplanned. The point of shipping early is to learn things not currently known; this is where that gets absorbed.
 
+**Carried here so far.** Findings raised in review and deliberately not fixed in the PR that surfaced them, because none was caused by the change under review and folding them in would have widened a reviewed PR. Recorded here rather than as GitHub issues, per the traceability rule in CLAUDE.md: `USER_STORIES.md` is the backlog, and a parallel set of open issues is not maintained.
+
+- **The desktop toast stack covers the "Add adoptive child" button while visible** (PR 8). The stack predates PR 8; the collision does not, because PR 8 put a button where the stack lands. Transient and self-dismissing, so not a blocker — but a toast covering an interactive control is a defect rather than a cosmetic complaint, and it will recur wherever a later PR adds an action in that corner. The fix is positional, not per-page: give the stack somewhere to sit that no page's controls occupy, or make it dodge them.
+- **Dashed strokes now carry two meanings** (PR 8). An adoptive chip is dashed teal; the "Unknown" biological parent slot is dashed grey. They are separated by colour and by section heading, and each row also says which it is in words, so nothing is ambiguous in place — but the design system's vocabulary is now overloaded, and the phantom variant (PR 4, extended in PR 7) is the older claim on it. This wants a decision about the chip vocabulary rather than a patch, and it should be taken before PR 10 draws both kinds of edge in the same canvas.
+- **The mobile heading sits behind the fixed backup banner** (observed during PR 8, predates it). May be an artifact of full-page capture with fixed elements rather than a real overlap — diagnose with `getBoundingClientRect` before changing any CSS, per the Playwright rules in CLAUDE.md.
+
+**What the automated suites do not cover.** Worth knowing before this PR is planned, because it bounds what "green" has ever meant here: everything runs headless Chromium on Linux. Real-device font rendering, Safari and Firefox, a genuine browser restart or storage eviction, and screen-reader announcement of the `aria-live` toast region are human checks and have never been anything else.
+
 ---
 
 ## Dependency Graph
