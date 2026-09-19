@@ -130,6 +130,15 @@ public sealed class BrowserAdoptiveRelationshipRepository(IndexedDbStore store)
 
     public Task DeleteAsync(Guid id, CancellationToken ct = default) =>
         store.DeleteAsync(IndexedDbStore.AdoptiveLinks, id, ct);
+
+    /// <summary>
+    /// One IndexedDB transaction, so the correction cannot leave the child with
+    /// neither the old adoptive parent nor the new one.
+    /// </summary>
+    public Task ReplaceParentAsync(
+        Guid oldLinkId, AdoptiveParentChild newLink, CancellationToken ct = default) =>
+        store.ReplaceAsync(
+            IndexedDbStore.AdoptiveLinks, oldLinkId, AdoptiveLinkRecord.From(newLink), ct);
 }
 
 public sealed class BrowserMarriageRepository(IndexedDbStore store) : IMarriageRepository

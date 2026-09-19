@@ -116,6 +116,21 @@
     [Parameter] public EventCallback<PartialDate?> ValueChanged { get; set; }
 
     /// <summary>
+    /// Raised with the raw text on every change, for a host that has to survive
+    /// this control being destroyed and rebuilt.
+    /// </summary>
+    /// <remarks>
+    /// The parsed value is not enough to re-seed from. A host that kept only
+    /// <see cref="ValueChanged"/> would have to hand back
+    /// <c>PartialDateText.From(value)</c>, which cannot express text the domain
+    /// type will not hold — so half-typed and unparseable input would vanish on
+    /// the way back, which is the loss <see cref="PartialDateText"/> exists to
+    /// prevent. Optional: a host whose control lives as long as its form does
+    /// not need it.
+    /// </remarks>
+    [Parameter] public EventCallback<PartialDateText> TextChanged { get; set; }
+
+    /// <summary>
     /// Raised whenever the entered date becomes valid or invalid, so the form
     /// hosting this control can refuse to submit while it is not a date.
     /// </summary>
@@ -183,6 +198,10 @@
     {
         _text.TryToDomain(out var date, out _error);
 
+        // Text first, and unconditionally: it is the only one of the three that
+        // survives a value the domain cannot hold, so a host re-seeding from it
+        // gets back exactly what was typed rather than what parsed.
+        await TextChanged.InvokeAsync(_text);
         await ValueChanged.InvokeAsync(date);
         await InvalidChanged.InvokeAsync(_error is not null);
     }

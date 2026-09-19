@@ -169,6 +169,17 @@
     color: var(--ink4);
 }
 
+/* The adoption date, in the mono face the design system reserves for dates.
+   flex: none because "Date unknown" and "12 March 1974" must not resize the
+   chip beside them differently — a column that moves depending on whether a
+   date is known reads as two different layouts. */
+.relations__date {
+    flex: none;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--ink3);
+}
+
 .relations__shared {
     font-size: 11px;
     color: var(--ink3);

@@ -8,12 +8,14 @@ using Moq;
 namespace FamilyTree.UI.Tests.Pages;
 
 /// <summary>
-/// The biological sections of a profile: US-008, US-012, US-051, US-041.
+/// The relationship sections of a profile: US-008, US-012, US-051, US-041 for
+/// the biological ones, and US-015, US-019, US-039 for the adoptive ones.
 /// </summary>
 public class PersonProfileRelationsTests : ShellTestContext
 {
     private readonly List<Person> _people = [];
     private readonly List<BiologicalParentChild> _links = [];
+    private readonly List<AdoptiveParentChild> _adoptiveLinks = [];
 
     private Person Someone(string first, string last = "Whitfield", int? birthYear = null)
     {
@@ -36,6 +38,12 @@ public class PersonProfileRelationsTests : ShellTestContext
 
     private void Link(Person parent, Person child) =>
         _links.Add(new BiologicalParentChild(parent.Id, child.Id));
+
+    private void Adopt(Person parent, Person child, int? adoptionYear = null) =>
+        _adoptiveLinks.Add(new AdoptiveParentChild(
+            parent.Id,
+            child.Id,
+            adoptionYear is int year ? PartialDate.FromYear(year) : null));
 
     /// <summary>
     /// Wires the mocks from the lists above, so a test reads as a family rather
@@ -64,6 +72,21 @@ public class PersonProfileRelationsTests : ShellTestContext
         Biological.Setup(r => r.GetAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((Guid parentId, Guid childId, CancellationToken _) =>
                 _links.FirstOrDefault(l => l.ParentId == parentId && l.ChildId == childId));
+
+        Adoptive.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync(_adoptiveLinks);
+        Adoptive.Setup(r => r.GetParentLinksForChildAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Guid id, CancellationToken _) =>
+                _adoptiveLinks.Where(l => l.ChildId == id).ToList());
+        Adoptive.Setup(r => r.GetChildLinksForParentAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Guid id, CancellationToken _) =>
+                _adoptiveLinks.Where(l => l.ParentId == id).ToList());
+        Adoptive.Setup(r => r.GetParentLinksForChildrenAsync(
+                It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyCollection<Guid> ids, CancellationToken _) =>
+                _adoptiveLinks.Where(l => ids.Contains(l.ChildId)).ToList());
+        Adoptive.Setup(r => r.GetAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Guid parentId, Guid childId, CancellationToken _) =>
+                _adoptiveLinks.FirstOrDefault(l => l.ParentId == parentId && l.ChildId == childId));
 
         return Render<PersonProfilePage>(p => p.Add(c => c.Id, subject.Id));
     }
@@ -390,5 +413,323 @@ public class PersonProfileRelationsTests : ShellTestContext
 
         Assert.Contains("Replace a parent",
             cut.Find("[data-testid='relationship-dialog']").TextContent);
+    }
+
+    // ---- Adoptive parents (US-015) ----
+
+    [Fact]
+    public void ListsTheAdoptiveParents()
+    {
+        var priya = Someone("Priya", birthYear: 1975);
+        var susan = Someone("Susan", birthYear: 1948);
+        Adopt(susan, priya, 1977);
+
+        var cut = RenderProfile(priya);
+
+        Assert.NotNull(cut.Find($"[data-testid='adoptive-parent-{susan.Id}']"));
+    }
+
+    [Fact]
+    public void LabelsEachAdoptiveParentAsAdoptive()
+    {
+        var priya = Someone("Priya");
+        var susan = Someone("Susan");
+        Adopt(susan, priya, 1977);
+
+        var cut = RenderProfile(priya);
+
+        Assert.Contains("(Adoptive)",
+            cut.Find("[data-testid='adoptive-parents-list']").TextContent);
+    }
+
+    // The chip carries "(A)" as well as its own style, so the distinction
+    // survives for anyone who cannot rely on colour.
+    [Fact]
+    public void MarksTheAdoptiveChipWithItsOwnVariant()
+    {
+        var priya = Someone("Priya");
+        var susan = Someone("Susan");
+        Adopt(susan, priya, 1977);
+
+        var cut = RenderProfile(priya);
+        var chip = cut.Find($"[data-testid='adoptive-parent-chip-{susan.Id}']");
+
+        Assert.Contains("chip--adoptive", chip.GetAttribute("class"));
+        Assert.Contains("(A)", chip.TextContent);
+    }
+
+    [Fact]
+    public void ShowsTheAdoptionDateBesideEachAdoptiveParent()
+    {
+        var priya = Someone("Priya");
+        var susan = Someone("Susan");
+        Adopt(susan, priya, 1977);
+
+        var cut = RenderProfile(priya);
+
+        Assert.Contains("1977",
+            cut.Find($"[data-testid='adoptive-parent-date-{susan.Id}']").TextContent);
+    }
+
+    // US-015 asks for the absence to be said rather than left blank: an adoption
+    // nobody dated is the ordinary state of an old record.
+    [Fact]
+    public void SaysDateUnknownWhenNoAdoptionDateIsRecorded()
+    {
+        var priya = Someone("Priya");
+        var susan = Someone("Susan");
+        Adopt(susan, priya);
+
+        var cut = RenderProfile(priya);
+
+        Assert.Contains("Date unknown",
+            cut.Find($"[data-testid='adoptive-parent-date-{susan.Id}']").TextContent);
+    }
+
+    [Fact]
+    public void SaysWhenThereAreNoAdoptiveParents()
+    {
+        var priya = Someone("Priya");
+
+        var cut = RenderProfile(priya);
+
+        Assert.NotNull(cut.Find("[data-testid='adoptive-parents-empty']"));
+    }
+
+    // There is no cap, so there is no empty slot to draw — the biological
+    // section's "Unknown" placeholders would be claiming a gap that does not
+    // exist.
+    [Fact]
+    public void DrawsNoUnknownSlotsForAdoptiveParents()
+    {
+        var priya = Someone("Priya");
+        var susan = Someone("Susan");
+        Adopt(susan, priya);
+
+        var cut = RenderProfile(priya);
+
+        Assert.Empty(cut.FindAll("[data-testid='adoptive-parent-unknown-slot']"));
+    }
+
+    // The Add button is outside the empty check: US-014 puts no limit on how
+    // many there are, so it is offered whether or not any exist.
+    [Fact]
+    public void OffersToAddAnAdoptiveParentEvenWhenSomeExist()
+    {
+        var priya = Someone("Priya");
+        var susan = Someone("Susan");
+        Adopt(susan, priya);
+
+        var cut = RenderProfile(priya);
+
+        Assert.NotNull(cut.Find("[data-testid='add-adoptive-parent']"));
+    }
+
+    // ---- Adoptive children (US-019) ----
+
+    [Fact]
+    public void ListsTheAdoptiveChildren()
+    {
+        var susan = Someone("Susan");
+        var priya = Someone("Priya", birthYear: 1975);
+        Adopt(susan, priya, 1977);
+
+        var cut = RenderProfile(susan);
+
+        Assert.NotNull(cut.Find($"[data-testid='adoptive-child-{priya.Id}']"));
+    }
+
+    [Fact]
+    public void ShowsEachAdoptiveChildsLifeSpanAndALinkToTheirProfile()
+    {
+        var susan = Someone("Susan");
+        var priya = Someone("Priya", birthYear: 1975);
+        Adopt(susan, priya, 1977);
+
+        var cut = RenderProfile(susan);
+        var chip = cut.Find($"[data-testid='adoptive-child-chip-{priya.Id}']");
+
+        Assert.Equal($"people/{priya.Id}", chip.GetAttribute("href"));
+        Assert.Contains("1975", chip.TextContent);
+    }
+
+    [Fact]
+    public void ShowsTheAdoptionDateBesideEachAdoptiveChild()
+    {
+        var susan = Someone("Susan");
+        var priya = Someone("Priya");
+        Adopt(susan, priya, 1977);
+
+        var cut = RenderProfile(susan);
+
+        Assert.Contains("1977",
+            cut.Find($"[data-testid='adoptive-child-date-{priya.Id}']").TextContent);
+    }
+
+    [Fact]
+    public void SaysWhenThereAreNoAdoptiveChildren()
+    {
+        var susan = Someone("Susan");
+
+        var cut = RenderProfile(susan);
+
+        Assert.NotNull(cut.Find("[data-testid='adoptive-children-empty']"));
+    }
+
+    [Fact]
+    public void OrdersAdoptiveChildrenByAdoptionDate()
+    {
+        var susan = Someone("Susan");
+        var later = Someone("Ana");
+        var earlier = Someone("Tom");
+        Adopt(susan, later, 1985);
+        Adopt(susan, earlier, 1977);
+
+        var cut = RenderProfile(susan);
+        var rows = cut.FindAll("[data-testid='adoptive-children-list'] li");
+
+        Assert.Equal($"adoptive-child-{earlier.Id}", rows[0].GetAttribute("data-testid"));
+    }
+
+    // ---- Both kinds side by side (US-039) ----
+
+    [Fact]
+    public void ShowsBiologicalAndAdoptiveParentsConcurrently()
+    {
+        var priya = Someone("Priya");
+        var elena = Someone("Elena");
+        var susan = Someone("Susan");
+        Link(elena, priya);
+        Adopt(susan, priya, 1977);
+
+        var cut = RenderProfile(priya);
+
+        Assert.NotNull(cut.Find($"[data-testid='parent-{elena.Id}']"));
+        Assert.NotNull(cut.Find($"[data-testid='adoptive-parent-{susan.Id}']"));
+    }
+
+    // Two full biological parents and an adoptive one is the exact case US-039
+    // names, and the one that breaks if either cap ever counts the other table.
+    [Fact]
+    public void KeepsBothBiologicalSlotsFilledAlongsideAnAdoptiveParent()
+    {
+        var priya = Someone("Priya");
+        var elena = Someone("Elena");
+        var marek = Someone("Marek");
+        var susan = Someone("Susan");
+        Link(elena, priya);
+        Link(marek, priya);
+        Adopt(susan, priya, 1977);
+
+        var cut = RenderProfile(priya);
+
+        Assert.Equal(2, cut.FindAll("[data-testid='parents-list'] li").Count);
+        Assert.Single(cut.FindAll("[data-testid='adoptive-parents-list'] li"));
+        Assert.Empty(cut.FindAll("[data-testid='parent-unknown-slot']"));
+    }
+
+    // A phantom belongs in a parents section and nowhere else, and has to say
+    // which kind of unidentified it is.
+    [Fact]
+    public void MarksAPhantomAdoptiveParentAsUnidentified()
+    {
+        var priya = Someone("Priya");
+        var phantom = Phantom();
+        Adopt(phantom, priya);
+
+        var cut = RenderProfile(priya);
+
+        Assert.Contains("(Adoptive · unidentified)",
+            cut.Find("[data-testid='adoptive-parents-list']").TextContent);
+    }
+
+    // ---- Removing (US-017, US-020) ----
+
+    [Fact]
+    public void ConfirmsBeforeRemovingAnAdoptiveParent()
+    {
+        var priya = Someone("Priya");
+        var susan = Someone("Susan");
+        Adopt(susan, priya, 1977);
+
+        var cut = RenderProfile(priya);
+        cut.Find($"[data-testid='remove-adoptive-parent-{susan.Id}']").Click();
+
+        Assert.Contains("as an adoptive parent of",
+            cut.Find("[data-testid='remove-link-modal']").TextContent);
+    }
+
+    // Both stories make this the point of the confirmation: the risk is somebody
+    // reading "Remove" as "Delete".
+    [Fact]
+    public void SaysNeitherPersonIsDeletedWhenRemovingAnAdoptiveLink()
+    {
+        var priya = Someone("Priya");
+        var susan = Someone("Susan");
+        Adopt(susan, priya, 1977);
+
+        var cut = RenderProfile(priya);
+        cut.Find($"[data-testid='remove-adoptive-parent-{susan.Id}']").Click();
+
+        Assert.Contains("removes the relationship only",
+            cut.Find("[data-testid='remove-link-modal']").TextContent);
+    }
+
+    [Fact]
+    public void RemovesTheAdoptiveLinkOnConfirmation()
+    {
+        var priya = Someone("Priya");
+        var susan = Someone("Susan");
+        Adopt(susan, priya, 1977);
+
+        var cut = RenderProfile(priya);
+        cut.Find($"[data-testid='remove-adoptive-parent-{susan.Id}']").Click();
+        cut.Find("[data-testid='confirm-remove-link']").Click();
+
+        Adoptive.Verify(
+            r => r.DeleteAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Once);
+        Biological.Verify(
+            r => r.DeleteAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public void RemovesAnAdoptiveChildFromTheParentsProfile()
+    {
+        var susan = Someone("Susan");
+        var priya = Someone("Priya");
+        Adopt(susan, priya, 1977);
+
+        var cut = RenderProfile(susan);
+        cut.Find($"[data-testid='remove-adoptive-child-{priya.Id}']").Click();
+
+        Assert.Contains("as an adoptive child of",
+            cut.Find("[data-testid='remove-link-modal']").TextContent);
+    }
+
+    // ---- Editing (US-016) ----
+
+    [Fact]
+    public void OffersOneEditControlPerAdoptiveParent()
+    {
+        var priya = Someone("Priya");
+        var susan = Someone("Susan");
+        Adopt(susan, priya, 1977);
+
+        var cut = RenderProfile(priya);
+
+        Assert.NotNull(cut.Find($"[data-testid='edit-adoptive-parent-{susan.Id}']"));
+    }
+
+    [Fact]
+    public void OpensTheEditDialogOnTheRecordedAdoptiveParent()
+    {
+        var priya = Someone("Priya");
+        var susan = Someone("Susan");
+        Adopt(susan, priya, 1977);
+
+        var cut = RenderProfile(priya);
+        cut.Find($"[data-testid='edit-adoptive-parent-{susan.Id}']").Click();
+
+        Assert.Contains("Edit an adoptive parent of", cut.Markup);
     }
 }

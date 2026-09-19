@@ -20,4 +20,17 @@ public interface IAdoptiveRelationshipRepository
     Task AddAsync(AdoptiveParentChild link, CancellationToken ct = default);
     Task UpdateAsync(AdoptiveParentChild link, CancellationToken ct = default);
     Task DeleteAsync(Guid id, CancellationToken ct = default);
+
+    /// <summary>
+    /// Swaps one adoptive parent link for another as a single mutation.
+    /// </summary>
+    /// <remarks>
+    /// Exists for the same reason as its biological counterpart: the interface
+    /// could not otherwise express "replace" as one call, and a delete followed
+    /// by an add is the half-failing sequence the API-seam rule exists to
+    /// prevent. Its failure mode is a child whose adoptive parent quietly
+    /// vanished with nothing left to say who used to be there, which this
+    /// project treats as a defect rather than an edge case.
+    /// </remarks>
+    Task ReplaceParentAsync(Guid oldLinkId, AdoptiveParentChild newLink, CancellationToken ct = default);
 }

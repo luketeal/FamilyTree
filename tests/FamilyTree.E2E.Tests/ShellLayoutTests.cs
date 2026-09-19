@@ -882,6 +882,101 @@ public class ShellLayoutTests(StaticSiteFixture fixture) : BrowserTest(fixture)
             + $"Widest offender: {offender}");
     }
 
+    // An adoptive row carries one more column than a biological one — the
+    // adoption date — and Priya's profile is the only one that shows both kinds
+    // of parent at once. Four columns and two actions per row is the shape that
+    // runs out of width first, and 390px is where it would.
+    [Theory]
+    [InlineData(390)]
+    [InlineData(768)]
+    [InlineData(1440)]
+    public async Task AProfileWithAdoptiveRelationships_DoesNotScrollSideways(int width)
+    {
+        var page = await OpenAsync(width, 844, "settings");
+        await page.GetByTestId("load-sample").ClickAsync();
+        await Assertions.Expect(page.GetByTestId("settings-stats"))
+            .ToHaveTextAsync("10 people · 14 relationships");
+
+        await page.GotoAsync(Fixture.BaseUrl + "people", new PageGotoOptions
+        {
+            WaitUntil = WaitUntilState.NetworkIdle,
+        });
+        await page.GetByText("Priya Hartley").First.ClickAsync();
+        await Assertions.Expect(page.GetByTestId("adoptive-parents-list")).ToBeVisibleAsync();
+
+        var (overflowBy, offender) = await WidestOverflowAsync(page);
+
+        Assert.True(overflowBy <= 0,
+            $"A profile with adoptive relationships scrolls sideways by {overflowBy}px "
+            + $"at {width}px. Widest offender: {offender}");
+    }
+
+    // The adoption date puts a year box, a month select, a day box and a circa
+    // checkbox on one line inside a dialog that is already the narrowest column
+    // on the page. It is the widest row the wizard has.
+    [Theory]
+    [InlineData(390)]
+    [InlineData(1440)]
+    public async Task TheAdoptionDateRow_DoesNotScrollSideways(int width)
+    {
+        var page = await OpenAsync(width, 844, "settings");
+        await page.GetByTestId("load-sample").ClickAsync();
+        await Assertions.Expect(page.GetByTestId("settings-stats"))
+            .ToHaveTextAsync("10 people · 14 relationships");
+
+        await page.GotoAsync(Fixture.BaseUrl + "people", new PageGotoOptions
+        {
+            WaitUntil = WaitUntilState.NetworkIdle,
+        });
+        await page.GetByText("Priya Hartley").First.ClickAsync();
+        await page.GetByTestId("add-adoptive-parent").ClickAsync();
+        await page.GetByTestId("relationship-dialog-search-query").FillAsync("Vera");
+        await page.GetByTestId("relationship-dialog-search-results")
+            .GetByText("Vera Whitfield").First.ClickAsync();
+        await page.GetByTestId("relationship-dialog-next").ClickAsync();
+        await Assertions.Expect(page.GetByTestId("relationship-dialog-adoption-date"))
+            .ToBeVisibleAsync();
+
+        var (overflowBy, offender) = await WidestOverflowAsync(page);
+
+        Assert.True(overflowBy <= 0,
+            $"The wizard's adoption-date step scrolls sideways by {overflowBy}px "
+            + $"at {width}px. Widest offender: {offender}");
+    }
+
+    /// <summary>
+    /// The widest horizontal overflow on the page, and the selector responsible.
+    /// </summary>
+    /// <remarks>
+    /// Naming the culprit is what turns a failure here into a one-line fix
+    /// rather than a debugging session — the number alone says something is
+    /// wrong and nothing about where.
+    /// </remarks>
+    private static async Task<(double OverflowBy, string? Offender)> WidestOverflowAsync(IPage page)
+    {
+        var measured = await page.EvaluateAsync<string>(@"() => {
+            const describe = el => el.tagName.toLowerCase() +
+                (el.className && typeof el.className === 'string'
+                    ? '.' + el.className.trim().split(/\s+/).join('.')
+                    : '');
+
+            let worst = null, worstBy = 0;
+            for (const el of [document.documentElement, ...document.querySelectorAll('*')]) {
+                const over = el.scrollWidth - el.clientWidth;
+                if (over > worstBy) { worstBy = over; worst = el; }
+            }
+
+            return JSON.stringify({
+                overflowBy: worstBy,
+                offender: worst ? describe(worst) : 'none',
+            });
+        }");
+
+        using var result = JsonDocument.Parse(measured);
+        return (result.RootElement.GetProperty("overflowBy").GetDouble(),
+                result.RootElement.GetProperty("offender").GetString());
+    }
+
     // The chips carry their styling through `::deep`, without which the parent's
     // scope attribute never reaches them and the rule silently matches nothing —
     // the failure that has already cost this project two misdiagnoses.
@@ -916,5 +1011,92 @@ public class ShellLayoutTests(StaticSiteFixture fixture) : BrowserTest(fixture)
         // so it can only come from the scoped rule actually reaching the child
         // component — the failure mode that has already cost two misdiagnoses.
         Assert.Equal("999px", radius);
+    }
+
+    // The same ::deep failure, one component deeper: the adoptive variant is the
+    // only thing distinguishing an adoptive parent from a biological one at a
+    // glance, and it comes from a rule in PersonChip's own sheet reached through
+    // the profile's. A miss here leaves a chip that looks biological and is not.
+    [Fact]
+    public async Task AdoptiveChips_AreDashedAndTeal()
+    {
+        var page = await OpenAsync(1440, 900, "settings");
+        await page.GetByTestId("load-sample").ClickAsync();
+        await Assertions.Expect(page.GetByTestId("settings-stats"))
+            .ToHaveTextAsync("10 people · 14 relationships");
+
+        await page.GotoAsync(Fixture.BaseUrl + "people", new PageGotoOptions
+        {
+            WaitUntil = WaitUntilState.NetworkIdle,
+        });
+        await page.GetByText("Priya Hartley").First.ClickAsync();
+        await Assertions.Expect(page.GetByTestId("adoptive-parents-list")).ToBeVisibleAsync();
+
+        var adoptive = page.Locator("[data-testid^='adoptive-parent-chip-']").First;
+        var style = await adoptive.EvaluateAsync<string>(@"el => {
+            const s = getComputedStyle(el);
+            return JSON.stringify({
+                borderStyle: s.borderTopStyle,
+                borderColor: s.borderTopColor,
+                background: s.backgroundColor,
+            });
+        }");
+
+        using var result = JsonDocument.Parse(style);
+        Assert.Equal("dashed", result.RootElement.GetProperty("borderStyle").GetString());
+
+        // --teal-line #a8c8be and --teal-bg #e6efeb, as computed rgb. Asserted
+        // as values rather than as "not the biological colour": the point is
+        // that the design system's adoptive tokens are the ones in force.
+        Assert.Equal("rgb(168, 200, 190)", result.RootElement.GetProperty("borderColor").GetString());
+        Assert.Equal("rgb(230, 239, 235)", result.RootElement.GetProperty("background").GetString());
+    }
+
+    // The biological chip is solid, which is the other half of the distinction
+    // being legible: a test that only pinned the adoptive side would pass if
+    // every chip became dashed.
+    [Fact]
+    public async Task BiologicalChips_AreNotDashed()
+    {
+        var page = await OpenAsync(1440, 900, "settings");
+        await page.GetByTestId("load-sample").ClickAsync();
+        await Assertions.Expect(page.GetByTestId("settings-stats"))
+            .ToHaveTextAsync("10 people · 14 relationships");
+
+        await page.GotoAsync(Fixture.BaseUrl + "people", new PageGotoOptions
+        {
+            WaitUntil = WaitUntilState.NetworkIdle,
+        });
+        await page.GetByText("Priya Hartley").First.ClickAsync();
+        await Assertions.Expect(page.GetByTestId("parents-list")).ToBeVisibleAsync();
+
+        var borderStyle = await page.Locator("[data-testid^='parent-chip-']").First
+            .EvaluateAsync<string>("el => getComputedStyle(el).borderTopStyle");
+
+        Assert.Equal("solid", borderStyle);
+    }
+
+    // The adoption date is set in the mono face the design system reserves for
+    // dates, and it is one of the few places a token can be dropped without
+    // anything looking broken — it just quietly stops matching the rest.
+    [Fact]
+    public async Task TheAdoptionDate_IsSetInTheMonoFace()
+    {
+        var page = await OpenAsync(1440, 900, "settings");
+        await page.GetByTestId("load-sample").ClickAsync();
+        await Assertions.Expect(page.GetByTestId("settings-stats"))
+            .ToHaveTextAsync("10 people · 14 relationships");
+
+        await page.GotoAsync(Fixture.BaseUrl + "people", new PageGotoOptions
+        {
+            WaitUntil = WaitUntilState.NetworkIdle,
+        });
+        await page.GetByText("Priya Hartley").First.ClickAsync();
+        await Assertions.Expect(page.GetByTestId("adoptive-parents-list")).ToBeVisibleAsync();
+
+        var family = await page.Locator("[data-testid^='adoptive-parent-date-']").First
+            .EvaluateAsync<string>("el => getComputedStyle(el).fontFamily");
+
+        Assert.Contains("JetBrains Mono", family);
     }
 }

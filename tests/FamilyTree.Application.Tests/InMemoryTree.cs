@@ -36,6 +36,9 @@ internal sealed class InMemoryTree
     /// <summary>How many times a biological parent was swapped through the atomic path.</summary>
     public int BiologicalReplaceCount { get; set; }
 
+    /// <summary>How many times an adoptive parent was swapped through the atomic path.</summary>
+    public int AdoptiveReplaceCount { get; set; }
+
     public IPersonRepository PersonRepository => new FakePersonRepository(this);
 
     public IBiologicalRelationshipRepository BiologicalRepository => new FakeBiologicalRepository(this);
@@ -196,6 +199,20 @@ internal sealed class InMemoryTree
         public Task DeleteAsync(Guid id, CancellationToken ct = default)
         {
             tree.AdoptiveLinks.RemoveAll(l => l.Id == id);
+            return Task.CompletedTask;
+        }
+
+        /// <summary>
+        /// Atomic here as it is in IndexedDB, and counted for the same reason as
+        /// its biological counterpart: "one call" is the property the seam
+        /// discipline asks for, and a test can only see it from here.
+        /// </summary>
+        public Task ReplaceParentAsync(
+            Guid oldLinkId, AdoptiveParentChild newLink, CancellationToken ct = default)
+        {
+            tree.AdoptiveReplaceCount++;
+            tree.AdoptiveLinks.RemoveAll(l => l.Id == oldLinkId);
+            tree.AdoptiveLinks.Add(newLink);
             return Task.CompletedTask;
         }
     }

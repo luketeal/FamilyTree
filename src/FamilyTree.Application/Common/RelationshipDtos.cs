@@ -1,5 +1,6 @@
 using FamilyTree.Domain.Entities;
 using FamilyTree.Domain.Enums;
+using FamilyTree.Domain.ValueObjects;
 
 namespace FamilyTree.Application.Common;
 
@@ -70,4 +71,58 @@ public sealed record BiologicalRelationshipsDto(
     public IEnumerable<SiblingDto> FullSiblings => Siblings.Where(s => s.Kind == SiblingKind.Full);
 
     public IEnumerable<SiblingDto> HalfSiblings => Siblings.Where(s => s.Kind == SiblingKind.Half);
+}
+
+/// <summary>
+/// Somebody on the other end of an adoptive link, as a profile section needs them.
+/// </summary>
+/// <remarks>
+/// A separate shape from <see cref="RelatedPersonDto"/> rather than a nullable
+/// date bolted onto it. The adoption date is not an optional extra on a
+/// relationship that might not have one — it is the field US-015 and US-019 both
+/// build their section around, and the two stories ask for it to be *said* when
+/// absent. Widening the biological DTO would have put a date on sibling and
+/// biological-parent rows that can never carry one.
+/// </remarks>
+public sealed record AdoptiveRelativeDto(
+    Guid LinkId,
+    PersonSummaryDto Person,
+    RelationshipCertainty Certainty,
+    bool IsPhantom,
+    PartialDate? AdoptionDate)
+{
+    /// <summary>
+    /// The adoption date, or "Date unknown". US-015 and US-019.
+    /// </summary>
+    /// <remarks>
+    /// Here rather than in the component so the parents and children sections
+    /// cannot word it differently, and so the absent case is covered by a unit
+    /// test rather than only by looking at the page. An adoption whose date
+    /// nobody recorded is the ordinary state of an old record, so it reads as a
+    /// fact about the research rather than as a blank.
+    /// </remarks>
+    public string AdoptionLabel => AdoptionDate?.ToString() ?? "Date unknown";
+}
+
+/// <summary>
+/// Everything the adoptive half of a profile shows, from one service call.
+/// </summary>
+/// <remarks>
+/// Both sections in one DTO for the same reason the biological one groups three:
+/// they resolve overlapping sets of people, and asking twice would fetch the same
+/// records twice — free against IndexedDB, two requests once the seam is swapped.
+/// <para>
+/// There is no <c>UnknownParentSlots</c> counterpart. Biological parenthood has
+/// exactly two slots, so an empty one is a known gap worth drawing; adoptive
+/// parenthood has no cap (US-014), so there is no such thing as a missing
+/// adoptive parent to leave a space for.
+/// </para>
+/// </remarks>
+public sealed record AdoptiveRelationshipsDto(
+    IReadOnlyList<AdoptiveRelativeDto> Parents,
+    IReadOnlyList<AdoptiveRelativeDto> Children)
+{
+    public static AdoptiveRelationshipsDto Empty { get; } = new([], []);
+
+    public bool IsEmpty => Parents.Count == 0 && Children.Count == 0;
 }

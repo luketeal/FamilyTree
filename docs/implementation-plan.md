@@ -216,6 +216,17 @@ Extends `PartialDateInput.razor` in place. Year → Month → Day → Circa; cle
 
 Same guards as biological, **no upper cap**; adoption date optional ("Date unknown"); dashed-teal chips with "(A)". Extend export coverage.
 
+**Done.** Three things from this PR change what PR 9 has to do:
+
+- **`IAdoptiveRelationshipRepository.ReplaceParentAsync` exists, for the reason PR 7 gave.** **PR 9 still needs the equivalent on the marriage and stepparent repositories** — ending one marriage record and writing another is the same multi-record mutation, and a delete-then-add there has the same half-applied failure.
+- **`schemaVersion` stays at 2, and that is not an oversight.** Adoptive links have been persisted since PR 2 and exported since PR 5, so this PR adds no persisted shape — it is the first that can *create* one through the UI. "Already covered" is now pinned by an E2E test that records an adoption in the browser and finds it in the downloaded file, rather than by reading the export code. **PR 9 is different: the stepparent repository is new, so it bumps the version and extends `TreeSnapshot` in the same PR, or import silently discards every stepparent link.**
+- **The wizard has two correction modes, not one.** US-009 replaces a parent; US-016 edits an adoptive link, which may change the date, the person, or both — so it opens with the person already chosen and dispatches to `UpdateAsync` or `ReplaceParentAsync` depending on what actually changed. Editing a date does not rewrite the link's identity. PR 9's "end a marriage" is a third shape again: it edits a record without touching who it names.
+
+Two things worth knowing before extending the profile:
+
+- **The dialog's exclusion list is scoped to the kind being recorded, not to the person.** US-039 makes a biological parent and an adoptive parent different facts about the same child, so excluding everyone already linked in any capacity would refuse to record that a biological parent later adopted their own child. PR 9 needs the same care: a spouse is not excluded from being a stepparent.
+- **`AdoptiveRelationshipService` is a sibling of `BiologicalRelationshipService`, deliberately not a shared base class.** The two agree on their guards and disagree on everything the guards are for — no cap, a date of its own, no implied siblings. Factoring the agreement out would leave a base class whose every method took a flag. What is genuinely shared is shared properly: `CircularReferenceChecker` already walks both edge types together.
+
 ### PR 9 — Marriage and stepparent relationships
 **Stories:** US-021 – US-027, US-038, US-042, US-044
 
@@ -269,6 +280,14 @@ Back in scope because IndexedDB stores blobs. Circular crop dialog per the desig
 **Stories:** determined by feedback
 
 Deliberately reserved and unplanned. The point of shipping early is to learn things not currently known; this is where that gets absorbed.
+
+**Carried here so far.** Findings raised in review and deliberately not fixed in the PR that surfaced them, because none was caused by the change under review and folding them in would have widened a reviewed PR. Recorded here rather than as GitHub issues, per the traceability rule in CLAUDE.md: `USER_STORIES.md` is the backlog, and a parallel set of open issues is not maintained.
+
+- **The desktop toast stack covers the "Add adoptive child" button while visible** (PR 8). The stack predates PR 8; the collision does not, because PR 8 put a button where the stack lands. Transient and self-dismissing, so not a blocker — but a toast covering an interactive control is a defect rather than a cosmetic complaint, and it will recur wherever a later PR adds an action in that corner. The fix is positional, not per-page: give the stack somewhere to sit that no page's controls occupy, or make it dodge them.
+- **Dashed strokes now carry two meanings** (PR 8). An adoptive chip is dashed teal; the "Unknown" biological parent slot is dashed grey. They are separated by colour and by section heading, and each row also says which it is in words, so nothing is ambiguous in place — but the design system's vocabulary is now overloaded, and the phantom variant (PR 4, extended in PR 7) is the older claim on it. This wants a decision about the chip vocabulary rather than a patch, and it should be taken before PR 10 draws both kinds of edge in the same canvas.
+- **The mobile heading sits behind the fixed backup banner** (observed during PR 8, predates it). May be an artifact of full-page capture with fixed elements rather than a real overlap — diagnose with `getBoundingClientRect` before changing any CSS, per the Playwright rules in CLAUDE.md.
+
+**What the automated suites do not cover.** Worth knowing before this PR is planned, because it bounds what "green" has ever meant here: everything runs headless Chromium on Linux. Real-device font rendering, Safari and Firefox, a genuine browser restart or storage eviction, and screen-reader announcement of the `aria-live` toast region are human checks and have never been anything else.
 
 ---
 

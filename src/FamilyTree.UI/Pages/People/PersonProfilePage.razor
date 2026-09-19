@@ -1,6 +1,7 @@
 @page "/people/{Id:guid}"
 @inject PersonService People
 @inject BiologicalRelationshipService Relationships
+@inject AdoptiveRelationshipService Adoptive
 @inject TreeDataNotifier Notifier
 @inject ToastService Toasts
 @inject NavigationManager Nav
@@ -250,6 +251,131 @@
                 }
             </section>
 
+            @* US-015, US-039. A separate section from the biological parents
+               rather than one list with labels, because US-039 asks for both to
+               be shown concurrently and a merged list would put the two-slot
+               rule and the no-limit rule in the same place. No "Unknown" slots
+               here: there is no cap, so there is no empty slot to draw. *@
+            <section class="profile__relation" data-testid="relation-adoptive-parents">
+                <div class="profile__relation-head">
+                    <h2>Adoptive parents</h2>
+                    <button type="button" class="btn btn--secondary btn--small"
+                            data-testid="add-adoptive-parent"
+                            @onclick="() => OpenDialog(AddRelationshipDialog.RelationshipKind.AdoptiveParent)">
+                        Add adoptive parent
+                    </button>
+                </div>
+
+                @if (_relationsLoading)
+                {
+                    <p class="profile__relation-empty">Loading…</p>
+                }
+                else if (_adoptive.Parents.Count == 0)
+                {
+                    <p class="profile__relation-empty" data-testid="adoptive-parents-empty">
+                        No adoptive parents recorded.
+                    </p>
+                }
+                else
+                {
+                    <ul class="relations" data-testid="adoptive-parents-list">
+                        @foreach (var parent in _adoptive.Parents)
+                        {
+                            <li class="relations__row" data-testid="@($"adoptive-parent-{parent.Person.Id}")">
+                                @if (parent.IsPhantom)
+                                {
+                                    <PersonChip Variant="PersonChip.ChipVariant.Phantom"
+                                                TestId="@($"adoptive-parent-chip-{parent.Person.Id}")" />
+                                }
+                                else
+                                {
+                                    <PersonChip Variant="PersonChip.ChipVariant.Adoptive"
+                                                Name="@parent.Person.DisplayName"
+                                                Detail="@parent.Person.LifeSpan"
+                                                Href="@($"people/{parent.Person.Id}")"
+                                                TestId="@($"adoptive-parent-chip-{parent.Person.Id}")" />
+                                }
+
+                                <span class="relations__kind">@(parent.IsPhantom ? "(Adoptive · unidentified)" : "(Adoptive)")</span>
+
+                                @* US-015: the date, or "Date unknown" said out
+                                   loud. Worded by the DTO so this and the
+                                   children section below cannot drift apart. *@
+                                <span class="relations__date"
+                                      data-testid="@($"adoptive-parent-date-{parent.Person.Id}")">
+                                    @parent.AdoptionLabel
+                                </span>
+
+                                <span class="relations__actions">
+                                    <button type="button" class="relations__action"
+                                            data-testid="@($"edit-adoptive-parent-{parent.Person.Id}")"
+                                            @onclick="() => StartAdoptiveEdit(parent)">
+                                        Edit
+                                    </button>
+                                    <button type="button" class="relations__action relations__action--warn"
+                                            data-testid="@($"remove-adoptive-parent-{parent.Person.Id}")"
+                                            @onclick="() => StartAdoptiveRemove(parent, isParent: true)">
+                                        Remove
+                                    </button>
+                                </span>
+                            </li>
+                        }
+                    </ul>
+                }
+            </section>
+
+            @* US-019. Sorted by adoption date then birth date, which the service
+               does — the order is a property of the data rather than of this
+               page, and PR 10's tree will want the same one. *@
+            <section class="profile__relation" data-testid="relation-adoptive-children">
+                <div class="profile__relation-head">
+                    <h2>Adoptive children</h2>
+                    <button type="button" class="btn btn--secondary btn--small"
+                            data-testid="add-adoptive-child"
+                            @onclick="() => OpenDialog(AddRelationshipDialog.RelationshipKind.AdoptiveChild)">
+                        Add adoptive child
+                    </button>
+                </div>
+
+                @if (_relationsLoading)
+                {
+                    <p class="profile__relation-empty">Loading…</p>
+                }
+                else if (_adoptive.Children.Count == 0)
+                {
+                    <p class="profile__relation-empty" data-testid="adoptive-children-empty">
+                        No adoptive children recorded.
+                    </p>
+                }
+                else
+                {
+                    <ul class="relations" data-testid="adoptive-children-list">
+                        @foreach (var child in _adoptive.Children)
+                        {
+                            <li class="relations__row" data-testid="@($"adoptive-child-{child.Person.Id}")">
+                                <PersonChip Variant="PersonChip.ChipVariant.Adoptive"
+                                            Name="@child.Person.DisplayName"
+                                            Detail="@child.Person.LifeSpan"
+                                            Href="@($"people/{child.Person.Id}")"
+                                            TestId="@($"adoptive-child-chip-{child.Person.Id}")" />
+                                <span class="relations__kind">(Adoptive)</span>
+                                <span class="relations__date"
+                                      data-testid="@($"adoptive-child-date-{child.Person.Id}")">
+                                    @child.AdoptionLabel
+                                </span>
+                                <span class="relations__actions">
+                                    <button type="button" class="relations__action relations__action--warn"
+                                            data-testid="@($"remove-adoptive-child-{child.Person.Id}")"
+                                            @onclick="() => StartAdoptiveRemove(child, isParent: false)">
+                                        Remove
+                                    </button>
+                                </span>
+                            </li>
+                        }
+                    </ul>
+                }
+            </section>
+
             @* Still a stub: marriages and stepchildren arrive in PR 9. Rendered
                rather than omitted so the profile's shape stays reviewable. *@
             <section class="profile__relation" data-testid="relation-marriages">
@@ -268,6 +394,7 @@
                        Exclude="AlreadyLinked"
                        ReplacingParentId="_replacingParentId"
                        ReplacingParentName="@_replacingParentName"
+                       Editing="_editingAdoptive"
                        Saved="LoadRelationshipsAsync" />
 
 <DeleteConfirmModal Visible="_removing is not null"
@@ -290,6 +417,7 @@
 @code {
     private PersonDetailDto? _person;
     private BiologicalRelationshipsDto _relations = BiologicalRelationshipsDto.Empty;
+    private AdoptiveRelationshipsDto _adoptive = AdoptiveRelationshipsDto.Empty;
     private string? _error;
     private bool _loading = true;
     private bool _relationsLoading = true;
@@ -300,10 +428,21 @@
     private IReadOnlyCollection<AddRelationshipDialog.RelationshipKind> _dialogKinds = [];
     private Guid? _replacingParentId;
     private string? _replacingParentName;
+    private AddRelationshipDialog.AdoptiveEdit? _editingAdoptive;
 
-    /// <summary>The link awaiting confirmation, and which section it came from.</summary>
-    private RelatedPersonDto? _removing;
-    private bool _removingIsParent;
+    /// <summary>
+    /// The link awaiting confirmation, flattened out of whichever section it came
+    /// from.
+    /// </summary>
+    /// <remarks>
+    /// One shape for all four sections rather than a nullable of each. Removing a
+    /// link needs the person, the direction and the kind and nothing else, and a
+    /// second confirmation modal wired to a second field is how the two would
+    /// come to word the same sentence differently.
+    /// </remarks>
+    private sealed record PendingRemoval(Guid PersonId, string Name, bool IsParent, bool IsAdoptive);
+
+    private PendingRemoval? _removing;
 
     [Parameter] public Guid Id { get; set; }
 
@@ -311,20 +450,46 @@
     [Parameter] public bool Panel { get; set; }
 
     /// <summary>
-    /// Everybody the relationship dialog must not offer: the subject, and
-    /// anyone already on either end of a link with them.
+    /// Everybody the relationship dialog must not offer for the kind it is
+    /// currently recording: the subject, and anyone already linked to them
+    /// <em>that way</em>.
     /// </summary>
     /// <remarks>
-    /// The service refuses a duplicate anyway, and would refuse self-parenthood
-    /// and a cycle. Filtering here is not the guard — it is so the list does not
-    /// offer choices whose only outcome is an error.
+    /// Scoped to the kind rather than to the person, because US-039 is explicit
+    /// that a biological parent and an adoptive parent are different facts about
+    /// the same child — excluding everyone already linked in any capacity would
+    /// make the app refuse to record that a biological parent later formally
+    /// adopted their own child, which happens and is not an error.
+    /// <para>
+    /// This is not the guard: the service refuses a duplicate, self-parenthood
+    /// and a cycle whatever this list says. It is so the search does not offer
+    /// choices whose only outcome is an error.
+    /// </para>
     /// </remarks>
-    private IReadOnlyCollection<Guid> AlreadyLinked =>
-    [
-        Id,
-        .. _relations.Parents.Select(p => p.Person.Id),
-        .. _relations.Children.Select(c => c.Person.Id),
-    ];
+    private IReadOnlyCollection<Guid> AlreadyLinked
+    {
+        get
+        {
+            var linked = new List<Guid> { Id };
+
+            // In edit mode the person already recorded has to stay offerable:
+            // opening the form and saving it unchanged is how US-016 expects a
+            // date to be corrected, and a search that hid them would make that
+            // impossible.
+            var keep = _editingAdoptive?.Parent.Id;
+
+            var same = _dialogKinds.Any(k =>
+                k is AddRelationshipDialog.RelationshipKind.AdoptiveParent
+                    or AddRelationshipDialog.RelationshipKind.AdoptiveChild)
+                ? _adoptive.Parents.Select(p => p.Person.Id)
+                    .Concat(_adoptive.Children.Select(c => c.Person.Id))
+                : _relations.Parents.Select(p => p.Person.Id)
+                    .Concat(_relations.Children.Select(c => c.Person.Id));
+
+            linked.AddRange(same.Where(id => id != keep));
+            return linked;
+        }
+    }
 
     private string RemoveTitle => _removing is null
         ? "Remove this link?"
@@ -338,13 +503,20 @@
     private string RemoveBody => _removing is null
         ? string.Empty
         : $"This removes the relationship only. Neither {_person?.DisplayName} nor "
-            + $"{NameOf(_removing)} is deleted, and either can be linked again.";
+            + $"{_removing.Name} is deleted, and either can be linked again.";
 
-    private string DescribeRemoval(RelatedPersonDto link) => _removingIsParent
-        ? $"{NameOf(link)} as a parent of {_person?.DisplayName}"
-        : $"{NameOf(link)} as a child of {_person?.DisplayName}";
+    private string DescribeRemoval(PendingRemoval pending)
+    {
+        var kind = pending.IsAdoptive ? "adoptive " : string.Empty;
+        return pending.IsParent
+            ? $"{pending.Name} as {(pending.IsAdoptive ? "an" : "a")} {kind}parent of {_person?.DisplayName}"
+            : $"{pending.Name} as {(pending.IsAdoptive ? "an" : "a")} {kind}child of {_person?.DisplayName}";
+    }
 
     private static string NameOf(RelatedPersonDto link) =>
+        link.IsPhantom ? "the unidentified ancestor" : link.Person.DisplayName;
+
+    private static string NameOf(AdoptiveRelativeDto link) =>
         link.IsPhantom ? "the unidentified ancestor" : link.Person.DisplayName;
 
     protected override async Task OnParametersSetAsync()
@@ -372,26 +544,47 @@
     }
 
     /// <summary>
-    /// One service call for all three sections.
+    /// One service call per relationship family: three sections from the first,
+    /// two from the second.
     /// </summary>
     /// <remarks>
-    /// They share their reads — the subject's parent links feed both the parents
-    /// section and the sibling search — so asking three times would re-read the
-    /// same links and resolve the same people up to three times over.
+    /// Grouped this way rather than one call per section because the sections
+    /// within each family share their reads — the subject's biological parent
+    /// links feed both the parents section and the sibling search — so asking
+    /// five times would re-read the same links and resolve the same people
+    /// several times over.
+    /// <para>
+    /// Two calls rather than one because the two families share almost nothing:
+    /// they read different link tables, and the people they name overlap only
+    /// when somebody is recorded both ways. Merging them would have meant a
+    /// service that reads adoptive links to answer a question about siblings.
+    /// </para>
     /// </remarks>
     private async Task LoadRelationshipsAsync()
     {
         _relationsLoading = true;
-        var result = await Relationships.GetForPersonAsync(Id);
 
-        if (result.IsSuccess)
+        var biological = await Relationships.GetForPersonAsync(Id);
+        var adoptive = await Adoptive.GetForPersonAsync(Id);
+
+        if (biological.IsSuccess)
         {
-            _relations = result.Value!;
+            _relations = biological.Value!;
         }
         else
         {
             _relations = BiologicalRelationshipsDto.Empty;
-            _error = result.Error;
+            _error = biological.Error;
+        }
+
+        if (adoptive.IsSuccess)
+        {
+            _adoptive = adoptive.Value!;
+        }
+        else
+        {
+            _adoptive = AdoptiveRelationshipsDto.Empty;
+            _error ??= adoptive.Error;
         }
 
         _relationsLoading = false;
@@ -406,6 +599,7 @@
         _dialogKinds = [kind];
         _replacingParentId = null;
         _replacingParentName = null;
+        _editingAdoptive = null;
         _dialogVisible = true;
     }
 
@@ -418,18 +612,34 @@
         _dialogKinds = [AddRelationshipDialog.RelationshipKind.BiologicalParent];
         _replacingParentId = parent.Person.Id;
         _replacingParentName = NameOf(parent);
+        _editingAdoptive = null;
         _dialogVisible = true;
     }
 
-    private void StartRemove(RelatedPersonDto link, bool isParent)
+    /// <summary>
+    /// US-016. One control for both corrections the story asks for: the dialog
+    /// opens on the recorded parent with the recorded date, and saving it writes
+    /// whichever of the two changed.
+    /// </summary>
+    private void StartAdoptiveEdit(AdoptiveRelativeDto parent)
     {
-        _removing = link;
-        _removingIsParent = isParent;
+        _dialogKinds = [AddRelationshipDialog.RelationshipKind.AdoptiveParent];
+        _replacingParentId = null;
+        _replacingParentName = null;
+        _editingAdoptive = new AddRelationshipDialog.AdoptiveEdit(
+            parent.Person, parent.AdoptionDate, parent.Certainty);
+        _dialogVisible = true;
     }
+
+    private void StartRemove(RelatedPersonDto link, bool isParent) =>
+        _removing = new PendingRemoval(link.Person.Id, NameOf(link), isParent, IsAdoptive: false);
+
+    private void StartAdoptiveRemove(AdoptiveRelativeDto link, bool isParent) =>
+        _removing = new PendingRemoval(link.Person.Id, NameOf(link), isParent, IsAdoptive: true);
 
     private async Task RemoveLinkAsync()
     {
-        if (_removing is not { } link)
+        if (_removing is not { } pending)
         {
             return;
         }
@@ -439,12 +649,14 @@
         {
             // One record is both directions, so severing it removes the
             // reciprocal entry by construction rather than by a second call that
-            // could fail on its own.
-            var (parentId, childId) = _removingIsParent
-                ? (link.Person.Id, Id)
-                : (Id, link.Person.Id);
+            // could fail on its own. US-010, US-013, US-017, US-020.
+            var (parentId, childId) = pending.IsParent
+                ? (pending.PersonId, Id)
+                : (Id, pending.PersonId);
 
-            var result = await Relationships.RemoveAsync(parentId, childId);
+            var result = pending.IsAdoptive
+                ? await Adoptive.RemoveAsync(parentId, childId)
+                : await Relationships.RemoveAsync(parentId, childId);
 
             if (!result.IsSuccess)
             {
@@ -453,7 +665,7 @@
                 return;
             }
 
-            var name = NameOf(link);
+            var name = pending.Name;
             _removing = null;
             await Notifier.NotifyChangedAsync();
             await LoadRelationshipsAsync();

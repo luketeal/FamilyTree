@@ -74,6 +74,8 @@ So when you change anything that renders:
 
 Screenshots are a review artifact, not a gate — font and platform rendering differ enough that image comparison is flaky. Assert on computed values instead. The exception is the tree view (PR 10), where layout genuinely is the feature and baseline comparison earns its keep.
 
+**Know what green does not mean.** The suite runs headless Chromium on Linux and nothing else. Real-device font rendering, Safari and Firefox, a genuine browser restart or storage eviction, and screen-reader announcement of the `aria-live` toast region are outside it and always have been. A fully green run is evidence about one browser on one platform — say so when reporting it, rather than letting "211 tests pass" stand in for coverage the suite has never had.
+
 ### Blazor CSS isolation
 
 Scoped `.razor.css` does **not** apply to elements rendered by child components — `<NavLink class="x">` never receives the parent's scope attribute, so a plain `.x` selector silently matches nothing. Reach through with `::deep` from a scoped ancestor:
