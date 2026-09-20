@@ -306,7 +306,7 @@ public class PersonCrudTests(StaticSiteFixture fixture) : BrowserTest(fixture)
     {
         var page = await OpenAsync("settings");
         await page.GetByTestId("load-sample").ClickAsync();
-        await Assertions.Expect(page.GetByTestId("settings-stats")).ToHaveTextAsync("10 people · 14 relationships");
+        await Assertions.Expect(page.GetByTestId("settings-stats")).ToHaveTextAsync("10 people · 15 relationships");
 
         await page.GotoAsync(Fixture.BaseUrl + "people", new PageGotoOptions
         {

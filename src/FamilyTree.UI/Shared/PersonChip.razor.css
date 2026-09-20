@@ -51,6 +51,22 @@ a.chip:hover {
     background: var(--coral-bg);
 }
 
+/* Dotted and neutral, as the design system reserved for step relationships.
+   Deliberately not dashed: adoptive already owns the dash in teal and the
+   phantom slot owns it in grey, and a third dashed variant would have made the
+   stroke carry three meanings. Dotted is distinguishable at 11px where a second
+   shade of grey would not be, and the "(S)" mark in the markup says it in words
+   regardless. */
+.chip--step {
+    border-style: dotted;
+    border-color: var(--step);
+    background: var(--paper2);
+}
+
+.chip__mark--step {
+    color: var(--step);
+}
+
 /* A placeholder for someone not yet identified reads as an empty slot: muted,
    italic, and visibly not a real name. */
 .chip--phantom {

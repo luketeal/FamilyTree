@@ -1,6 +1,6 @@
 @* A person reference wherever one appears outside a list row: relationship
-   sections, search results, the tree's side panel. Four variants matching the
-   relationship kinds, so the type of a link is legible without reading a label.
+   sections, search results, the tree's side panel. One variant per relationship
+   kind, so the type of a link is legible without reading a label.
 
    Phantom is not a relationship kind but a person kind — an ancestor known to
    exist and not identified (US-041, US-054) — and reads as an empty slot rather
@@ -25,6 +25,7 @@ else
         Biological,
         Adoptive,
         Marriage,
+        Step,
         Phantom,
     }
 
@@ -46,6 +47,7 @@ else
     {
         ChipVariant.Adoptive => $"{Label} — adoptive",
         ChipVariant.Marriage => $"{Label} — marriage or partnership",
+        ChipVariant.Step => $"{Label} — step relationship",
         ChipVariant.Phantom => "Unidentified person",
         _ => Label,
     };
@@ -57,6 +59,14 @@ else
             @* Adoptive links carry "(A)" as well as a distinct style, so the
                distinction survives for anyone who cannot rely on colour. *@
             <span class="chip__mark" aria-label="adoptive">(A)</span>
+        }
+        @if (Variant == ChipVariant.Step)
+        {
+            @* "(S)" for the same reason, and it carries more weight here: step
+               takes the dotted border the design system reserved for it, which is
+               a stroke away from the adoptive dash and the phantom dash. The
+               letter is what separates them without colour or a steady hand. *@
+            <span class="chip__mark chip__mark--step" aria-label="step">(S)</span>
         }
         @if (!string.IsNullOrWhiteSpace(Detail))
         {

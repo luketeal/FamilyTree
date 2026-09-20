@@ -45,11 +45,12 @@ public sealed class ExportService(
     IBiologicalRelationshipRepository biological,
     IAdoptiveRelationshipRepository adoptive,
     IMarriageRepository marriages,
+    IStepparentRelationshipRepository stepparents,
     TimeProvider clock)
 {
     public async Task<Result<ExportPayload>> ExportToJsonAsync(CancellationToken ct = default)
     {
-        // Four whole-set reads, one per store, rather than a walk that reads a
+        // Five whole-set reads, one per store, rather than a walk that reads a
         // person and then their links. Free against IndexedDB either way; the
         // difference only shows up once these interfaces are backed by HTTP,
         // which is the seam this discipline exists to protect.
@@ -57,6 +58,7 @@ public sealed class ExportService(
         var bio = await biological.GetAllAsync(ct);
         var adopt = await adoptive.GetAllAsync(ct);
         var married = await marriages.GetAllAsync(ct);
+        var steps = await stepparents.GetAllAsync(ct);
 
         // Phantoms go into their own section rather than into the people list.
         // They stay out of anything that reads `people`, which is the rule that
@@ -77,15 +79,22 @@ public sealed class ExportService(
         // persists through every later backup and pushes the summary's
         // "N unidentified ancestors" up with nothing to explain it — on the page
         // whose job is proving the file is intact.
+        //
+        // Stepparent labels count as links here like any other. A phantom cannot
+        // currently be either end of one — the label is applied from a candidate
+        // list that excludes them — but a file this app did not write can say
+        // otherwise, and leaving them out of this set would make the export drop
+        // the placeholder and then drop the label naming it as an orphan.
         var linkedIds = bio.SelectMany(l => new[] { l.ParentId, l.ChildId })
             .Concat(adopt.SelectMany(l => new[] { l.ParentId, l.ChildId }))
             .Concat(married.SelectMany(m => new[] { m.Spouse1Id, m.Spouse2Id }))
+            .Concat(steps.SelectMany(s => new[] { s.StepparentId, s.StepchildId }))
             .ToHashSet();
 
         var phantoms = allPeople.Where(p => p.IsPhantom && linkedIds.Contains(p.Id)).ToList();
         var realPeople = allPeople.Where(p => !p.IsPhantom).ToList();
 
-        var relationships = bio.Count + adopt.Count + married.Count;
+        var relationships = bio.Count + adopt.Count + married.Count + steps.Count;
 
         // An empty file is worse than no file: the natural thing to do with a
         // backup is save it over the last one, and a zero-record export would
@@ -171,6 +180,20 @@ public sealed class ExportService(
                     EndDate = ExportedDate.From(m.EndDate),
                     EndReason = m.EndReason,
                     Certainty = m.Certainty,
+                })
+                .ToList(),
+
+            // Ordered by id like the other link sections, so two exports of the
+            // same tree are byte-identical and a backup can be diffed against the
+            // last one.
+            StepparentLinks = steps
+                .OrderBy(s => s.Id)
+                .Select(s => new ExportedStepparentLink
+                {
+                    Id = s.Id,
+                    StepparentId = s.StepparentId,
+                    StepchildId = s.StepchildId,
+                    MarriageId = s.MarriageId,
                 })
                 .ToList(),
         };

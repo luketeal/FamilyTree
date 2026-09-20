@@ -19,6 +19,7 @@ public class ImportServiceTests
         _tree.BiologicalRepository,
         _tree.AdoptiveRepository,
         _tree.MarriageRepository,
+        _tree.StepparentRepository,
         _tree.Administration);
 
     private static string File(string body) =>
@@ -606,12 +607,12 @@ public class ImportServiceTests
 
         var exported = await new ExportService(
             _tree.PersonRepository, _tree.BiologicalRepository, _tree.AdoptiveRepository,
-            _tree.MarriageRepository, new FixedClock(DateTimeOffset.UtcNow)).ExportToJsonAsync();
+            _tree.MarriageRepository, _tree.StepparentRepository, new FixedClock(DateTimeOffset.UtcNow)).ExportToJsonAsync();
 
         var restored = new InMemoryTree();
         var import = new ImportService(
             restored.PersonRepository, restored.BiologicalRepository, restored.AdoptiveRepository,
-            restored.MarriageRepository, restored.Administration);
+            restored.MarriageRepository, restored.StepparentRepository, restored.Administration);
 
         var result = await import.ImportAsync(exported.Value!.Json, ImportConflictResolution.Overwrite);
 
@@ -866,5 +867,236 @@ public class ImportServiceTests
 
         Assert.False(result.IsSuccess);
         Assert.Contains("nothing to import", result.Error);
+    }
+
+    // ---- Stepparent labels (US-038), new to the file at schema version 3 ----
+
+    private const string MarriageId = "66666666-6666-6666-6666-666666666666";
+    private const string StepId = "77777777-7777-7777-7777-777777777777";
+    private const string ChildId = "88888888-8888-8888-8888-888888888888";
+
+    /// <summary>
+    /// A blended family as a file: two spouses, a child of one of them, and the
+    /// label saying the other is their stepparent.
+    /// </summary>
+    private static string BlendedFile(string? labelMarriageId = MarriageId) => File($$"""
+        "people": [
+            {"id": "{{AdaId}}", "firstName": "Ada", "lastName": "Lovelace"},
+            {"id": "{{GraceId}}", "firstName": "Grace", "lastName": "Hopper"},
+            {"id": "{{ChildId}}", "firstName": "Mary", "lastName": "Lovelace"}
+        ],
+        "biologicalLinks": [
+            {"id": "{{LinkId}}", "parentId": "{{AdaId}}", "childId": "{{ChildId}}"}
+        ],
+        "marriages": [
+            {"id": "{{MarriageId}}", "spouse1Id": "{{AdaId}}", "spouse2Id": "{{GraceId}}",
+             "startDate": {"year": 1835, "isApproximate": false} }
+        ],
+        "stepparentLinks": [
+            {"id": "{{StepId}}", "stepparentId": "{{GraceId}}", "stepchildId": "{{ChildId}}",
+             "marriageId": "{{labelMarriageId}}" }
+        ]
+        """);
+
+    [Fact]
+    public async Task ImportsAStepparentLabel()
+    {
+        var result = await CreateService().ImportAsync(
+            BlendedFile(), ImportConflictResolution.Overwrite);
+
+        Assert.True(result.IsSuccess, result.Error);
+        var label = Assert.Single(_tree.StepparentLinks);
+        Assert.Equal(Guid.Parse(GraceId), label.StepparentId);
+        Assert.Equal(Guid.Parse(ChildId), label.StepchildId);
+        Assert.Equal(Guid.Parse(MarriageId), label.MarriageId);
+    }
+
+    [Fact]
+    public async Task CountsAnImportedLabelAsARelationship()
+    {
+        var result = await CreateService().ImportAsync(
+            BlendedFile(), ImportConflictResolution.Overwrite);
+
+        // One biological link, one marriage, one label.
+        Assert.Equal(3, result.Value!.RelationshipsAdded);
+    }
+
+    [Fact]
+    public void ReportsLabelsInThePreviewCount()
+    {
+        var result = CreateService().Preview(BlendedFile());
+
+        Assert.True(result.IsSuccess, result.Error);
+        Assert.Equal(3, result.Value!.Relationships);
+    }
+
+    // A label is a claim about a marriage, so one naming a marriage the tree does
+    // not have asserts nothing — and would render nowhere, since every row says
+    // which marriage put the stepparent there.
+    [Fact]
+    public async Task DropsALabelRestingOnAMarriageThatIsNotInTheTree()
+    {
+        var result = await CreateService().ImportAsync(
+            BlendedFile("99999999-9999-9999-9999-999999999999"),
+            ImportConflictResolution.Overwrite);
+
+        Assert.True(result.IsSuccess, result.Error);
+        Assert.Empty(_tree.StepparentLinks);
+        Assert.Contains(result.Value!.Warnings, w => w.Contains("not in the tree"));
+        Assert.Equal(1, result.Value!.RecordsRejected);
+    }
+
+    // Malformed rather than merely unsupported, so it is rejected at the parse
+    // rather than dropped later: a label with no marriage id names no
+    // justification at all.
+    [Fact]
+    public async Task RejectsALabelWithNoMarriageNamed()
+    {
+        var result = await CreateService().ImportAsync(File($$"""
+            "people": [
+                {"id": "{{AdaId}}", "firstName": "Ada", "lastName": "Lovelace"},
+                {"id": "{{GraceId}}", "firstName": "Grace", "lastName": "Hopper"}
+            ],
+            "stepparentLinks": [
+                {"id": "{{StepId}}", "stepparentId": "{{GraceId}}", "stepchildId": "{{AdaId}}"}
+            ]
+            """), ImportConflictResolution.Overwrite);
+
+        Assert.Empty(_tree.StepparentLinks);
+        Assert.Contains(result.Value!.Warnings, w => w.Contains("does not name a marriage"));
+    }
+
+    [Fact]
+    public async Task RejectsALabelNamingTheSamePersonTwice()
+    {
+        var result = await CreateService().ImportAsync(File($$"""
+            "people": [
+                {"id": "{{AdaId}}", "firstName": "Ada", "lastName": "Lovelace"},
+                {"id": "{{GraceId}}", "firstName": "Grace", "lastName": "Hopper"}
+            ],
+            "marriages": [
+                {"id": "{{MarriageId}}", "spouse1Id": "{{AdaId}}", "spouse2Id": "{{GraceId}}",
+                 "startDate": {"year": 1835, "isApproximate": false} }
+            ],
+            "stepparentLinks": [
+                {"id": "{{StepId}}", "stepparentId": "{{AdaId}}", "stepchildId": "{{AdaId}}",
+                 "marriageId": "{{MarriageId}}" }
+            ]
+            """), ImportConflictResolution.Overwrite);
+
+        Assert.Empty(_tree.StepparentLinks);
+        Assert.Equal(1, result.Value!.RecordsRejected);
+    }
+
+    // Keyed on the pair, matching StepparentService: a second label through
+    // another marriage is the same claim recorded twice.
+    [Fact]
+    public async Task DropsASecondLabelForTheSamePair()
+    {
+        var result = await CreateService().ImportAsync(File($$"""
+            "people": [
+                {"id": "{{AdaId}}", "firstName": "Ada", "lastName": "Lovelace"},
+                {"id": "{{GraceId}}", "firstName": "Grace", "lastName": "Hopper"}
+            ],
+            "marriages": [
+                {"id": "{{MarriageId}}", "spouse1Id": "{{AdaId}}", "spouse2Id": "{{GraceId}}",
+                 "startDate": {"year": 1835, "isApproximate": false} }
+            ],
+            "stepparentLinks": [
+                {"id": "{{StepId}}", "stepparentId": "{{GraceId}}", "stepchildId": "{{AdaId}}",
+                 "marriageId": "{{MarriageId}}" },
+                {"id": "99999999-9999-9999-9999-999999999999", "stepparentId": "{{GraceId}}",
+                 "stepchildId": "{{AdaId}}", "marriageId": "{{MarriageId}}" }
+            ]
+            """), ImportConflictResolution.Overwrite);
+
+        Assert.Single(_tree.StepparentLinks);
+        Assert.Contains(result.Value!.Warnings, w => w.Contains("stepparent and stepchild"));
+    }
+
+    // A label cannot stand on its own: it names a marriage that would have to come
+    // with the file, so a file of nothing but labels restores nothing and must not
+    // be allowed to overwrite a real tree.
+    [Fact]
+    public void RefusesAFileOfNothingButStepparentLabels()
+    {
+        var result = CreateService().Preview(File($$"""
+            "stepparentLinks": [
+                {"id": "{{StepId}}", "stepparentId": "{{GraceId}}", "stepchildId": "{{AdaId}}",
+                 "marriageId": "{{MarriageId}}" }
+            ]
+            """));
+
+        Assert.False(result.IsSuccess);
+        Assert.Contains("nothing to import", result.Error);
+    }
+
+    // The point of moving the stamp to 3 rather than reading version 2 files
+    // differently: an older file simply has no such section, because no version
+    // that wrote one could create a label.
+    [Fact]
+    public async Task ImportsAVersion2FileThatHasNoLabelSection()
+    {
+        var result = await CreateService().ImportAsync(
+            """
+            {"schemaVersion": 2, "exportedAt": "2026-08-07T12:00:00+00:00",
+             "people": [{"id": "11111111-1111-1111-1111-111111111111",
+                         "firstName": "Ada", "lastName": "Lovelace"}]}
+            """,
+            ImportConflictResolution.Overwrite);
+
+        Assert.True(result.IsSuccess, result.Error);
+        Assert.Single(_tree.People);
+        Assert.Empty(_tree.StepparentLinks);
+        Assert.Empty(result.Value!.Warnings);
+    }
+
+    // Under Overwrite the final set is the file's set. Labels had to join
+    // TreeSnapshot in the same PR as the repository: the store clears every object
+    // store in one transaction, so a section the snapshot did not carry would have
+    // been deleted by every import rather than merely skipped.
+    [Fact]
+    public async Task AnImportDoesNotDeleteLabelsItIsCarrying()
+    {
+        await CreateService().ImportAsync(BlendedFile(), ImportConflictResolution.Overwrite);
+
+        Assert.Equal(1, _tree.ReplaceCount);
+        Assert.Single(_tree.StepparentLinks);
+    }
+
+    // The round trip the durability rule asks for, with a blended family in it.
+    [Fact]
+    public async Task AStepparentLabelSurvivesABackupRoundTrip()
+    {
+        var ada = Stored(AdaId, "Ada", "Lovelace");
+        var grace = Stored(GraceId, "Grace", "Hopper");
+        var child = Stored(ChildId, "Mary", "Lovelace");
+        var marriage = new Marriage(ada.Id, grace.Id, PartialDate.FromYear(1835));
+        _tree.With(ada, grace, child)
+            .With(new BiologicalParentChild(ada.Id, child.Id))
+            .With(marriage)
+            .With(new StepparentRelationship(grace.Id, child.Id, marriage.Id));
+
+        var exported = await new ExportService(
+            _tree.PersonRepository, _tree.BiologicalRepository, _tree.AdoptiveRepository,
+            _tree.MarriageRepository, _tree.StepparentRepository,
+            new FixedClock(DateTimeOffset.UtcNow)).ExportToJsonAsync();
+
+        var restored = new InMemoryTree();
+        var import = new ImportService(
+            restored.PersonRepository, restored.BiologicalRepository, restored.AdoptiveRepository,
+            restored.MarriageRepository, restored.StepparentRepository, restored.Administration);
+
+        var result = await import.ImportAsync(
+            exported.Value!.Json, ImportConflictResolution.Overwrite);
+
+        Assert.True(result.IsSuccess, result.Error);
+        Assert.Empty(result.Value!.Warnings);
+        Assert.Equal(0, result.Value!.RecordsRejected);
+
+        var label = Assert.Single(restored.StepparentLinks);
+        Assert.Equal(grace.Id, label.StepparentId);
+        Assert.Equal(child.Id, label.StepchildId);
+        Assert.Equal(marriage.Id, label.MarriageId);
     }
 }

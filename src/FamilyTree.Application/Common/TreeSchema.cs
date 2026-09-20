@@ -17,14 +17,22 @@ namespace FamilyTree.Application.Common;
 public static class TreeSchema
 {
     /// <summary>
-    /// 2 — phantoms.
+    /// 3 — stepparent labels.
     /// </summary>
     /// <remarks>
-    /// Version 1 files carry no <c>phantoms</c> section and no link that names
-    /// one, which is exactly what a version 1 export was: import reads them
-    /// unchanged, finds no phantoms, and behaves as it always did. The bump is
-    /// so a version 1 <em>app</em> cannot read a version 2 file and silently
-    /// discard the placeholders and their links as orphans.
+    /// Version 1 carried no <c>phantoms</c> section; version 2 added it. Version 3
+    /// adds <c>stepparentLinks</c>, and the bump is for the same reason as the
+    /// last one: older files simply have no such section and import reads them
+    /// unchanged, but a version 2 <em>app</em> reading a version 3 file would drop
+    /// every step relationship in it without saying so.
+    /// <para>
+    /// The stepparent store and record have existed since PR 2 and were always
+    /// exported as nothing, which was true while nothing could write one. PR 9 is
+    /// where they become writable, so it is where the file format gains them and
+    /// where the stamp has to move — a version that could create a record its own
+    /// backup discarded would be the silent round-trip loss ADR-007 was written
+    /// about.
+    /// </para>
     /// </remarks>
-    public const int Version = 2;
+    public const int Version = 3;
 }

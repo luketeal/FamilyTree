@@ -1,5 +1,6 @@
 @page "/people/{Id:guid}/edit"
 @inject PersonService People
+@inject MarriageService Marriages
 @inject TreeDataNotifier Notifier
 @inject ToastService Toasts
 @inject NavigationManager Nav
@@ -82,6 +83,19 @@
             await Notifier.NotifyChangedAsync();
 
             Toasts.Show($"{result.Value!.DisplayName} updated.");
+
+            // US-026's third criterion. Raised after the save rather than as part
+            // of it, and as a warning rather than a correction: the app cannot
+            // tell whether the marriage or the death date is the one that is now
+            // wrong, and quietly rewriting a recorded end date would overwrite
+            // research with an inference. Silent when there is nothing to review,
+            // which is every ordinary edit.
+            var review = await Marriages.DescribeEndDateReviewAsync(Id);
+            if (review is not null)
+            {
+                Toasts.Show(review, ToastLevel.Warning);
+            }
+
             Nav.NavigateTo($"people/{Id}");
         }
         finally

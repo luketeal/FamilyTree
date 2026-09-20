@@ -28,6 +28,8 @@ public abstract class ShellTestContext : BunitContext
 
     protected Mock<IMarriageRepository> Marriages { get; } = new();
 
+    protected Mock<IStepparentRelationshipRepository> Stepparents { get; } = new();
+
     protected Mock<ITreeDataAdministration> TreeData { get; } = new();
 
     protected StubBackupJournal Backups { get; } = new();
@@ -64,6 +66,22 @@ public abstract class ShellTestContext : BunitContext
         Adoptive.Setup(r => r.GetChildLinksForParentAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync([]);
         Marriages.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync([]);
+        // The profile reads a person's marriages and the marriages of their
+        // parents on every render, so an unconfigured method here is a null task
+        // rather than an empty section.
+        Marriages.Setup(r => r.GetForPersonAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
+        Marriages.Setup(r => r.GetForPeopleAsync(
+                It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
+        Stepparents.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync([]);
+        Stepparents.Setup(r => r.GetForStepchildAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
+        Stepparents.Setup(r => r.GetForStepparentAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
+        Stepparents.Setup(r => r.GetForStepchildrenAsync(
+                It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
 
         JSInterop.Mode = JSRuntimeMode.Loose;
 
@@ -71,6 +89,7 @@ public abstract class ShellTestContext : BunitContext
         Services.AddSingleton(Biological.Object);
         Services.AddSingleton(Adoptive.Object);
         Services.AddSingleton(Marriages.Object);
+        Services.AddSingleton(Stepparents.Object);
         Services.AddSingleton<TreeStatsService>();
         Services.AddSingleton<TreeDataNotifier>();
         // The top bar hosts the quick-add popover, and the layout hosts toasts,
@@ -79,6 +98,8 @@ public abstract class ShellTestContext : BunitContext
         Services.AddSingleton<CircularReferenceChecker>();
         Services.AddSingleton<BiologicalRelationshipService>();
         Services.AddSingleton<AdoptiveRelationshipService>();
+        Services.AddSingleton<MarriageService>();
+        Services.AddSingleton<StepparentService>();
         Services.AddSingleton<ToastService>();
         Services.AddSingleton<ExportService>();
         Services.AddSingleton<ImportService>();

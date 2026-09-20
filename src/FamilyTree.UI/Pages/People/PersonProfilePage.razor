@@ -2,6 +2,8 @@
 @inject PersonService People
 @inject BiologicalRelationshipService Relationships
 @inject AdoptiveRelationshipService Adoptive
+@inject MarriageService Marriages
+@inject StepparentService Stepparents
 @inject TreeDataNotifier Notifier
 @inject ToastService Toasts
 @inject NavigationManager Nav
@@ -376,11 +378,225 @@
                 }
             </section>
 
-            @* Still a stub: marriages and stepchildren arrive in PR 9. Rendered
-               rather than omitted so the profile's shape stays reviewable. *@
+            @* US-022, US-042, US-044. Chronological, because a marital history
+               reads as a sequence — the service orders it, so the tree (PR 10)
+               gets the same order without agreeing to it separately. *@
             <section class="profile__relation" data-testid="relation-marriages">
-                <h2>Marriages and partnerships</h2>
-                <p class="profile__relation-empty">Marriages arrive with PR 9.</p>
+                <div class="profile__relation-head">
+                    <h2>Marriages and partnerships</h2>
+                    <button type="button" class="btn btn--secondary btn--small"
+                            data-testid="add-marriage"
+                            @onclick="() => OpenDialog(AddRelationshipDialog.RelationshipKind.Spouse)">
+                        Add marriage
+                    </button>
+                </div>
+
+                @if (_relationsLoading)
+                {
+                    <p class="profile__relation-empty">Loading…</p>
+                }
+                else if (_marriages.IsEmpty)
+                {
+                    <p class="profile__relation-empty" data-testid="marriages-empty">
+                        No marriages or partnerships recorded.
+                    </p>
+                }
+                else
+                {
+                    <ul class="relations" data-testid="marriages-list">
+                        @foreach (var marriage in _marriages.Marriages)
+                        {
+                            <li class="relations__row" data-testid="@($"marriage-{marriage.MarriageId}")">
+                                <PersonChip Variant="PersonChip.ChipVariant.Marriage"
+                                            Name="@marriage.Spouse.DisplayName"
+                                            Detail="@marriage.Spouse.LifeSpan"
+                                            Href="@($"people/{marriage.Spouse.Id}")"
+                                            TestId="@($"marriage-chip-{marriage.MarriageId}")" />
+
+                                @* US-022 asks for the current marriage to be
+                                   distinguished. A badge rather than a colour on
+                                   the chip: the chip's coral already means
+                                   "marriage", and shading it differently for an
+                                   ongoing one would make the same stroke carry two
+                                   facts. *@
+                                @if (marriage.IsOngoing)
+                                {
+                                    <span class="badge badge--ok"
+                                          data-testid="@($"marriage-ongoing-{marriage.MarriageId}")">
+                                        Current
+                                    </span>
+                                }
+
+                                @* The dates and how it ended, worded by the DTO so
+                                   this row, the toast and PR 10's tree label cannot
+                                   describe the same marriage differently. *@
+                                <span class="relations__date"
+                                      data-testid="@($"marriage-dates-{marriage.MarriageId}")">
+                                    @marriage.DatesLabel
+                                </span>
+
+                                @if (!string.IsNullOrWhiteSpace(marriage.StartPlace))
+                                {
+                                    <span class="relations__shared"
+                                          data-testid="@($"marriage-place-{marriage.MarriageId}")">
+                                        @marriage.StartPlace
+                                    </span>
+                                }
+
+                                @* Two controls, not four. Divorce, widowhood and
+                                   annulment (US-025 to US-027) are all "edit this
+                                   marriage and say how it ended", and the form
+                                   behind Edit carries those fields — a separate
+                                   "End marriage" button would open the same form
+                                   with the same rules to re-enforce. Remove is
+                                   destructive and confirmed. *@
+                                <span class="relations__actions">
+                                    <button type="button" class="relations__action"
+                                            data-testid="@($"edit-marriage-{marriage.MarriageId}")"
+                                            @onclick="() => StartMarriageEdit(marriage)">
+                                        Edit
+                                    </button>
+                                    <button type="button" class="relations__action relations__action--warn"
+                                            data-testid="@($"remove-marriage-{marriage.MarriageId}")"
+                                            @onclick="() => StartMarriageRemove(marriage)">
+                                        Remove
+                                    </button>
+                                </span>
+                            </li>
+                        }
+                    </ul>
+                }
+            </section>
+
+            @* US-038. Two lists in one section, and deliberately so: the labels
+               already applied, and the people who could be labelled. The second is
+               the whole of the story's first criterion — the action sits next to a
+               parent's current spouses rather than behind a search — and putting
+               them in separate sections would separate "is a stepparent" from the
+               only way to say so. *@
+            <section class="profile__relation" data-testid="relation-stepparents">
+                <h2>Stepparents</h2>
+
+                @if (_relationsLoading)
+                {
+                    <p class="profile__relation-empty">Loading…</p>
+                }
+                else
+                {
+                    @if (_step.Stepparents.Count == 0)
+                    {
+                        <p class="profile__relation-empty" data-testid="stepparents-empty">
+                            No stepparents recorded.
+                        </p>
+                    }
+                    else
+                    {
+                        <ul class="relations" data-testid="stepparents-list">
+                            @foreach (var stepparent in _step.Stepparents)
+                            {
+                                <li class="relations__row"
+                                    data-testid="@($"stepparent-{stepparent.LinkId}")">
+                                    <PersonChip Variant="PersonChip.ChipVariant.Step"
+                                                Name="@stepparent.Person.DisplayName"
+                                                Detail="@stepparent.Person.LifeSpan"
+                                                Href="@($"people/{stepparent.Person.Id}")"
+                                                TestId="@($"stepparent-chip-{stepparent.LinkId}")" />
+
+                                    @* Which parent's spouse this is. Without it a
+                                       second stepparent row is indistinguishable
+                                       from the first, and the reason removing a
+                                       marriage removes this row is invisible. *@
+                                    <span class="relations__kind"
+                                          data-testid="@($"stepparent-via-{stepparent.LinkId}")">
+                                        (Step · married @stepparent.ViaName)
+                                    </span>
+
+                                    <span class="relations__actions">
+                                        <button type="button" class="relations__action relations__action--warn"
+                                                data-testid="@($"remove-stepparent-{stepparent.LinkId}")"
+                                                @onclick="() => StartStepRemove(stepparent, isStepparent: true)">
+                                            Remove
+                                        </button>
+                                    </span>
+                                </li>
+                            }
+                        </ul>
+                    }
+
+                    @if (_step.Candidates.Count > 0)
+                    {
+                        <p class="profile__relation-note" data-testid="stepparent-candidates-note">
+                            Married to a parent of @_person.DisplayName. Label them only if the
+                            family counts them as a stepparent — nothing is assumed.
+                        </p>
+                        <ul class="relations" data-testid="stepparent-candidates">
+                            @foreach (var candidate in _step.Candidates)
+                            {
+                                <li class="relations__row"
+                                    data-testid="@($"stepparent-candidate-{candidate.Person.Id}")">
+                                    <PersonChip Variant="PersonChip.ChipVariant.Marriage"
+                                                Name="@candidate.Person.DisplayName"
+                                                Detail="@candidate.Person.LifeSpan"
+                                                Href="@($"people/{candidate.Person.Id}")"
+                                                TestId="@($"candidate-chip-{candidate.Person.Id}")" />
+                                    <span class="relations__kind">(Married @candidate.ViaName)</span>
+                                    <span class="relations__actions">
+                                        <button type="button" class="relations__action"
+                                                disabled="@_busy"
+                                                data-testid="@($"label-stepparent-{candidate.Person.Id}")"
+                                                @onclick="() => LabelStepparentAsync(candidate)">
+                                            Label as stepparent
+                                        </button>
+                                    </span>
+                                </li>
+                            }
+                        </ul>
+                    }
+                }
+            </section>
+
+            @* US-038. The same records from the other end. No candidate list here:
+               the label is applied from the child's profile, where the child's
+               parents are what determines who is eligible. *@
+            <section class="profile__relation" data-testid="relation-stepchildren">
+                <h2>Stepchildren</h2>
+
+                @if (_relationsLoading)
+                {
+                    <p class="profile__relation-empty">Loading…</p>
+                }
+                else if (_step.Stepchildren.Count == 0)
+                {
+                    <p class="profile__relation-empty" data-testid="stepchildren-empty">
+                        No stepchildren recorded.
+                    </p>
+                }
+                else
+                {
+                    <ul class="relations" data-testid="stepchildren-list">
+                        @foreach (var stepchild in _step.Stepchildren)
+                        {
+                            <li class="relations__row" data-testid="@($"stepchild-{stepchild.LinkId}")">
+                                <PersonChip Variant="PersonChip.ChipVariant.Step"
+                                            Name="@stepchild.Person.DisplayName"
+                                            Detail="@stepchild.Person.LifeSpan"
+                                            Href="@($"people/{stepchild.Person.Id}")"
+                                            TestId="@($"stepchild-chip-{stepchild.LinkId}")" />
+                                <span class="relations__kind"
+                                      data-testid="@($"stepchild-via-{stepchild.LinkId}")">
+                                    (Step · through @stepchild.ViaName)
+                                </span>
+                                <span class="relations__actions">
+                                    <button type="button" class="relations__action relations__action--warn"
+                                            data-testid="@($"remove-stepchild-{stepchild.LinkId}")"
+                                            @onclick="() => StartStepRemove(stepchild, isStepparent: false)">
+                                        Remove
+                                    </button>
+                                </span>
+                            </li>
+                        }
+                    </ul>
+                }
             </section>
         </div>
     }
@@ -395,6 +611,7 @@
                        ReplacingParentId="_replacingParentId"
                        ReplacingParentName="@_replacingParentName"
                        Editing="_editingAdoptive"
+                       EditingMarriage="_editingMarriage"
                        Saved="LoadRelationshipsAsync" />
 
 <DeleteConfirmModal Visible="_removing is not null"
@@ -408,6 +625,35 @@
                     Confirm="RemoveLinkAsync"
                     Cancel="() => _removing = null" />
 
+@* A modal of its own rather than a fifth case in the one above. US-024 asks for
+   a confirmation that says neither person is deleted, and this one has to say
+   something the others cannot: removing a marriage record also removes the
+   stepparent labels that rested on it, which affects a third person's profile. *@
+<DeleteConfirmModal Visible="_removingMarriage is not null"
+                    Busy="_busy"
+                    TestId="remove-marriage-modal"
+                    ConfirmTestIdOverride="confirm-remove-marriage"
+                    CancelTestIdOverride="cancel-remove-marriage"
+                    Title="@MarriageRemoveTitle"
+                    Body="@MarriageRemoveBody"
+                    ConfirmLabel="Remove"
+                    Confirm="RemoveMarriageAsync"
+                    Cancel="() => _removingMarriage = null" />
+
+@* And one for the step label, which is neither of the above: it removes a label
+   and leaves the marriage it rested on untouched, which is the distinction
+   somebody about to click Remove needs drawn. *@
+<DeleteConfirmModal Visible="_removingStep is not null"
+                    Busy="_busy"
+                    TestId="remove-step-modal"
+                    ConfirmTestIdOverride="confirm-remove-step"
+                    CancelTestIdOverride="cancel-remove-step"
+                    Title="@StepRemoveTitle"
+                    Body="@StepRemoveBody"
+                    ConfirmLabel="Remove"
+                    Confirm="RemoveStepAsync"
+                    Cancel="() => _removingStep = null" />
+
 <DeleteConfirmModal Visible="_confirmingDelete"
                     Name="@_person?.DisplayName"
                     Busy="_busy"
@@ -418,6 +664,8 @@
     private PersonDetailDto? _person;
     private BiologicalRelationshipsDto _relations = BiologicalRelationshipsDto.Empty;
     private AdoptiveRelationshipsDto _adoptive = AdoptiveRelationshipsDto.Empty;
+    private MarriagesDto _marriages = MarriagesDto.Empty;
+    private StepFamilyDto _step = StepFamilyDto.Empty;
     private string? _error;
     private bool _loading = true;
     private bool _relationsLoading = true;
@@ -429,6 +677,22 @@
     private Guid? _replacingParentId;
     private string? _replacingParentName;
     private AddRelationshipDialog.AdoptiveEdit? _editingAdoptive;
+    private MarriageDto? _editingMarriage;
+    private MarriageDto? _removingMarriage;
+
+    /// <summary>
+    /// The step label awaiting confirmation.
+    /// </summary>
+    /// <remarks>
+    /// Separate from <see cref="PendingRemoval"/> because a step label is keyed by
+    /// its own id rather than by a pair of people: the same two people can be
+    /// connected through more than one marriage, so the pair does not identify the
+    /// record. Widening the other shape with a nullable link id would have left
+    /// four of its five uses carrying a field they never set.
+    /// </remarks>
+    private sealed record PendingStepRemoval(Guid LinkId, string Name, bool IsStepparent);
+
+    private PendingStepRemoval? _removingStep;
 
     /// <summary>
     /// The link awaiting confirmation, flattened out of whichever section it came
@@ -478,18 +742,48 @@
             // impossible.
             var keep = _editingAdoptive?.Parent.Id;
 
-            var same = _dialogKinds.Any(k =>
-                k is AddRelationshipDialog.RelationshipKind.AdoptiveParent
-                    or AddRelationshipDialog.RelationshipKind.AdoptiveChild)
-                ? _adoptive.Parents.Select(p => p.Person.Id)
-                    .Concat(_adoptive.Children.Select(c => c.Person.Id))
-                : _relations.Parents.Select(p => p.Person.Id)
-                    .Concat(_relations.Children.Select(c => c.Person.Id));
+            // In marriage-edit mode the recorded spouse has to stay offerable for
+            // the same reason: opening the form and saving it with a new end date
+            // is how US-025 to US-027 expect a marriage to be ended, and a search
+            // that hid them would make that impossible.
+            keep ??= _editingMarriage?.Spouse.Id;
+
+            var same = FirstKind switch
+            {
+                AddRelationshipDialog.RelationshipKind.AdoptiveParent
+                    or AddRelationshipDialog.RelationshipKind.AdoptiveChild =>
+                    _adoptive.Parents.Select(p => p.Person.Id)
+                        .Concat(_adoptive.Children.Select(c => c.Person.Id)),
+
+                // Only the *current* spouses. US-021 forbids a second active
+                // marriage between the same two people and nothing more:
+                // remarrying somebody after a divorce is a real thing that
+                // happens, so an ex-spouse stays offerable.
+                AddRelationshipDialog.RelationshipKind.Spouse =>
+                    _marriages.Marriages.Where(m => m.IsOngoing).Select(m => m.Spouse.Id),
+
+                _ => _relations.Parents.Select(p => p.Person.Id)
+                    .Concat(_relations.Children.Select(c => c.Person.Id)),
+            };
 
             linked.AddRange(same.Where(id => id != keep));
             return linked;
         }
     }
+
+    /// <summary>
+    /// The kind the dialog is currently offering, when it is offering exactly one.
+    /// </summary>
+    /// <remarks>
+    /// Every entry point on this page opens the dialog on a single kind — the
+    /// button already said which — so this is what decides the exclusion list.
+    /// Null rather than a default when several are offered: an exclusion list
+    /// scoped to the wrong kind is how a legitimate relationship becomes
+    /// unrecordable (US-039), so "several kinds" has to be a case rather than a
+    /// guess.
+    /// </remarks>
+    private AddRelationshipDialog.RelationshipKind? FirstKind =>
+        _dialogKinds.Count == 1 ? _dialogKinds.First() : null;
 
     private string RemoveTitle => _removing is null
         ? "Remove this link?"
@@ -504,6 +798,42 @@
         ? string.Empty
         : $"This removes the relationship only. Neither {_person?.DisplayName} nor "
             + $"{_removing.Name} is deleted, and either can be linked again.";
+
+    /// <summary>US-024, and it says what else goes with it.</summary>
+    private string MarriageRemoveTitle => _removingMarriage is null
+        ? "Remove this marriage?"
+        : $"Remove the marriage to {_removingMarriage.Spouse.DisplayName}?";
+
+    /// <summary>
+    /// The point US-024 makes — neither person is deleted — plus the consequence
+    /// only this removal has.
+    /// </summary>
+    /// <remarks>
+    /// The stepparent sentence is unconditional rather than counted, because the
+    /// labels resting on this marriage may be on somebody else's profile entirely
+    /// and counting them here would cost a read on every render of this page. The
+    /// service reports the number afterwards, when it knows it.
+    /// </remarks>
+    private string MarriageRemoveBody => _removingMarriage is null
+        ? string.Empty
+        : $"This removes the marriage record only. Neither {_person?.DisplayName} nor "
+            + $"{_removingMarriage.Spouse.DisplayName} is deleted, and the marriage can be "
+            + "recorded again. Any stepparent labels that rested on it are removed with it.";
+
+    private string StepRemoveTitle => _removingStep is null
+        ? "Remove this step relationship?"
+        : $"Remove {_removingStep.Name} as a "
+            + $"{(_removingStep.IsStepparent ? "stepparent" : "stepchild")} of {_person?.DisplayName}?";
+
+    /// <summary>
+    /// Says that the marriage stays. Removing a label and removing the marriage
+    /// that justified it are a click apart on this page and have very different
+    /// consequences.
+    /// </summary>
+    private string StepRemoveBody => _removingStep is null
+        ? string.Empty
+        : $"This removes the step label only. The marriage it rests on stays recorded, "
+            + $"and neither {_person?.DisplayName} nor {_removingStep.Name} is deleted.";
 
     private string DescribeRemoval(PendingRemoval pending)
     {
@@ -545,7 +875,7 @@
 
     /// <summary>
     /// One service call per relationship family: three sections from the first,
-    /// two from the second.
+    /// two from the second, one from the third and three from the fourth.
     /// </summary>
     /// <remarks>
     /// Grouped this way rather than one call per section because the sections
@@ -554,10 +884,16 @@
     /// five times would re-read the same links and resolve the same people
     /// several times over.
     /// <para>
-    /// Two calls rather than one because the two families share almost nothing:
-    /// they read different link tables, and the people they name overlap only
-    /// when somebody is recorded both ways. Merging them would have meant a
+    /// Four calls rather than one because the families share almost nothing: they
+    /// read different link tables, and the people they name overlap only when
+    /// somebody is recorded more than one way. Merging them would have meant a
     /// service that reads adoptive links to answer a question about siblings.
+    /// <para>
+    /// The step call is the exception that proves the grouping is by reads rather
+    /// than by section: its candidate list needs the subject's parents and those
+    /// parents' marriages, which is why it is one call covering three lists rather
+    /// than one per list.
+    /// </para>
     /// </para>
     /// </remarks>
     private async Task LoadRelationshipsAsync()
@@ -566,6 +902,8 @@
 
         var biological = await Relationships.GetForPersonAsync(Id);
         var adoptive = await Adoptive.GetForPersonAsync(Id);
+        var marriages = await Marriages.GetForPersonAsync(Id);
+        var step = await Stepparents.GetForPersonAsync(Id);
 
         if (biological.IsSuccess)
         {
@@ -587,6 +925,26 @@
             _error ??= adoptive.Error;
         }
 
+        if (marriages.IsSuccess)
+        {
+            _marriages = marriages.Value!;
+        }
+        else
+        {
+            _marriages = MarriagesDto.Empty;
+            _error ??= marriages.Error;
+        }
+
+        if (step.IsSuccess)
+        {
+            _step = step.Value!;
+        }
+        else
+        {
+            _step = StepFamilyDto.Empty;
+            _error ??= step.Error;
+        }
+
         _relationsLoading = false;
     }
 
@@ -600,6 +958,7 @@
         _replacingParentId = null;
         _replacingParentName = null;
         _editingAdoptive = null;
+        _editingMarriage = null;
         _dialogVisible = true;
     }
 
@@ -613,6 +972,7 @@
         _replacingParentId = parent.Person.Id;
         _replacingParentName = NameOf(parent);
         _editingAdoptive = null;
+        _editingMarriage = null;
         _dialogVisible = true;
     }
 
@@ -628,8 +988,30 @@
         _replacingParentName = null;
         _editingAdoptive = new AddRelationshipDialog.AdoptiveEdit(
             parent.Person, parent.AdoptionDate, parent.Certainty);
+        _editingMarriage = null;
         _dialogVisible = true;
     }
+
+    /// <summary>
+    /// US-023, US-025, US-026, US-027. One control for every correction the four
+    /// stories ask for: the dialog opens on the recorded marriage, and saving it
+    /// writes whichever of the dates, the place, the reason, the certainty or the
+    /// spouse actually changed.
+    /// </summary>
+    private void StartMarriageEdit(MarriageDto marriage)
+    {
+        _dialogKinds = [AddRelationshipDialog.RelationshipKind.Spouse];
+        _replacingParentId = null;
+        _replacingParentName = null;
+        _editingAdoptive = null;
+        _editingMarriage = marriage;
+        _dialogVisible = true;
+    }
+
+    private void StartMarriageRemove(MarriageDto marriage) => _removingMarriage = marriage;
+
+    private void StartStepRemove(StepRelativeDto link, bool isStepparent) =>
+        _removingStep = new PendingStepRemoval(link.LinkId, link.Person.DisplayName, isStepparent);
 
     private void StartRemove(RelatedPersonDto link, bool isParent) =>
         _removing = new PendingRemoval(link.Person.Id, NameOf(link), isParent, IsAdoptive: false);
@@ -670,6 +1052,114 @@
             await Notifier.NotifyChangedAsync();
             await LoadRelationshipsAsync();
             Toasts.Show($"{name} is no longer linked to {_person?.DisplayName}.");
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    /// <summary>
+    /// US-024. The service reports how many stepparent labels went with it, which
+    /// is surfaced as a warning rather than folded into the success message: it is
+    /// a consequence on a third person's profile, and the ordinary case has none.
+    /// </summary>
+    private async Task RemoveMarriageAsync()
+    {
+        if (_removingMarriage is not { } marriage)
+        {
+            return;
+        }
+
+        _busy = true;
+        try
+        {
+            var result = await Marriages.RemoveAsync(marriage.MarriageId);
+
+            if (!result.IsSuccess)
+            {
+                _error = result.Error;
+                _removingMarriage = null;
+                return;
+            }
+
+            _removingMarriage = null;
+            await Notifier.NotifyChangedAsync();
+            await LoadRelationshipsAsync();
+            Toasts.Show($"The marriage to {marriage.Spouse.DisplayName} was removed.");
+
+            if (result.IsWarning)
+            {
+                Toasts.Show(result.Warning!, ToastLevel.Warning);
+            }
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    /// <summary>US-038. Removes the label and leaves the marriage alone.</summary>
+    private async Task RemoveStepAsync()
+    {
+        if (_removingStep is not { } pending)
+        {
+            return;
+        }
+
+        _busy = true;
+        try
+        {
+            var result = await Stepparents.RemoveAsync(pending.LinkId);
+
+            if (!result.IsSuccess)
+            {
+                _error = result.Error;
+                _removingStep = null;
+                return;
+            }
+
+            var name = pending.Name;
+            var wasStepparent = pending.IsStepparent;
+            _removingStep = null;
+            await Notifier.NotifyChangedAsync();
+            await LoadRelationshipsAsync();
+            Toasts.Show($"{name} is no longer recorded as a "
+                + $"{(wasStepparent ? "stepparent" : "stepchild")} of {_person?.DisplayName}.");
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    /// <summary>
+    /// US-038. Applies the label the candidate row offers.
+    /// </summary>
+    /// <remarks>
+    /// No confirmation: it adds a record and takes nothing away, and the row beside
+    /// it removes it again. The marriage id comes from the candidate rather than
+    /// being looked up, because which marriage justifies the label is exactly what
+    /// the row was showing.
+    /// </remarks>
+    private async Task LabelStepparentAsync(StepparentCandidateDto candidate)
+    {
+        _busy = true;
+        try
+        {
+            var result = await Stepparents.LabelAsync(Id, candidate.Person.Id, candidate.MarriageId);
+
+            if (!result.IsSuccess)
+            {
+                _error = result.Error;
+                return;
+            }
+
+            _error = null;
+            await Notifier.NotifyChangedAsync();
+            await LoadRelationshipsAsync();
+            Toasts.Show($"{candidate.Person.DisplayName} is now recorded as a stepparent "
+                + $"of {_person?.DisplayName}.");
         }
         finally
         {

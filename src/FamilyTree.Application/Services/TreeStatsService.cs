@@ -32,8 +32,8 @@ public sealed record TreeStats(int People, int Relationships)
 /// <remarks>
 /// The result is cached between changes. Every subscriber to
 /// <see cref="TreeDataNotifier"/> asks for these counts when the tree changes,
-/// and each ask is a complete read of all four stores — free against IndexedDB,
-/// four HTTP round trips per listener once the seam is swapped. A third
+/// and each ask is a complete read of all five stores — free against IndexedDB,
+/// five HTTP round trips per listener once the seam is swapped. A third
 /// component now listens (the backup reminder, alongside the top bar and
 /// Settings), which would make one save cost twelve requests: exactly the
 /// pattern this class's own docstring existed to watch for.
@@ -49,6 +49,7 @@ public sealed class TreeStatsService
     private readonly IBiologicalRelationshipRepository _biological;
     private readonly IAdoptiveRelationshipRepository _adoptive;
     private readonly IMarriageRepository _marriages;
+    private readonly IStepparentRelationshipRepository _stepparents;
 
     private TreeStats? _cached;
 
@@ -57,12 +58,14 @@ public sealed class TreeStatsService
         IBiologicalRelationshipRepository biological,
         IAdoptiveRelationshipRepository adoptive,
         IMarriageRepository marriages,
+        IStepparentRelationshipRepository stepparents,
         TreeDataNotifier notifier)
     {
         _people = people;
         _biological = biological;
         _adoptive = adoptive;
         _marriages = marriages;
+        _stepparents = stepparents;
 
         notifier.BeforeNotifying(() =>
         {
@@ -92,17 +95,17 @@ public sealed class TreeStatsService
         var bio = await _biological.GetAllAsync(ct);
         var adopt = await _adoptive.GetAllAsync(ct);
         var married = await _marriages.GetAllAsync(ct);
+        var steps = await _stepparents.GetAllAsync(ct);
 
         // Phantoms are placeholders for ancestors nobody has identified, so
         // counting them would overstate how much of the tree is actually known.
         var realPeople = allPeople.Count(p => !p.IsPhantom);
 
-        // Stepparent links are deliberately absent: the store and the record
-        // exist, but no repository writes them yet, so there is nothing to
-        // count. Add them here at the same time as the stepparent repository,
-        // or this total starts silently under-reporting.
-
-        var relationships = bio.Count + adopt.Count + married.Count;
+        // Stepparent labels count as relationships from PR 9, where they became
+        // writable. They were absent while nothing could create one; leaving them
+        // out now would make the top bar quietly under-report the moment somebody
+        // recorded their first blended family.
+        var relationships = bio.Count + adopt.Count + married.Count + steps.Count;
 
         _cached = new TreeStats(realPeople, relationships)
         {

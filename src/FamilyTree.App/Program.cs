@@ -15,6 +15,8 @@ builder.Services.AddScoped<PersonService>();
 builder.Services.AddScoped<CircularReferenceChecker>();
 builder.Services.AddScoped<BiologicalRelationshipService>();
 builder.Services.AddScoped<AdoptiveRelationshipService>();
+builder.Services.AddScoped<MarriageService>();
+builder.Services.AddScoped<StepparentService>();
 builder.Services.AddScoped<TreeStatsService>();
 builder.Services.AddScoped<TreeDataNotifier>();
 builder.Services.AddScoped<ToastService>();

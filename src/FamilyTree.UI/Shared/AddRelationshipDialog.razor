@@ -1,5 +1,6 @@
 @inject BiologicalRelationshipService Relationships
 @inject AdoptiveRelationshipService Adoptive
+@inject MarriageService Marriages
 @inject TreeDataNotifier Notifier
 @inject ToastService Toasts
 @inject IOverlayInterop Overlay
@@ -13,7 +14,14 @@
 
    PR 8 added the adoptive kinds and cost exactly that: two Catalogue entries,
    an adoption-date field in the details step and a branch in SaveAsync. PR 9
-   adds marriage and stepparent the same way. *@
+   added the spouse kind at the same price.
+
+   Stepparent labels deliberately do NOT come through here. Every other kind
+   answers "who?" with a search of the whole tree; a stepparent is the person a
+   parent married, so US-038 asks for the action next to those specific spouses.
+   A wizard step offering a free search would invite recording a step
+   relationship nothing in the tree supports, so that flow lives on the profile
+   as a list of candidates instead. *@
 
 @if (Visible)
 {
@@ -100,8 +108,8 @@
                            somebody to invent one. The profile says so in words
                            where the date would be.
 
-                           PR 9 adds the marriage dates, place and end reason as
-                           another branch in this same block.
+                           The marriage dates, place and end reason arrived in
+                           PR 9 as another branch in this same block.
 
                            A free-text note is deliberately absent: no
                            relationship entity carries one, so a box for it would
@@ -130,6 +138,98 @@
                                 </p>
                             </div>
                         }
+
+                        @* US-021, US-023, US-025 to US-027. Every field the
+                           stories name, in one form, because ending a marriage is
+                           editing it: a separate "end this marriage" form would be
+                           this one with two fields showing and the same rules to
+                           re-enforce.
+
+                           Unlike the adoption date, the start date is required —
+                           US-021 says so, and a marriage with no date at all
+                           cannot be placed in a sequence, which is what the
+                           section is ordered by. *@
+                        @if (IsMarriage)
+                        {
+                            <div class="reldialog__field" data-testid="@($"{TestId}-start-date-field")">
+                                <PartialDateInput Label="Marriage date"
+                                                  TestId="@($"{TestId}-start-date")"
+                                                  Seed="_startDateSeed"
+                                                  TextChanged="t => _startDateSeed = t"
+                                                  ValueChanged="OnStartDateChanged"
+                                                  InvalidChanged="v => _startDateInvalid = v" />
+                            </div>
+
+                            <div class="reldialog__field">
+                                <label class="field-label" for="@_placeId">Place (optional)</label>
+                                <div class="input">
+                                    <input id="@_placeId" type="text" maxlength="200"
+                                           placeholder="Where were they married?"
+                                           value="@_startPlace"
+                                           data-testid="@($"{TestId}-place")"
+                                           @oninput="e => _startPlace = e.Value?.ToString()" />
+                                </div>
+                            </div>
+
+                            @* "Still ongoing" is the first option and the default,
+                               so recording a current marriage needs nothing said
+                               about how it ended. The reasons read as the stories
+                               word them — Divorced, Widowed, Annulled — rather than
+                               as the enum's event names. *@
+                            <div class="reldialog__field">
+                                <label class="field-label" for="@_endReasonId">How did it end?</label>
+                                <div class="input">
+                                    <select id="@_endReasonId" class="reldialog__select"
+                                            data-testid="@($"{TestId}-end-reason")"
+                                            @onchange="OnEndReasonChangedAsync">
+                                        <option value="" selected="@(_endReason is null)">Still ongoing</option>
+                                        @foreach (var value in Enum.GetValues<MarriageEndReason>())
+                                        {
+                                            <option value="@value" selected="@(_endReason == value)">
+                                                @Humanise(value)
+                                            </option>
+                                        }
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div class="reldialog__field" data-testid="@($"{TestId}-end-date-field")">
+                                @* Keyed, unlike every other date control in the
+                                   app, because this is the only one something
+                                   other than the user fills in. PartialDateInput
+                                   reads its seed once and then owns its own
+                                   contents — the right contract for a control
+                                   that must not have half-typed input yanked out
+                                   from under it — so handing it a new seed does
+                                   nothing on its own. Changing the key destroys
+                                   and rebuilds it, which is what makes the
+                                   US-026 offer visible in the box rather than
+                                   only saved. The key moves when the offer is
+                                   taken and at no other time, so typing never
+                                   rebuilds the control mid-word. *@
+                                <PartialDateInput @key="_endDateSeedGeneration"
+                                                  Label="End date (optional)"
+                                                  TestId="@($"{TestId}-end-date")"
+                                                  Seed="_endDateSeed"
+                                                  TextChanged="t => _endDateSeed = t"
+                                                  ValueChanged="OnEndDateChanged"
+                                                  InvalidChanged="v => _endDateInvalid = v" />
+
+                                @* US-026. An offer rather than an auto-fill, and it
+                                   says whose death the year came from: a date that
+                                   appeared on its own is a guess the user cannot
+                                   check. Only shown while the box is empty, so it
+                                   never proposes to overwrite something typed. *@
+                                @if (_deathSuggestion is { } suggestion && _endDateSeed.IsBlank)
+                                {
+                                    <button type="button" class="reldialog__suggest"
+                                            data-testid="@($"{TestId}-use-death-date")"
+                                            @onclick="() => UseSuggestedEndDate(suggestion)">
+                                        Use @suggestion.Date — from @suggestion.PersonName's death
+                                    </button>
+                                }
+                            </div>
+                        }
                     </div>
                 }
             </div>
@@ -145,17 +245,14 @@
 
                 @if (_step == Step.Details)
                 {
-                    @* Disabled on an unparseable adoption date rather than
-                       failing on save: the control already says what is wrong
-                       with it, and a save that bounced off a date would report
-                       it a second time in a different place.
-
-                       Gated on the kind, because only the adoptive kinds have a
-                       date at all. Without that, a date left invalid before
-                       switching kind would disable Save on a biological link
-                       whose form shows no date field to correct. *@
+                    @* Disabled on an unparseable date rather than failing on
+                       save: the control already says what is wrong with it, and a
+                       save that bounced off a date would report it a second time
+                       in a different place. Gated on the kind — see CanSave — so a
+                       date left invalid before switching kind cannot disable Save
+                       on a form that shows no date field to correct. *@
                     <button type="button" class="btn btn--primary"
-                            disabled="@(_busy || (IsAdoptive && _adoptionDateInvalid))"
+                            disabled="@(_busy || !CanSave)"
                             data-testid="@($"{TestId}-save")" @onclick="SaveAsync">
                         @SaveLabel
                     </button>
@@ -180,8 +277,8 @@
 @code {
     /// <summary>The kinds of relationship the wizard can record.</summary>
     /// <remarks>
-    /// PR 7 offered the biological pair and PR 8 adds the adoptive one. Marriage
-    /// and stepparent arrive in PR 9 the same way.
+    /// PR 7 offered the biological pair, PR 8 the adoptive one, and PR 9 the
+    /// spouse. Stepparent is not here: see the note at the top of this file.
     /// </remarks>
     public enum RelationshipKind
     {
@@ -189,6 +286,7 @@
         BiologicalChild,
         AdoptiveParent,
         AdoptiveChild,
+        Spouse,
     }
 
     private enum Step
@@ -220,10 +318,17 @@
             "Someone who adopted this person. No limit on how many."),
         new(RelationshipKind.AdoptiveChild, "Adoptive child",
             "Someone this person adopted."),
+        // "Spouse or partner", and the description says both, because the record
+        // covers an unmarried partnership as readily as a marriage and nothing
+        // here asks about either person's gender (US-044).
+        new(RelationshipKind.Spouse, "Spouse or partner",
+            "Someone this person married or partnered with. Any number, in sequence."),
     ];
 
     private readonly string _titleId = $"reldialog-{Guid.NewGuid():N}";
     private readonly string _certaintyId = $"certainty-{Guid.NewGuid():N}";
+    private readonly string _placeId = $"place-{Guid.NewGuid():N}";
+    private readonly string _endReasonId = $"endreason-{Guid.NewGuid():N}";
 
     private ElementReference _overlay;
     private ElementReference _panel;
@@ -236,6 +341,27 @@
     private PartialDate? _adoptionDate;
     private PartialDateText _adoptionDateSeed = PartialDateText.Empty;
     private bool _adoptionDateInvalid;
+
+    // The marriage fields. Each date keeps its raw text alongside the parsed
+    // value, for the reason the adoption date does: this control is destroyed
+    // when the wizard leaves the Details step and re-seeded on return, so a seed
+    // that could not hold half-typed input would silently discard it.
+    private PartialDate? _startDate;
+    private PartialDateText _startDateSeed = PartialDateText.Empty;
+    private bool _startDateInvalid;
+    private string? _startPlace;
+    private PartialDate? _endDate;
+    private PartialDateText _endDateSeed = PartialDateText.Empty;
+    private bool _endDateInvalid;
+    private MarriageEndReason? _endReason;
+    private EndDateSuggestion? _deathSuggestion;
+
+    /// <summary>
+    /// Bumped when the end date is replaced programmatically, to force the date
+    /// control to be rebuilt from its seed. See the note beside the control.
+    /// </summary>
+    private int _endDateSeedGeneration;
+
     private string? _error;
     private bool _busy;
 
@@ -279,6 +405,25 @@
     /// </remarks>
     [Parameter] public AdoptiveEdit? Editing { get; set; }
 
+    /// <summary>
+    /// An existing marriage being corrected or ended, rather than a new one being
+    /// recorded. US-023, US-025, US-026, US-027.
+    /// </summary>
+    /// <remarks>
+    /// The DTO itself rather than a wrapper, because it already carries everything
+    /// the form starts from — the spouse, both dates, the place, the reason and the
+    /// certainty — and a second shape holding the same fields is a second thing to
+    /// keep in step.
+    /// <para>
+    /// A third editing mode alongside <see cref="ReplacingParentId"/> and
+    /// <see cref="Editing"/>, and genuinely a third shape rather than a variation:
+    /// the biological one must change the person, the adoptive one may change the
+    /// person or the date, and this one usually changes neither — ending a marriage
+    /// adds a date and a reason to a record whose identity nobody is questioning.
+    /// </para>
+    /// </remarks>
+    [Parameter] public MarriageDto? EditingMarriage { get; set; }
+
     /// <summary>Raised after a successful save so the caller can reload.</summary>
     [Parameter] public EventCallback Saved { get; set; }
 
@@ -288,20 +433,42 @@
 
     private bool IsEditing => Editing is not null;
 
+    private bool IsEditingMarriage => EditingMarriage is not null;
+
     private bool IsAdoptive =>
         _kind is RelationshipKind.AdoptiveParent or RelationshipKind.AdoptiveChild;
 
-    private string DialogTitle => (IsReplacing, IsEditing) switch
+    private bool IsMarriage => _kind is RelationshipKind.Spouse;
+
+    /// <summary>
+    /// Whether the form is in a state worth saving.
+    /// </summary>
+    /// <remarks>
+    /// Gated on the kind, so a date left unparseable before switching kind cannot
+    /// disable Save on a form with no date field to correct. The marriage start
+    /// date is the one required date in the app: US-021 asks for it, and the
+    /// blank case is checked as well as the invalid one because an empty control
+    /// is not invalid — it simply has not been filled in.
+    /// </remarks>
+    private bool CanSave => (IsAdoptive, IsMarriage) switch
     {
-        (true, _) => $"Replace a parent of {SubjectName}",
-        (_, true) => $"Edit an adoptive parent of {SubjectName}",
+        (true, _) => !_adoptionDateInvalid,
+        (_, true) => !_startDateInvalid && !_endDateInvalid && !_startDateSeed.IsBlank,
+        _ => true,
+    };
+
+    private string DialogTitle => (IsReplacing, IsEditing, IsEditingMarriage) switch
+    {
+        (true, _, _) => $"Replace a parent of {SubjectName}",
+        (_, true, _) => $"Edit an adoptive parent of {SubjectName}",
+        (_, _, true) => $"Edit a marriage of {SubjectName}",
         _ => $"Add a relationship for {SubjectName}",
     };
 
-    private string SaveLabel => (IsReplacing, IsEditing) switch
+    private string SaveLabel => (IsReplacing, IsEditing, IsEditingMarriage) switch
     {
-        (true, _) => "Replace",
-        (_, true) => "Save changes",
+        (true, _, _) => "Replace",
+        (_, true, _) or (_, _, true) => "Save changes",
         _ => "Save",
     };
 
@@ -333,6 +500,9 @@
         RelationshipKind.BiologicalChild => "Who is the child?",
         RelationshipKind.AdoptiveChild => "Who is the adopted child?",
         RelationshipKind.AdoptiveParent => "Who is the adoptive parent?",
+        // "Spouse or partner" rather than husband or wife, and it asks nothing
+        // about gender (US-044).
+        RelationshipKind.Spouse => "Who is the spouse or partner?",
         _ => "Who is the parent?",
     };
 
@@ -346,6 +516,14 @@
             {
                 return $"{ReplacingParentName} will be replaced by {name} "
                     + $"as a biological parent of {SubjectName}.";
+            }
+
+            if (IsEditingMarriage)
+            {
+                return _person?.Id == EditingMarriage!.Spouse.Id
+                    ? $"{name} stays married to {SubjectName}, with the details below."
+                    : $"{EditingMarriage!.Spouse.DisplayName} will be replaced by {name} "
+                        + $"as the spouse of {SubjectName}.";
             }
 
             // In edit mode the chosen person may be the one already recorded, in
@@ -367,6 +545,8 @@
                     $"{name} will be recorded as an adoptive child of {SubjectName}.",
                 RelationshipKind.AdoptiveParent =>
                     $"{name} will be recorded as an adoptive parent of {SubjectName}.",
+                RelationshipKind.Spouse =>
+                    $"{name} will be recorded as the spouse or partner of {SubjectName}.",
                 _ => $"{name} will be recorded as a biological parent of {SubjectName}.",
             };
         }
@@ -384,6 +564,24 @@
         RelationshipCertainty.Confirmed => "Confirmed",
         RelationshipCertainty.Likely => "Likely",
         _ => "Speculative",
+    };
+
+    /// <summary>
+    /// The end reasons in the words the stories use rather than the enum's.
+    /// </summary>
+    /// <remarks>
+    /// "Widowed" for <see cref="MarriageEndReason.DeathOfSpouse"/> (US-026) and
+    /// "Divorced" rather than "Divorce" (US-025), matching what the profile row
+    /// will say once it is saved. A dropdown that offered "DeathOfSpouse" and a row
+    /// that then read "Widowed" would look like two different fields.
+    /// </remarks>
+    private static string Humanise(MarriageEndReason reason) => reason switch
+    {
+        MarriageEndReason.Divorce => "Divorced",
+        MarriageEndReason.DeathOfSpouse => "Widowed — death of a spouse",
+        MarriageEndReason.Annulment => "Annulled",
+        MarriageEndReason.Separation => "Separated",
+        _ => "Ended, reason unknown",
     };
 
     protected override void OnParametersSet()
@@ -412,11 +610,27 @@
         // as text rather than as a PartialDate is the PR 6 contract: a stored
         // value this control cannot express would otherwise have to be dropped
         // before the control ever saw it.
-        _person = Editing?.Parent;
-        _certainty = Editing?.Certainty ?? RelationshipCertainty.Confirmed;
+        _person = Editing?.Parent ?? EditingMarriage?.Spouse;
+        _certainty = Editing?.Certainty
+            ?? EditingMarriage?.Certainty
+            ?? RelationshipCertainty.Confirmed;
         _adoptionDate = Editing?.AdoptionDate;
         _adoptionDateSeed = PartialDateText.From(Editing?.AdoptionDate);
         _adoptionDateInvalid = false;
+
+        _startDate = EditingMarriage?.StartDate;
+        _startDateSeed = PartialDateText.From(EditingMarriage?.StartDate);
+        _startDateInvalid = false;
+        _startPlace = EditingMarriage?.StartPlace;
+        _endDate = EditingMarriage?.EndDate;
+        _endDateSeed = PartialDateText.From(EditingMarriage?.EndDate);
+        _endDateInvalid = false;
+        _endReason = EditingMarriage?.EndReason;
+        // Not carried over: the offer is made in response to choosing a reason, so
+        // a suggestion left over from the last time this dialog was open would
+        // appear under a form nobody had asked it about.
+        _deathSuggestion = null;
+
         _error = null;
     }
 
@@ -437,6 +651,64 @@
     {
         _adoptionDate = date;
         _error = null;
+    }
+
+    private void OnStartDateChanged(PartialDate? date)
+    {
+        _startDate = date;
+        _error = null;
+    }
+
+    private void OnEndDateChanged(PartialDate? date)
+    {
+        _endDate = date;
+        _error = null;
+    }
+
+    /// <summary>
+    /// US-026: choosing "Widowed" asks the tree whether it already knows when.
+    /// </summary>
+    /// <remarks>
+    /// The lookup happens here rather than when the dialog opens, because it is an
+    /// answer to the reason being chosen — and because asking on open would read
+    /// both people's records on every relationship dialog in the app, whatever kind
+    /// it was recording.
+    /// </remarks>
+    private async Task OnEndReasonChangedAsync(ChangeEventArgs args)
+    {
+        var raw = args.Value?.ToString();
+        _endReason = Enum.TryParse<MarriageEndReason>(raw, out var reason) ? reason : null;
+        _error = null;
+
+        if (_endReason != MarriageEndReason.DeathOfSpouse || _person is null)
+        {
+            _deathSuggestion = null;
+            return;
+        }
+
+        var suggestion = await Marriages.SuggestEndDateFromSpouseDeathAsync(SubjectId, _person.Id);
+        _deathSuggestion = suggestion.IsSuccess ? suggestion.Value : null;
+    }
+
+    /// <summary>
+    /// Fills the end date from the offer, in both the value and the boxes.
+    /// </summary>
+    /// <remarks>
+    /// Both, because the control is seeded from the text: setting only the parsed
+    /// value would leave the field looking empty and save a date the user never saw.
+    /// </remarks>
+    private void UseSuggestedEndDate(EndDateSuggestion suggestion)
+    {
+        _endDate = suggestion.Date;
+        _endDateSeed = PartialDateText.From(suggestion.Date);
+        _endDateInvalid = false;
+
+        // The seed alone is not enough: the control reads it once and then owns
+        // its contents, so without a new key the year would be saved while the
+        // box stayed empty — a value stored without being displayed, which is the
+        // failure mode this project treats as a defect rather than a cosmetic
+        // complaint.
+        _endDateSeedGeneration++;
     }
 
     private void OnCertaintyChanged(ChangeEventArgs args)
@@ -529,6 +801,23 @@
                 SubjectId, ReplacingParentId!.Value, chosen.Id, _certainty));
         }
 
+        if (IsEditingMarriage)
+        {
+            // Same spouse: the dates, the place, the reason or the certainty
+            // changed and nobody is questioning who this marriage names. That is
+            // the ordinary case here — ending a marriage goes down this branch —
+            // and sending it through the replace path would delete the record and
+            // write a new one with a new id to add a divorce date, taking the
+            // stepparent labels resting on it along the way.
+            return chosen.Id == EditingMarriage!.Spouse.Id
+                ? await Marriages.UpdateAsync(
+                    EditingMarriage.MarriageId, _startDate!, _startPlace,
+                    _endDate, _endReason, _certainty)
+                : Flatten(await Marriages.ReplaceSpouseAsync(
+                    EditingMarriage.MarriageId, SubjectId, chosen.Id, _startDate!,
+                    _startPlace, _endDate, _endReason, _certainty));
+        }
+
         if (IsEditing)
         {
             // Same person: the date or the certainty changed, and nothing about
@@ -550,6 +839,10 @@
                 Flatten(await Adoptive.AddParentAsync(SubjectId, chosen.Id, _adoptionDate, _certainty)),
             RelationshipKind.AdoptiveChild =>
                 Flatten(await Adoptive.AddChildAsync(SubjectId, chosen.Id, _adoptionDate, _certainty)),
+            RelationshipKind.Spouse =>
+                Flatten(await Marriages.AddAsync(
+                    SubjectId, chosen.Id, _startDate!, _startPlace,
+                    _endDate, _endReason, _certainty)),
             _ => Flatten(await Relationships.AddParentAsync(SubjectId, chosen.Id, _certainty)),
         };
     }
@@ -569,6 +862,14 @@
             return $"{chosen.DisplayName} replaced {ReplacingParentName}.";
         }
 
+        if (IsEditingMarriage)
+        {
+            return chosen.Id == EditingMarriage!.Spouse.Id
+                ? $"The marriage to {chosen.DisplayName} was updated."
+                : $"{chosen.DisplayName} replaced {EditingMarriage.Spouse.DisplayName} "
+                    + "as the recorded spouse.";
+        }
+
         if (IsEditing)
         {
             return chosen.Id == Editing!.Parent.Id
@@ -585,6 +886,16 @@
         {
             _error = "Choose a person first.";
             _step = Step.Person;
+            return;
+        }
+
+        // Checked here as well as in the service: Save is disabled while the box
+        // is empty, so reaching this means the form was submitted some other way,
+        // and "A marriage needs a start date" is more use than the service's
+        // refusal arriving with no field named.
+        if (IsMarriage && _startDate is null)
+        {
+            _error = "A marriage needs a start date.";
             return;
         }
 

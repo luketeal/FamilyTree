@@ -6,7 +6,7 @@ using FamilyTree.Domain.Repositories;
 namespace FamilyTree.Application.Tests;
 
 /// <summary>
-/// The four repository interfaces and the administration seam, backed by lists.
+/// The five repository interfaces and the administration seam, backed by lists.
 /// </summary>
 /// <remarks>
 /// Hand-written rather than Moq, because import reads the tree and then writes it
@@ -25,6 +25,8 @@ internal sealed class InMemoryTree
 
     public List<Marriage> Marriages { get; private set; } = [];
 
+    public List<StepparentRelationship> StepparentLinks { get; private set; } = [];
+
     /// <summary>How many times the whole tree was replaced.</summary>
     /// <remarks>
     /// Pinned by the tests because "one call" is the API-seam requirement, not an
@@ -39,6 +41,9 @@ internal sealed class InMemoryTree
     /// <summary>How many times an adoptive parent was swapped through the atomic path.</summary>
     public int AdoptiveReplaceCount { get; set; }
 
+    /// <summary>How many times a spouse was swapped through the atomic path.</summary>
+    public int MarriageReplaceCount { get; set; }
+
     public IPersonRepository PersonRepository => new FakePersonRepository(this);
 
     public IBiologicalRelationshipRepository BiologicalRepository => new FakeBiologicalRepository(this);
@@ -46,6 +51,8 @@ internal sealed class InMemoryTree
     public IAdoptiveRelationshipRepository AdoptiveRepository => new FakeAdoptiveRepository(this);
 
     public IMarriageRepository MarriageRepository => new FakeMarriageRepository(this);
+
+    public IStepparentRelationshipRepository StepparentRepository => new FakeStepparentRepository(this);
 
     public ITreeDataAdministration Administration => new Administrator(this);
 
@@ -70,6 +77,12 @@ internal sealed class InMemoryTree
     public InMemoryTree With(params Marriage[] marriages)
     {
         Marriages.AddRange(marriages);
+        return this;
+    }
+
+    public InMemoryTree With(params StepparentRelationship[] links)
+    {
+        StepparentLinks.AddRange(links);
         return this;
     }
 
@@ -229,6 +242,12 @@ internal sealed class InMemoryTree
             Task.FromResult<IReadOnlyList<Marriage>>(
                 [.. tree.Marriages.Where(m => m.Spouse1Id == personId || m.Spouse2Id == personId)]);
 
+        public Task<IReadOnlyList<Marriage>> GetForPeopleAsync(
+            IReadOnlyCollection<Guid> personIds, CancellationToken ct = default) =>
+            Task.FromResult<IReadOnlyList<Marriage>>(
+                [.. tree.Marriages.Where(m =>
+                    personIds.Contains(m.Spouse1Id) || personIds.Contains(m.Spouse2Id))]);
+
         public Task AddAsync(Marriage marriage, CancellationToken ct = default)
         {
             tree.Marriages.Add(marriage);
@@ -242,9 +261,63 @@ internal sealed class InMemoryTree
             return Task.CompletedTask;
         }
 
+        /// <summary>
+        /// Cascades to the stepparent labels resting on this marriage, as the
+        /// single IndexedDB transaction does. Without the cascade here the tests
+        /// would agree with an implementation that orphans them.
+        /// </summary>
         public Task DeleteAsync(Guid id, CancellationToken ct = default)
         {
             tree.Marriages.RemoveAll(m => m.Id == id);
+            tree.StepparentLinks.RemoveAll(l => l.MarriageId == id);
+            return Task.CompletedTask;
+        }
+
+        /// <summary>
+        /// The delete, the cascade and the write together, matching the real
+        /// transaction. Counted, because "one call" is the property the seam
+        /// discipline asks for and a test can only see it from here.
+        /// </summary>
+        public Task ReplaceSpouseAsync(
+            Guid oldMarriageId, Marriage replacement, CancellationToken ct = default)
+        {
+            tree.MarriageReplaceCount++;
+            tree.Marriages.RemoveAll(m => m.Id == oldMarriageId);
+            tree.StepparentLinks.RemoveAll(l => l.MarriageId == oldMarriageId);
+            tree.Marriages.Add(replacement);
+            return Task.CompletedTask;
+        }
+    }
+
+    private sealed class FakeStepparentRepository(InMemoryTree tree) : IStepparentRelationshipRepository
+    {
+        public Task<IReadOnlyList<StepparentRelationship>> GetAllAsync(CancellationToken ct = default) =>
+            Task.FromResult<IReadOnlyList<StepparentRelationship>>([.. tree.StepparentLinks]);
+
+        public Task<IReadOnlyList<StepparentRelationship>> GetForStepchildAsync(
+            Guid stepchildId, CancellationToken ct = default) =>
+            Task.FromResult<IReadOnlyList<StepparentRelationship>>(
+                [.. tree.StepparentLinks.Where(l => l.StepchildId == stepchildId)]);
+
+        public Task<IReadOnlyList<StepparentRelationship>> GetForStepparentAsync(
+            Guid stepparentId, CancellationToken ct = default) =>
+            Task.FromResult<IReadOnlyList<StepparentRelationship>>(
+                [.. tree.StepparentLinks.Where(l => l.StepparentId == stepparentId)]);
+
+        public Task<IReadOnlyList<StepparentRelationship>> GetForStepchildrenAsync(
+            IReadOnlyCollection<Guid> stepchildIds, CancellationToken ct = default) =>
+            Task.FromResult<IReadOnlyList<StepparentRelationship>>(
+                [.. tree.StepparentLinks.Where(l => stepchildIds.Contains(l.StepchildId))]);
+
+        public Task AddAsync(StepparentRelationship link, CancellationToken ct = default)
+        {
+            tree.StepparentLinks.Add(link);
+            return Task.CompletedTask;
+        }
+
+        public Task DeleteAsync(Guid id, CancellationToken ct = default)
+        {
+            tree.StepparentLinks.RemoveAll(l => l.Id == id);
             return Task.CompletedTask;
         }
     }
@@ -261,6 +334,7 @@ internal sealed class InMemoryTree
             tree.BiologicalLinks = [.. snapshot.BiologicalLinks];
             tree.AdoptiveLinks = [.. snapshot.AdoptiveLinks];
             tree.Marriages = [.. snapshot.Marriages];
+            tree.StepparentLinks = [.. snapshot.StepparentLinks];
             return Task.CompletedTask;
         }
 
@@ -270,6 +344,7 @@ internal sealed class InMemoryTree
             tree.BiologicalLinks.Clear();
             tree.AdoptiveLinks.Clear();
             tree.Marriages.Clear();
+            tree.StepparentLinks.Clear();
             return Task.CompletedTask;
         }
 

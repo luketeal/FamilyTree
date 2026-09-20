@@ -42,6 +42,17 @@ public sealed record ExportDocument
     public IReadOnlyList<ExportedMarriage>? Marriages { get; init; }
 
     /// <summary>
+    /// Stepparent labels, each naming the marriage it rests on. Added at schema
+    /// version 3, alongside the repository that can write one.
+    /// </summary>
+    /// <remarks>
+    /// Absent from version 1 and version 2 files, which is not a gap in them: no
+    /// version that wrote those files could create a stepparent label, so there
+    /// was nothing to leave out. An older file therefore imports unchanged.
+    /// </remarks>
+    public IReadOnlyList<ExportedStepparentLink>? StepparentLinks { get; init; }
+
+    /// <summary>
     /// Unidentified ancestors, kept apart from <see cref="People"/>.
     /// </summary>
     /// <remarks>
@@ -180,4 +191,22 @@ public sealed record ExportedMarriage
     public ExportedDate? EndDate { get; init; }
     public MarriageEndReason? EndReason { get; init; }
     public RelationshipCertainty? Certainty { get; init; }
+}
+
+/// <summary>
+/// A stepparent label as exported: who, for whom, and by virtue of which
+/// marriage.
+/// </summary>
+/// <remarks>
+/// The marriage id is not a convenience here — it is the label's justification.
+/// A file that carried the pair without it would restore a step relationship
+/// that nothing in the tree explained, and the cascade in US-038 (removing the
+/// marriage removes the label) would have nothing to key on.
+/// </remarks>
+public sealed record ExportedStepparentLink
+{
+    public Guid Id { get; init; }
+    public Guid StepparentId { get; init; }
+    public Guid StepchildId { get; init; }
+    public Guid MarriageId { get; init; }
 }

@@ -31,7 +31,7 @@ public class AdoptiveRelationshipTests(StaticSiteFixture fixture) : BrowserTest(
     {
         await page.GetByTestId("load-sample").ClickAsync();
         await Assertions.Expect(page.GetByTestId("settings-stats"))
-            .ToHaveTextAsync("10 people · 14 relationships");
+            .ToHaveTextAsync("10 people · 15 relationships");
     }
 
     private async Task OpenProfileAsync(IPage page, string displayName)

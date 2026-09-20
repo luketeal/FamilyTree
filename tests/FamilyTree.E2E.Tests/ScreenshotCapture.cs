@@ -64,7 +64,7 @@ public class ScreenshotCapture(StaticSiteFixture fixture) : BrowserTest(fixture)
 
         await page.GetByTestId("load-sample").ClickAsync();
         await Assertions.Expect(page.GetByTestId("settings-stats"))
-            .ToHaveTextAsync("10 people · 14 relationships");
+            .ToHaveTextAsync("10 people · 15 relationships");
 
         await page.GetByTestId("load-sample").ClickAsync();
         await Assertions.Expect(page.GetByTestId("settings-confirm")).ToBeVisibleAsync();
@@ -207,7 +207,7 @@ public class ScreenshotCapture(StaticSiteFixture fixture) : BrowserTest(fixture)
         });
         await page.GetByTestId("load-sample").ClickAsync();
         await Assertions.Expect(page.GetByTestId("settings-stats"))
-            .ToHaveTextAsync("10 people · 14 relationships");
+            .ToHaveTextAsync("10 people · 15 relationships");
 
         // The reminder only renders once there is something to lose, so it never
         // appears in the shell capture above.
@@ -309,7 +309,7 @@ public class ScreenshotCapture(StaticSiteFixture fixture) : BrowserTest(fixture)
         });
         await page.GetByTestId("load-sample").ClickAsync();
         await Assertions.Expect(page.GetByTestId("settings-stats"))
-            .ToHaveTextAsync("10 people · 14 relationships");
+            .ToHaveTextAsync("10 people · 15 relationships");
 
         await page.GotoAsync(Fixture.BaseUrl + "export", new PageGotoOptions
         {
@@ -363,7 +363,7 @@ public class ScreenshotCapture(StaticSiteFixture fixture) : BrowserTest(fixture)
         });
         await page.GetByTestId("load-sample").ClickAsync();
         await Assertions.Expect(page.GetByTestId("settings-stats"))
-            .ToHaveTextAsync("10 people · 14 relationships");
+            .ToHaveTextAsync("10 people · 15 relationships");
 
         // Susan has two parents, a child, a full sibling and a half-sibling, so
         // every section has something in it at once.
@@ -466,7 +466,7 @@ public class ScreenshotCapture(StaticSiteFixture fixture) : BrowserTest(fixture)
         });
         await page.GetByTestId("load-sample").ClickAsync();
         await Assertions.Expect(page.GetByTestId("settings-stats"))
-            .ToHaveTextAsync("10 people · 14 relationships");
+            .ToHaveTextAsync("10 people · 15 relationships");
 
         // Priya is the one person in the sample who carries both kinds of parent
         // at once, which is US-039 on screen rather than described.
@@ -499,6 +499,93 @@ public class ScreenshotCapture(StaticSiteFixture fixture) : BrowserTest(fixture)
         await page.ScreenshotAsync(new PageScreenshotOptions
         {
             Path = Path.Combine(OutputDirectory, $"adoptive-wizard-details-{name}.png"),
+            FullPage = true,
+        });
+    }
+
+    // The marriage and step sections, and the marriage form. Three things here fit
+    // on a desktop and are the first to break at 390px: a marriage row carries a
+    // chip, a badge, a date range and a place; a candidate row's action is a whole
+    // sentence; and the marriage form is the longest the wizard has.
+    [Theory]
+    [InlineData("desktop", 1440, 900)]
+    [InlineData("mobile", 390, 844)]
+    public async Task CaptureMarriageAndStepRelationships(string name, int width, int height)
+    {
+        Directory.CreateDirectory(OutputDirectory);
+
+        var context = await NewContextAsync(new BrowserNewContextOptions
+        {
+            ViewportSize = new ViewportSize { Width = width, Height = height },
+        });
+        var page = await context.NewPageAsync();
+
+        await page.GotoAsync(Fixture.BaseUrl + "settings", new PageGotoOptions
+        {
+            WaitUntil = WaitUntilState.NetworkIdle,
+        });
+        await page.GetByTestId("load-sample").ClickAsync();
+        await Assertions.Expect(page.GetByTestId("settings-stats"))
+            .ToHaveTextAsync("10 people · 15 relationships");
+
+        // Arthur carries the widowed marriage and the current one at once, which
+        // is US-042 and US-026 on screen rather than described.
+        await page.GotoAsync(Fixture.BaseUrl + "people", new PageGotoOptions
+        {
+            WaitUntil = WaitUntilState.NetworkIdle,
+        });
+        await page.GetByText("Arthur Whitfield").First.ClickAsync();
+        await Assertions.Expect(page.GetByTestId("marriages-list")).ToBeVisibleAsync();
+
+        // The scroll container is inside the shell rather than the document, so
+        // FullPage captures one viewport and stops. On a phone that is the top of
+        // the profile — the marriages are the last section on it.
+        await page.GetByTestId("relation-marriages").ScrollIntoViewIfNeededAsync();
+        await page.ScreenshotAsync(new PageScreenshotOptions
+        {
+            Path = Path.Combine(OutputDirectory, $"profile-marriages-{name}.png"),
+            FullPage = true,
+        });
+
+        // Daniel has a recorded stepmother; Susan has the same person waiting as a
+        // candidate. One capture shows both states of the section.
+        await page.GotoAsync(Fixture.BaseUrl + "people", new PageGotoOptions
+        {
+            WaitUntil = WaitUntilState.NetworkIdle,
+        });
+        await page.GetByText("Daniel Whitfield").First.ClickAsync();
+        await Assertions.Expect(page.GetByTestId("stepparents-list")).ToBeVisibleAsync();
+        await page.GetByTestId("relation-stepparents").ScrollIntoViewIfNeededAsync();
+        await page.ScreenshotAsync(new PageScreenshotOptions
+        {
+            Path = Path.Combine(OutputDirectory, $"profile-stepparents-{name}.png"),
+            FullPage = true,
+        });
+
+        await page.GotoAsync(Fixture.BaseUrl + "people", new PageGotoOptions
+        {
+            WaitUntil = WaitUntilState.NetworkIdle,
+        });
+        await page.GetByText("Susan Hartley").First.ClickAsync();
+        await Assertions.Expect(page.GetByTestId("stepparent-candidates")).ToBeVisibleAsync();
+        await page.GetByTestId("relation-stepparents").ScrollIntoViewIfNeededAsync();
+        await page.ScreenshotAsync(new PageScreenshotOptions
+        {
+            Path = Path.Combine(OutputDirectory, $"profile-stepparent-candidates-{name}.png"),
+            FullPage = true,
+        });
+
+        // The marriage form, with the US-026 offer showing: Raymond died in 2019,
+        // so choosing "Widowed" on Susan's marriage puts the offer on screen.
+        await page.Locator("[data-testid^='edit-marriage-']").First.ClickAsync();
+        await page.GetByTestId("relationship-dialog-next").ClickAsync();
+        await page.GetByTestId("relationship-dialog-end-reason")
+            .SelectOptionAsync(new SelectOptionValue { Value = "DeathOfSpouse" });
+        await Assertions.Expect(page.GetByTestId("relationship-dialog-use-death-date"))
+            .ToBeVisibleAsync();
+        await page.ScreenshotAsync(new PageScreenshotOptions
+        {
+            Path = Path.Combine(OutputDirectory, $"marriage-form-{name}.png"),
             FullPage = true,
         });
     }

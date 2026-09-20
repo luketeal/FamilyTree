@@ -118,6 +118,17 @@
     color: var(--ink4);
 }
 
+/* Above the stepparent candidate list. Darker than the empty-state text because
+   it is an instruction rather than an absence — it says the app is not going to
+   infer the relationship, which is the whole reason the list is a list of offers
+   and not of facts (US-038). */
+.profile__relation-note {
+    margin: 8px 0 0;
+    font-size: 12px;
+    color: var(--ink3);
+    max-width: 62ch;
+}
+
 @media (max-width: 768px) {
     .profile__details {
         grid-template-columns: minmax(0, 1fr);

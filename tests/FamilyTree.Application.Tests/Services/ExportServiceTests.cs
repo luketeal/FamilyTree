@@ -18,6 +18,7 @@ public class ExportServiceTests
         _tree.BiologicalRepository,
         _tree.AdoptiveRepository,
         _tree.MarriageRepository,
+        _tree.StepparentRepository,
         new FixedClock(now ?? Noon));
 
     private static Person Ada() => Person.Rehydrate(
@@ -271,16 +272,75 @@ public class ExportServiceTests
     {
         var ada = Ada();
         var grace = Grace();
+        var marriage = new Marriage(ada.Id, grace.Id, PartialDate.FromYear(1835), "London");
         _tree.With(ada, grace)
             .With(new BiologicalParentChild(grace.Id, ada.Id))
             .With(new AdoptiveParentChild(grace.Id, ada.Id, PartialDate.FromYear(1820)))
-            .With(new Marriage(ada.Id, grace.Id, PartialDate.FromYear(1835), "London"));
+            .With(marriage)
+            .With(new StepparentRelationship(grace.Id, ada.Id, marriage.Id));
 
         using var json = await ExportAsync();
 
         Assert.Equal(1, json.RootElement.GetProperty("biologicalLinks").GetArrayLength());
         Assert.Equal(1, json.RootElement.GetProperty("adoptiveLinks").GetArrayLength());
         Assert.Equal(1, json.RootElement.GetProperty("marriages").GetArrayLength());
+        Assert.Equal(1, json.RootElement.GetProperty("stepparentLinks").GetArrayLength());
+    }
+
+    // The gap PR 9 closed. A stepparent label was writable before this section
+    // existed only in the sense that nothing could write one — the moment the
+    // repository arrived, an export without it would have dropped every blended
+    // family on the first backup.
+    [Fact]
+    public async Task WritesTheMarriageEachStepparentLabelRestsOn()
+    {
+        var ada = Ada();
+        var grace = Grace();
+        var marriage = new Marriage(ada.Id, grace.Id, PartialDate.FromYear(1835), "London");
+        _tree.With(ada, grace)
+            .With(marriage)
+            .With(new StepparentRelationship(grace.Id, ada.Id, marriage.Id));
+
+        using var json = await ExportAsync();
+        var label = json.RootElement.GetProperty("stepparentLinks")[0];
+
+        Assert.Equal(grace.Id, label.GetProperty("stepparentId").GetGuid());
+        Assert.Equal(ada.Id, label.GetProperty("stepchildId").GetGuid());
+        Assert.Equal(marriage.Id, label.GetProperty("marriageId").GetGuid());
+    }
+
+    [Fact]
+    public async Task CountsStepparentLabelsAsRelationships()
+    {
+        var ada = Ada();
+        var grace = Grace();
+        var marriage = new Marriage(ada.Id, grace.Id, PartialDate.FromYear(1835));
+        _tree.With(ada, grace)
+            .With(marriage)
+            .With(new StepparentRelationship(grace.Id, ada.Id, marriage.Id));
+
+        var result = await CreateService().ExportToJsonAsync();
+
+        Assert.Equal(2, result.Value!.Summary.Relationships);
+    }
+
+    // A phantom cannot currently be either end of a step label — the candidate
+    // list excludes them — but an imported file can say otherwise, and a phantom
+    // dropped as unlinked would take the label naming it with it.
+    [Fact]
+    public async Task KeepsAPhantomThatOnlyAStepparentLabelPointsAt()
+    {
+        var ada = Ada();
+        var phantom = Person.CreatePhantom();
+        var marriage = new Marriage(ada.Id, Grace().Id, PartialDate.FromYear(1835));
+        _tree.With(ada, Grace(), phantom)
+            .With(marriage)
+            .With(new StepparentRelationship(phantom.Id, ada.Id, marriage.Id));
+
+        using var json = await ExportAsync();
+
+        Assert.Equal(1, json.RootElement.GetProperty("phantoms").GetArrayLength());
+        Assert.Equal(phantom.Id, json.RootElement.GetProperty("phantoms")[0].GetProperty("id").GetGuid());
     }
 
     // A backup that reorders itself on every save cannot be diffed, and diffing
@@ -297,6 +357,7 @@ public class ExportServiceTests
             reordered.BiologicalRepository,
             reordered.AdoptiveRepository,
             reordered.MarriageRepository,
+            reordered.StepparentRepository,
             new FixedClock(Noon)).ExportToJsonAsync();
 
         Assert.Equal(first.Value!.Json, second.Value!.Json);
