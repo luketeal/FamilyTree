@@ -1192,6 +1192,28 @@ public class ShellLayoutTests(StaticSiteFixture fixture) : BrowserTest(fixture)
         Assert.Equal("rgb(138, 131, 119)", result.RootElement.GetProperty("borderColor").GetString());
     }
 
+    // A candidate is not a relationship the subject has, and the chip must not say
+    // one. Rendered in the marriage coral it read as the child's own spouse on
+    // their own profile — the one chip in the app whose colour named a relationship
+    // nobody had recorded.
+    [Fact]
+    public async Task StepparentCandidateChips_AreNotTheMarriageColour()
+    {
+        var page = await OpenSampleProfileAsync("Susan Hartley");
+        await Assertions.Expect(page.GetByTestId("stepparent-candidates")).ToBeVisibleAsync();
+
+        var candidate = await page.Locator("[data-testid^='candidate-chip-']").First
+            .EvaluateAsync<string>("el => getComputedStyle(el).backgroundColor");
+        var marriage = await page.Locator("[data-testid^='marriage-chip-']").First
+            .EvaluateAsync<string>("el => getComputedStyle(el).backgroundColor");
+
+        // --coral-bg #fbeee7 is the marriage chip's; the candidate takes --paper
+        // #fbfaf7. Asserted as values as well as as a difference, so that the two
+        // converging on some third colour would still fail.
+        Assert.Equal("rgb(251, 238, 231)", marriage);
+        Assert.Equal("rgb(251, 250, 247)", candidate);
+    }
+
     // The date range is set in the mono face the rest of the app's dates use. One
     // of the few places a token can be dropped with nothing looking broken — it
     // just quietly stops matching.

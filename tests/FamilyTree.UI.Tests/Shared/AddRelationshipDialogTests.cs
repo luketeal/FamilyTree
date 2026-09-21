@@ -1022,6 +1022,33 @@ public class AddRelationshipDialogTests : ShellTestContext
         Assert.Equal(1973, saved!.EndDate!.Year);
     }
 
+    // The offer belongs to whoever was chosen when the reason was picked. Stepping
+    // back and changing the spouse left it on screen showing the previous person's
+    // death year under the new person's form — a date presented as theirs that was
+    // somebody else's.
+    [Fact]
+    public void TheOfferDoesNotSurviveAChangeOfSpouse()
+    {
+        var deceased = new Person("Margaret", "Whitfield", Gender.Female);
+        deceased.UpdateDates(PartialDate.FromYear(1921), null, PartialDate.FromYear(1973), null);
+        var living = new Person("Vera", "Nash", Gender.Female);
+        People.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync([_subject, deceased, living]);
+
+        var cut = RenderDialog(kinds: [Kind.Spouse]);
+        cut.Find($"[data-testid='relationship-dialog-search-option-{deceased.Id}']").Click();
+        cut.Find("[data-testid='relationship-dialog-next']").Click();
+        cut.Find("[data-testid='relationship-dialog-start-date']").Input("1946");
+        cut.Find("[data-testid='relationship-dialog-end-reason']").Change("DeathOfSpouse");
+        Assert.NotNull(cut.Find("[data-testid='relationship-dialog-use-death-date']"));
+
+        cut.Find("[data-testid='relationship-dialog-back']").Click();
+        cut.Find($"[data-testid='relationship-dialog-search-option-{living.Id}']").Click();
+        cut.Find("[data-testid='relationship-dialog-next']").Click();
+
+        Assert.Empty(cut.FindAll("[data-testid='relationship-dialog-use-death-date']"));
+    }
+
     // Nothing to offer when nobody has a death date recorded, and an offer that
     // proposed nothing would be worse than none.
     [Fact]

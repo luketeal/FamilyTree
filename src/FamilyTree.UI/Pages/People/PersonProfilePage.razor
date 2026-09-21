@@ -534,7 +534,13 @@
                             {
                                 <li class="relations__row"
                                     data-testid="@($"stepparent-candidate-{candidate.Person.Id}")">
-                                    <PersonChip Variant="PersonChip.ChipVariant.Marriage"
+                                    @* Neutral, not the marriage coral: this person
+                                       is married to a parent, not to the subject,
+                                       and a chip in the marriage colour on a
+                                       child's profile read as the child's own
+                                       spouse. The row says what the connection
+                                       is. *@
+                                    <PersonChip Variant="PersonChip.ChipVariant.Neutral"
                                                 Name="@candidate.Person.DisplayName"
                                                 Detail="@candidate.Person.LifeSpan"
                                                 Href="@($"people/{candidate.Person.Id}")"

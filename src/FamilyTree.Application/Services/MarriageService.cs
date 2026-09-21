@@ -32,8 +32,7 @@ namespace FamilyTree.Application.Services;
 /// </remarks>
 public sealed class MarriageService(
     IPersonRepository people,
-    IMarriageRepository marriages,
-    IStepparentRelationshipRepository stepparents)
+    IMarriageRepository marriages)
 {
     /// <summary>
     /// Every marriage on one profile, chronologically, in a bounded number of
@@ -87,7 +86,8 @@ public sealed class MarriageService(
             return Result<Guid>.Failure("A marriage needs a start date.");
         }
 
-        var check = await CheckAddableAsync(personId, spouseId, ct);
+        var check = await CheckAddableAsync(
+            personId, spouseId, IsOngoing(endDate, endReason), ct);
         if (!check.IsSuccess)
         {
             return Result<Guid>.Failure(check.Error!);
@@ -134,6 +134,14 @@ public sealed class MarriageService(
     /// end date and a reason, which is why divorce, widowhood and annulment need
     /// no code of their own — they differ in one enum value, and three methods
     /// would be three places to forget that the end cannot precede the start.
+    /// <para>
+    /// It runs the same guard as adding, for the reason the replace gives: an edit
+    /// that could produce a state the add path forbids is a hole straight through
+    /// it. The state in question is reopening an ended marriage — clearing the end
+    /// date on an old record while a current one exists between the same pair —
+    /// which left two current marriages, two "Current" badges, and
+    /// <see cref="MarriagesDto.Current"/> reporting neither.
+    /// </para>
     /// </remarks>
     public async Task<Result> UpdateAsync(
         Guid marriageId,
@@ -158,6 +166,23 @@ public sealed class MarriageService(
         if (EndsBeforeItStarts(startDate, endDate) is { } invalid)
         {
             return Result.Failure(invalid);
+        }
+
+        // The one rule from the add path that can bite here. The spouses are
+        // unchanged, so emptiness, self-marriage and existence were all settled when
+        // the record was written — and unlike an add, this must still work when a
+        // spouse's record has since been deleted, because ending a marriage is part
+        // of how somebody cleans that up.
+        var duplicate = await DescribeActiveDuplicateAsync(
+            marriage.Spouse1Id,
+            marriage.Spouse2Id,
+            IsOngoing(endDate, endReason),
+            ct,
+            ignoring: marriageId);
+
+        if (duplicate is not null)
+        {
+            return Result.Failure(duplicate);
         }
 
         var overlap = await DescribeOverlapAsync(
@@ -248,7 +273,8 @@ public sealed class MarriageService(
         // the same self-reference rule and the same active-duplicate rule. A
         // correction that could produce a duplicate would be a hole straight
         // through the guard that stops one being added.
-        var check = await CheckAddableAsync(personId, newSpouseId, ct, ignoring: marriageId);
+        var check = await CheckAddableAsync(
+            personId, newSpouseId, IsOngoing(endDate, endReason), ct, ignoring: marriageId);
         if (!check.IsSuccess)
         {
             return Result<Guid>.Failure(check.Error!);
@@ -264,12 +290,12 @@ public sealed class MarriageService(
         var overlap = await DescribeOverlapAsync(
             personId, newSpouseId, startDate, endDate, ct, ignoring: marriageId);
 
-        var losing = (await stepparents.GetAllAsync(ct)).Count(s => s.MarriageId == marriageId);
-
         var replacement = new Marriage(personId, newSpouseId, startDate, startPlace, certainty);
         replacement.UpdateDates(startDate, startPlace, endDate, endReason);
 
-        await marriages.ReplaceSpouseAsync(marriageId, replacement, ct);
+        // The count comes back from the transaction that did the removing, so
+        // saying how many labels went costs no read of its own.
+        var losing = await marriages.ReplaceSpouseAsync(marriageId, replacement, ct);
 
         var problems = Problems(person, spouse, startDate, endDate);
         if (overlap is not null)
@@ -328,9 +354,7 @@ public sealed class MarriageService(
             return Result.Failure("That marriage is no longer recorded.");
         }
 
-        var losing = (await stepparents.GetAllAsync(ct)).Count(s => s.MarriageId == marriageId);
-
-        await marriages.DeleteAsync(marriageId, ct);
+        var losing = await marriages.DeleteAsync(marriageId, ct);
 
         return LabelsLost(losing, "with it") is { } lost
             ? Result.SuccessWithWarning(lost)
@@ -422,19 +446,24 @@ public sealed class MarriageService(
     /// Every rule standing between a proposed marriage and the store.
     /// </summary>
     /// <remarks>
-    /// Shared by add and replace so the two cannot disagree about what is legal.
+    /// Shared by add, edit and replace so the three cannot disagree about what is
+    /// legal.
     /// <para>
-    /// The duplicate rule is narrower than the parent services': it forbids a
-    /// second <em>active</em> marriage between the same two people (US-021), not a
-    /// second marriage. Remarrying the same person after a divorce is a real
-    /// thing that happens, and a rule that refused it would make the app wrong
-    /// about those families. Two ended records between the same pair are therefore
-    /// legitimate, and an overlap between them is a warning rather than a refusal.
+    /// The duplicate rule is narrower than the parent services' in two directions,
+    /// and US-021 draws both: it forbids a second <em>active</em> marriage between
+    /// the same two people, which means it applies only when the record being
+    /// written is itself active and only against others that are. Remarrying the
+    /// same person after a divorce happens, and so does discovering an earlier
+    /// marriage between a couple who are married now — a rule that refused either
+    /// would make the app wrong about those families. Two ended records between the
+    /// same pair are legitimate, and an overlap between them is a warning rather
+    /// than a refusal.
     /// </para>
     /// </remarks>
     private async Task<Result<Addable>> CheckAddableAsync(
         Guid personId,
         Guid spouseId,
+        bool willBeOngoing,
         CancellationToken ct,
         Guid? ignoring = null)
     {
@@ -463,6 +492,44 @@ public sealed class MarriageService(
             return Result<Addable>.Failure($"No person with id {spouseId}.");
         }
 
+        var duplicate = await DescribeActiveDuplicateAsync(
+            personId, spouseId, willBeOngoing, ct, ignoring, person, spouse);
+
+        return duplicate is null
+            ? Result<Addable>.Success(new Addable(person, spouse))
+            : Result<Addable>.Failure(duplicate);
+    }
+
+    /// <summary>
+    /// US-021's duplicate rule, or null when it does not apply.
+    /// </summary>
+    /// <remarks>
+    /// Its own method because three paths need it and only one of them can use the
+    /// rest of <see cref="CheckAddableAsync"/>: editing a marriage must keep
+    /// working when a spouse's record has since been deleted, which the existence
+    /// checks there would refuse.
+    /// <para>
+    /// Applies in one direction only — an active record against other active
+    /// records. A marriage being written with an end date cannot duplicate
+    /// anything, so it skips the read as well as the rule, which is what lets a
+    /// couple who are married now record the earlier marriage they have just
+    /// discovered they had.
+    /// </para>
+    /// </remarks>
+    private async Task<string?> DescribeActiveDuplicateAsync(
+        Guid personId,
+        Guid spouseId,
+        bool willBeOngoing,
+        CancellationToken ct,
+        Guid? ignoring = null,
+        Person? person = null,
+        Person? spouse = null)
+    {
+        if (!willBeOngoing)
+        {
+            return null;
+        }
+
         var theirs = await marriages.GetForPersonAsync(personId, ct);
 
         var duplicate = theirs.Any(m =>
@@ -470,14 +537,20 @@ public sealed class MarriageService(
             && m.IsOngoing
             && (m.Spouse1Id == spouseId || m.Spouse2Id == spouseId));
 
-        if (duplicate)
+        if (!duplicate)
         {
-            return Result<Addable>.Failure(
-                $"{Name(person)} and {Name(spouse)} already have a current marriage recorded. "
-                + "Record an end date on that one before adding another.");
+            return null;
         }
 
-        return Result<Addable>.Success(new Addable(person, spouse));
+        // Named where the caller already has the people, and described plainly
+        // where it does not: the edit path reaches this without having read them,
+        // and is not worth a read of its own to put two names in a refusal.
+        var pair = person is not null && spouse is not null
+            ? $"{Name(person)} and {Name(spouse)}"
+            : "Those two people";
+
+        return $"{pair} already have a current marriage recorded. "
+            + "Record an end date on that one before adding another.";
     }
 
     /// <summary>
@@ -487,13 +560,43 @@ public sealed class MarriageService(
     /// Unlike a questionable birth year, this is not a fact about a family that
     /// might be true — a marriage that ends before it begins is not a record of
     /// anything, and three stories ask for it to be prevented rather than flagged.
-    /// Same-year is allowed: a marriage annulled within months of starting is
-    /// ordinary, and both dates may be year-only.
+    /// Compared in full when both dates carry at least a month, and by year alone
+    /// otherwise. The year-only leniency exists because a marriage that starts and
+    /// ends in the same recorded year is ordinary — an annulment within months, or
+    /// two dates nobody pinned down further — and refusing it would block a record
+    /// that is probably right. It is not a reason to accept 3 January ending a
+    /// marriage that began on 15 June, which the year comparison alone let through:
+    /// US-023 and US-025 both say "on or after", and
+    /// <see cref="Services.ImportService"/> already compares these dates in full,
+    /// so a record written here would trip its warning on its own round trip.
     /// </remarks>
-    private static string? EndsBeforeItStarts(PartialDate startDate, PartialDate? endDate) =>
-        endDate is not null && endDate.Year < startDate.Year
-            ? $"A marriage cannot end in {endDate.Year}, before it started in {startDate.Year}."
+    private static string? EndsBeforeItStarts(PartialDate startDate, PartialDate? endDate)
+    {
+        if (endDate is null)
+        {
+            return null;
+        }
+
+        var bothDated = startDate.Month is not null && endDate.Month is not null;
+        var backwards = bothDated
+            ? endDate.CompareTo(startDate) < 0
+            : endDate.Year < startDate.Year;
+
+        return backwards
+            ? $"A marriage cannot end on {endDate}, before it started on {startDate}."
             : null;
+    }
+
+    /// <summary>
+    /// Whether a record with these values is a current marriage.
+    /// </summary>
+    /// <remarks>
+    /// The same question <see cref="Marriage.IsOngoing"/> answers, asked before the
+    /// record exists. Shared so that the guard and the stored entity cannot come to
+    /// disagree about what "current" means.
+    /// </remarks>
+    private static bool IsOngoing(PartialDate? endDate, MarriageEndReason? endReason) =>
+        endDate is null && endReason is null;
 
     /// <summary>
     /// Whether this marriage's dates overlap another of the same person's.

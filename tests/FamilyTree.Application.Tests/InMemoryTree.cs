@@ -248,6 +248,11 @@ internal sealed class InMemoryTree
                 [.. tree.Marriages.Where(m =>
                     personIds.Contains(m.Spouse1Id) || personIds.Contains(m.Spouse2Id))]);
 
+        public Task<IReadOnlyList<Marriage>> GetByIdsAsync(
+            IReadOnlyCollection<Guid> ids, CancellationToken ct = default) =>
+            Task.FromResult<IReadOnlyList<Marriage>>(
+                [.. tree.Marriages.Where(m => ids.Contains(m.Id))]);
+
         public Task AddAsync(Marriage marriage, CancellationToken ct = default)
         {
             tree.Marriages.Add(marriage);
@@ -266,11 +271,10 @@ internal sealed class InMemoryTree
         /// single IndexedDB transaction does. Without the cascade here the tests
         /// would agree with an implementation that orphans them.
         /// </summary>
-        public Task DeleteAsync(Guid id, CancellationToken ct = default)
+        public Task<int> DeleteAsync(Guid id, CancellationToken ct = default)
         {
             tree.Marriages.RemoveAll(m => m.Id == id);
-            tree.StepparentLinks.RemoveAll(l => l.MarriageId == id);
-            return Task.CompletedTask;
+            return Task.FromResult(tree.StepparentLinks.RemoveAll(l => l.MarriageId == id));
         }
 
         /// <summary>
@@ -278,14 +282,14 @@ internal sealed class InMemoryTree
         /// transaction. Counted, because "one call" is the property the seam
         /// discipline asks for and a test can only see it from here.
         /// </summary>
-        public Task ReplaceSpouseAsync(
+        public Task<int> ReplaceSpouseAsync(
             Guid oldMarriageId, Marriage replacement, CancellationToken ct = default)
         {
             tree.MarriageReplaceCount++;
             tree.Marriages.RemoveAll(m => m.Id == oldMarriageId);
-            tree.StepparentLinks.RemoveAll(l => l.MarriageId == oldMarriageId);
+            var cascaded = tree.StepparentLinks.RemoveAll(l => l.MarriageId == oldMarriageId);
             tree.Marriages.Add(replacement);
-            return Task.CompletedTask;
+            return Task.FromResult(cascaded);
         }
     }
 
@@ -315,11 +319,8 @@ internal sealed class InMemoryTree
             return Task.CompletedTask;
         }
 
-        public Task DeleteAsync(Guid id, CancellationToken ct = default)
-        {
-            tree.StepparentLinks.RemoveAll(l => l.Id == id);
-            return Task.CompletedTask;
-        }
+        public Task<bool> DeleteAsync(Guid id, CancellationToken ct = default) =>
+            Task.FromResult(tree.StepparentLinks.RemoveAll(l => l.Id == id) > 0);
     }
 
     private sealed class Administrator(InMemoryTree tree) : ITreeDataAdministration

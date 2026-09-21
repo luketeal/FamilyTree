@@ -245,8 +245,51 @@ Two things worth knowing before extending the profile:
 - **Deleting a marriage cascades, and the cascade is the delete rather than a second call.** US-038's last criterion spans two record types, so as two calls it can half-apply and leave a label pointing at a marriage that no longer exists — a step relationship nothing in the app can explain or reach to remove. `IMarriageRepository.DeleteAsync` therefore always cascades, in one IndexedDB transaction, and `ReplaceSpouseAsync` does the same: **PR 13's undo has to treat "remove a marriage" as a multi-record operation**, because restoring the marriage alone brings back a record whose labels are gone. `MarriageService` reports how many went, since the label may be on a third person's profile and nothing else would connect its disappearance to the marriage just removed.
 - **Stepparent labels are not recorded through `AddRelationshipDialog`, and that is the one place this PR departed from the wizard.** Every other kind answers "who?" with a search of the whole tree. A stepparent is the person a parent married, so US-038 asks for the action next to those specific spouses — and a free search would have invited recording a step relationship nothing in the tree supports. The flow is a derived candidate list on the profile instead, with the service refusing any label whose marriage does not involve a parent of the child. **PR 10 gets its step edges from records that are guaranteed to have a marriage behind them**; the wizard gained only the spouse kind, at the same price as PR 8's adoptive kinds.
 
+**Five things review caught that the suite did not**, all of them states the tests
+asserted around rather than into:
+
+- **An edit could create the duplicate an add refuses.** `UpdateAsync` was the one
+  write path that never ran the guard, so clearing the end date on an old record
+  while a current one existed left two current marriages between the same pair.
+  The duplicate rule now lives in its own method that all three paths share — and
+  it applies in one direction only, to an *active* record against other active
+  ones, which also unblocked recording an earlier ended marriage for a couple who
+  are married now. US-021 always said "active" on both sides; the code read it on
+  one.
+- **The end-after-start rule compared years alone**, so 15 June to 3 January
+  passed while `ImportService` — which compares in full — warned about the same
+  record on its own round trip. Dates are now compared in full when both carry a
+  month, and by year when they do not, which keeps the leniency that exists for
+  year-only records without extending it to dated ones.
+- **The US-026 review notice fired on every save**, opening "X is now recorded as
+  dying in 1991" after an edit that touched a spelling. Whether a death date
+  *changed* is the page's question rather than the service's, so `EditPersonPage`
+  compares it across the save. Four people in the sample family were in the state
+  that triggered it.
+- **A stepparent row vanished when the parent link it ran through was removed.**
+  The label, its marriage and the stepparent's own profile were all intact; only
+  the stepchild's profile could not reach the marriage to describe it.
+  `IMarriageRepository.GetByIdsAsync` closes it — the labels name their own
+  marriages, so those are read directly rather than inferred from the parents.
+- **Import accepted a label the app refuses to create**, whose marriage involved
+  no parent of the child. A file is the one way into this store that never went
+  through `StepparentService`, so `Justified` now applies the same rule the
+  service does rather than only checking the marriage exists.
+
+Two of the minors changed the seam rather than the surface: the cascading delete
+and the spouse replace now **return how many labels went**, and the stepparent
+delete returns whether it removed anything, which took three whole-collection
+reads off the mutation paths — free against IndexedDB, three requests once the
+seam is swapped. `MarriageService` no longer depends on the stepparent repository
+at all as a result.
+
 One design-system item is now settled rather than open:
 
+- **A candidate chip states no relationship.** Review found the stepparent
+  candidate rendered in the marriage coral, which on a child's profile read as
+  the child's own spouse — the one chip in the app whose colour named a
+  relationship nobody had recorded. `PersonChip` gained a `Neutral` variant for
+  "a person, nothing asserted", which is what an offer is.
 - **Step took the dotted stroke the design system reserved for it, which narrows the dashed overload.** The PR 8 finding below stands — adoptive dashed-teal and the phantom dashed-grey still share a stroke — but the third variant did not join them: `PersonChip`'s step variant is dotted in `--step`, with an "(S)" mark beside the adoptive "(A)" so neither depends on colour or on telling two strokes apart at 11px. Both are pinned by computed-style assertions in `ShellLayoutTests`. **PR 10 still needs the decision about dashed** before it draws adoptive and phantom edges on the same canvas; it no longer needs to find room for a third.
 
 ### PR 10 — Full tree view, focus, and phantom nodes

@@ -67,6 +67,10 @@
         _busy = true;
         try
         {
+            // Captured before the write, because the review notice below asks
+            // whether this save changed it.
+            var before = _person?.DeathDate;
+
             var result = await People.UpdateAsync(Id, input);
 
             if (!result.IsSuccess)
@@ -84,16 +88,27 @@
 
             Toasts.Show($"{result.Value!.DisplayName} updated.");
 
-            // US-026's third criterion. Raised after the save rather than as part
-            // of it, and as a warning rather than a correction: the app cannot
-            // tell whether the marriage or the death date is the one that is now
-            // wrong, and quietly rewriting a recorded end date would overwrite
-            // research with an inference. Silent when there is nothing to review,
-            // which is every ordinary edit.
-            var review = await Marriages.DescribeEndDateReviewAsync(Id);
-            if (review is not null)
+            // US-026's third criterion, and it asks specifically about a death date
+            // that was *updated*. Raised after the save rather than as part of it,
+            // and as a warning rather than a correction: the app cannot tell
+            // whether the marriage or the death date is the one that is now wrong,
+            // and quietly rewriting a recorded end date would overwrite research
+            // with an inference.
+            //
+            // Gated on the date actually changing, which is this page's business
+            // rather than the service's — the service is handed one person and
+            // cannot see what they looked like a moment ago. Without the gate the
+            // notice fired on every save of anybody dead with an ongoing marriage,
+            // opening "X is now recorded as dying in 1991" after an edit that
+            // touched a spelling, which is a false sentence and trains people to
+            // dismiss the toast that matters.
+            if (!Equals(before, result.Value!.DeathDate))
             {
-                Toasts.Show(review, ToastLevel.Warning);
+                var review = await Marriages.DescribeEndDateReviewAsync(Id);
+                if (review is not null)
+                {
+                    Toasts.Show(review, ToastLevel.Warning);
+                }
             }
 
             Nav.NavigateTo($"people/{Id}");

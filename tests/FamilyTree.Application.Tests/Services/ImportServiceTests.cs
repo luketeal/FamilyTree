@@ -879,24 +879,48 @@ public class ImportServiceTests
     /// A blended family as a file: two spouses, a child of one of them, and the
     /// label saying the other is their stepparent.
     /// </summary>
-    private static string BlendedFile(string? labelMarriageId = MarriageId) => File($$"""
-        "people": [
-            {"id": "{{AdaId}}", "firstName": "Ada", "lastName": "Lovelace"},
-            {"id": "{{GraceId}}", "firstName": "Grace", "lastName": "Hopper"},
-            {"id": "{{ChildId}}", "firstName": "Mary", "lastName": "Lovelace"}
-        ],
-        "biologicalLinks": [
-            {"id": "{{LinkId}}", "parentId": "{{AdaId}}", "childId": "{{ChildId}}"}
-        ],
-        "marriages": [
-            {"id": "{{MarriageId}}", "spouse1Id": "{{AdaId}}", "spouse2Id": "{{GraceId}}",
-             "startDate": {"year": 1835, "isApproximate": false} }
-        ],
-        "stepparentLinks": [
-            {"id": "{{StepId}}", "stepparentId": "{{GraceId}}", "stepchildId": "{{ChildId}}",
-             "marriageId": "{{labelMarriageId}}" }
-        ]
-        """);
+    private static string BlendedFile(
+        string? labelMarriageId = MarriageId,
+        bool twice = false,
+        bool viaSomebodyElsesMarriage = false)
+    {
+        // A second label for the same pair, for the deduplication case.
+        var duplicate = twice
+            ? $$"""
+                ,
+                {"id": "99999999-9999-9999-9999-999999999999", "stepparentId": "{{GraceId}}",
+                 "stepchildId": "{{ChildId}}", "marriageId": "{{labelMarriageId}}" }
+                """
+            : string.Empty;
+
+        // The biological link is what makes Ada a parent of Mary, and so what makes
+        // the marriage capable of justifying the label. Dropping it is how a file
+        // expresses the claim LabelAsync refuses to create.
+        var parentLink = viaSomebodyElsesMarriage
+            ? string.Empty
+            : $$"""
+                "biologicalLinks": [
+                    {"id": "{{LinkId}}", "parentId": "{{AdaId}}", "childId": "{{ChildId}}"}
+                ],
+                """;
+
+        return File($$"""
+            "people": [
+                {"id": "{{AdaId}}", "firstName": "Ada", "lastName": "Lovelace"},
+                {"id": "{{GraceId}}", "firstName": "Grace", "lastName": "Hopper"},
+                {"id": "{{ChildId}}", "firstName": "Mary", "lastName": "Lovelace"}
+            ],
+            {{parentLink}}
+            "marriages": [
+                {"id": "{{MarriageId}}", "spouse1Id": "{{AdaId}}", "spouse2Id": "{{GraceId}}",
+                 "startDate": {"year": 1835, "isApproximate": false} }
+            ],
+            "stepparentLinks": [
+                {"id": "{{StepId}}", "stepparentId": "{{GraceId}}", "stepchildId": "{{ChildId}}",
+                 "marriageId": "{{labelMarriageId}}" }{{duplicate}}
+            ]
+            """);
+    }
 
     [Fact]
     public async Task ImportsAStepparentLabel()
@@ -993,25 +1017,53 @@ public class ImportServiceTests
     [Fact]
     public async Task DropsASecondLabelForTheSamePair()
     {
-        var result = await CreateService().ImportAsync(File($$"""
-            "people": [
-                {"id": "{{AdaId}}", "firstName": "Ada", "lastName": "Lovelace"},
-                {"id": "{{GraceId}}", "firstName": "Grace", "lastName": "Hopper"}
-            ],
-            "marriages": [
-                {"id": "{{MarriageId}}", "spouse1Id": "{{AdaId}}", "spouse2Id": "{{GraceId}}",
-                 "startDate": {"year": 1835, "isApproximate": false} }
-            ],
-            "stepparentLinks": [
-                {"id": "{{StepId}}", "stepparentId": "{{GraceId}}", "stepchildId": "{{AdaId}}",
-                 "marriageId": "{{MarriageId}}" },
-                {"id": "99999999-9999-9999-9999-999999999999", "stepparentId": "{{GraceId}}",
-                 "stepchildId": "{{AdaId}}", "marriageId": "{{MarriageId}}" }
-            ]
-            """), ImportConflictResolution.Overwrite);
+        var result = await CreateService().ImportAsync(
+            BlendedFile(twice: true), ImportConflictResolution.Overwrite);
 
         Assert.Single(_tree.StepparentLinks);
         Assert.Contains(result.Value!.Warnings, w => w.Contains("stepparent and stepchild"));
+    }
+
+    // A file is the one way into this store that never went through
+    // StepparentService, so import has to apply the same rule: the marriage a label
+    // rests on must involve a parent of the child. Without it a claim the app
+    // refuses to create could be imported and then rendered, naming whichever
+    // spouse came first as the parent it runs through.
+    [Fact]
+    public async Task DropsALabelWhoseMarriageInvolvesNoParentOfTheStepchild()
+    {
+        var result = await CreateService().ImportAsync(
+            BlendedFile(viaSomebodyElsesMarriage: true), ImportConflictResolution.Overwrite);
+
+        Assert.True(result.IsSuccess, result.Error);
+        Assert.Empty(_tree.StepparentLinks);
+        Assert.Contains(result.Value!.Warnings, w => w.Contains("not involve a parent"));
+    }
+
+    [Fact]
+    public async Task DropsALabelNamingSomebodyWhoIsNotInItsMarriage()
+    {
+        var result = await CreateService().ImportAsync(File($$"""
+            "people": [
+                {"id": "{{AdaId}}", "firstName": "Ada", "lastName": "Lovelace"},
+                {"id": "{{GraceId}}", "firstName": "Grace", "lastName": "Hopper"},
+                {"id": "{{ChildId}}", "firstName": "Mary", "lastName": "Lovelace"}
+            ],
+            "biologicalLinks": [
+                {"id": "{{LinkId}}", "parentId": "{{AdaId}}", "childId": "{{ChildId}}"}
+            ],
+            "marriages": [
+                {"id": "{{MarriageId}}", "spouse1Id": "{{AdaId}}", "spouse2Id": "{{ChildId}}",
+                 "startDate": {"year": 1835, "isApproximate": false} }
+            ],
+            "stepparentLinks": [
+                {"id": "{{StepId}}", "stepparentId": "{{GraceId}}", "stepchildId": "{{ChildId}}",
+                 "marriageId": "{{MarriageId}}" }
+            ]
+            """), ImportConflictResolution.Overwrite);
+
+        Assert.Empty(_tree.StepparentLinks);
+        Assert.Contains(result.Value!.Warnings, w => w.Contains("not in the marriage"));
     }
 
     // A label cannot stand on its own: it names a marriage that would have to come

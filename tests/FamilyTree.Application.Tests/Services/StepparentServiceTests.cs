@@ -23,8 +23,7 @@ public class StepparentServiceTests
 
     private MarriageService CreateMarriageService() => new(
         _tree.PersonRepository,
-        _tree.MarriageRepository,
-        _tree.StepparentRepository);
+        _tree.MarriageRepository);
 
     private static Person Someone(string first, string last = "Whitfield", int? birthYear = null)
     {
@@ -314,6 +313,57 @@ public class StepparentServiceTests
 
         Assert.DoesNotContain(home.Stepparent.Id, bio.Value!.Parents.Select(p => p.Person.Id));
         Assert.Empty(adopt.Value!.Parents);
+    }
+
+    // The label's justification survives the parent link that led to it. Reading
+    // only the parents' marriages made the row vanish from this profile while it
+    // still showed, with a Remove button, on the stepparent's — two profiles
+    // disagreeing about one record.
+    [Fact]
+    public async Task KeepsTheStepparentRowWhenTheParentLinkIsRemoved()
+    {
+        var home = Household();
+        await CreateService().LabelAsync(home.Child.Id, home.Stepparent.Id, home.Marriage.Id);
+
+        _tree.BiologicalLinks.RemoveAll(l => l.ChildId == home.Child.Id);
+
+        var result = await CreateService().GetForPersonAsync(home.Child.Id);
+
+        Assert.True(result.IsSuccess, result.Error);
+        var row = Assert.Single(result.Value!.Stepparents);
+        Assert.Equal(home.Stepparent.Id, row.Person.Id);
+        Assert.Equal("Arthur Whitfield", row.ViaName);
+    }
+
+    // The other end of the same record, which always worked — asserted alongside so
+    // that a regression on either side shows up as the two disagreeing again.
+    [Fact]
+    public async Task BothProfilesAgreeAfterTheParentLinkIsRemoved()
+    {
+        var home = Household();
+        await CreateService().LabelAsync(home.Child.Id, home.Stepparent.Id, home.Marriage.Id);
+
+        _tree.BiologicalLinks.RemoveAll(l => l.ChildId == home.Child.Id);
+
+        var childs = await CreateService().GetForPersonAsync(home.Child.Id);
+        var stepparents = await CreateService().GetForPersonAsync(home.Stepparent.Id);
+
+        Assert.Single(childs.Value!.Stepparents);
+        Assert.Single(stepparents.Value!.Stepchildren);
+    }
+
+    // Removing the parent link removes the reason to offer anybody, so the
+    // candidate list empties even though the label already applied stays.
+    [Fact]
+    public async Task StopsOfferingCandidatesWhenTheParentLinkIsRemoved()
+    {
+        var home = Household();
+
+        _tree.BiologicalLinks.RemoveAll(l => l.ChildId == home.Child.Id);
+
+        var result = await CreateService().GetForPersonAsync(home.Child.Id);
+
+        Assert.Empty(result.Value!.Candidates);
     }
 
     // A label naming a marriage this tree does not have renders nowhere, so the row

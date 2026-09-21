@@ -173,6 +173,12 @@ public sealed class BrowserMarriageRepository(IndexedDbStore store) : IMarriageR
             .ToList();
     }
 
+    public async Task<IReadOnlyList<Marriage>> GetByIdsAsync(
+        IReadOnlyCollection<Guid> ids, CancellationToken ct = default) =>
+        (await store.GetManyAsync<MarriageRecord>(IndexedDbStore.Marriages, ids, ct))
+        .Select(m => m.ToDomain())
+        .ToList();
+
     public Task AddAsync(Marriage marriage, CancellationToken ct = default) =>
         store.PutAsync(IndexedDbStore.Marriages, MarriageRecord.From(marriage), ct);
 
@@ -183,7 +189,7 @@ public sealed class BrowserMarriageRepository(IndexedDbStore store) : IMarriageR
     /// One transaction over both stores, so a removed marriage cannot leave a
     /// stepparent label behind pointing at it.
     /// </summary>
-    public Task DeleteAsync(Guid id, CancellationToken ct = default) =>
+    public Task<int> DeleteAsync(Guid id, CancellationToken ct = default) =>
         store.DeleteWithDependentsAsync<MarriageRecord>(
             IndexedDbStore.Marriages, id, IndexedDbStore.StepparentLinks, MarriageIdKey, ct: ct);
 
@@ -191,7 +197,7 @@ public sealed class BrowserMarriageRepository(IndexedDbStore store) : IMarriageR
     /// The old record out, the new one in, and the old record's stepparent labels
     /// with it — all in one transaction.
     /// </summary>
-    public Task ReplaceSpouseAsync(
+    public Task<int> ReplaceSpouseAsync(
         Guid oldMarriageId, Marriage replacement, CancellationToken ct = default) =>
         store.DeleteWithDependentsAsync(
             IndexedDbStore.Marriages,
@@ -250,6 +256,6 @@ public sealed class BrowserStepparentRelationshipRepository(IndexedDbStore store
     public Task AddAsync(StepparentRelationship link, CancellationToken ct = default) =>
         store.PutAsync(IndexedDbStore.StepparentLinks, StepparentLinkRecord.From(link), ct);
 
-    public Task DeleteAsync(Guid id, CancellationToken ct = default) =>
-        store.DeleteAsync(IndexedDbStore.StepparentLinks, id, ct);
+    public Task<bool> DeleteAsync(Guid id, CancellationToken ct = default) =>
+        store.DeleteIfPresentAsync(IndexedDbStore.StepparentLinks, id, ct);
 }

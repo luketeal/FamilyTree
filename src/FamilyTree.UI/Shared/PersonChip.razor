@@ -26,6 +26,19 @@ else
         Adoptive,
         Marriage,
         Step,
+
+        /// <summary>
+        /// A person the subject has no recorded relationship with — a stepparent
+        /// candidate, so far only an offer.
+        /// </summary>
+        /// <remarks>
+        /// Plain on purpose. Every other variant's colour states a relationship,
+        /// and a candidate rendered in the marriage coral read as somebody the
+        /// subject is married to: on a child's profile their parent's spouse
+        /// looked exactly like their own. The row's words carry the connection;
+        /// the chip is not entitled to assert one.
+        /// </remarks>
+        Neutral,
         Phantom,
     }
 
@@ -48,6 +61,7 @@ else
         ChipVariant.Adoptive => $"{Label} — adoptive",
         ChipVariant.Marriage => $"{Label} — marriage or partnership",
         ChipVariant.Step => $"{Label} — step relationship",
+        ChipVariant.Neutral => Label,
         ChipVariant.Phantom => "Unidentified person",
         _ => Label,
     };

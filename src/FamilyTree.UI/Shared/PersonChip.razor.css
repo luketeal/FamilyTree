@@ -51,6 +51,14 @@ a.chip:hover {
     background: var(--coral-bg);
 }
 
+/* No relationship asserted: the base chip, stated explicitly so that a later
+   change to .chip--biological cannot silently restyle a candidate into looking
+   like a relationship the subject has. */
+.chip--neutral {
+    border-color: var(--line2);
+    background: var(--paper);
+}
+
 /* Dotted and neutral, as the design system reserved for step relationships.
    Deliberately not dashed: adoptive already owns the dash in teal and the
    phantom slot owns it in grey, and a third dashed variant would have made the

@@ -74,6 +74,9 @@ public abstract class ShellTestContext : BunitContext
         Marriages.Setup(r => r.GetForPeopleAsync(
                 It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync([]);
+        Marriages.Setup(r => r.GetByIdsAsync(
+                It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
         Stepparents.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync([]);
         Stepparents.Setup(r => r.GetForStepchildAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync([]);

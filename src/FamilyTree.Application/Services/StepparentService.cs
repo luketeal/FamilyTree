@@ -65,10 +65,28 @@ public sealed class StepparentService(
         var relevant = await marriages.GetForPeopleAsync([.. parentIds, personId], ct);
         var marriagesById = relevant.ToDictionary(m => m.Id);
 
+        // Then the marriages the labels themselves name, for the ones that set
+        // does not reach. Removing the parent link a label ran through leaves the
+        // label and its marriage both intact and the marriage unreachable from
+        // here — and the row vanished from this profile while still showing, with
+        // a Remove button, on the stepparent's. Two profiles disagreeing about one
+        // record is the shape the marriage cascade and the import filter exist to
+        // prevent; this is the same shape reached down the other leg.
+        var named = asStepchild.Concat(asStepparent)
+            .Select(l => l.MarriageId)
+            .Where(id => !marriagesById.ContainsKey(id))
+            .Distinct()
+            .ToList();
+
+        foreach (var marriage in await marriages.GetByIdsAsync(named, ct))
+        {
+            marriagesById[marriage.Id] = marriage;
+        }
+
         var wanted = asStepchild.Select(l => l.StepparentId)
             .Concat(asStepparent.Select(l => l.StepchildId))
             .Concat(parentIds)
-            .Concat(relevant.SelectMany(m => new[] { m.Spouse1Id, m.Spouse2Id }))
+            .Concat(marriagesById.Values.SelectMany(m => new[] { m.Spouse1Id, m.Spouse2Id }))
             .Append(personId)
             .Distinct()
             .ToList();
@@ -83,6 +101,8 @@ public sealed class StepparentService(
         return Result<StepFamilyDto>.Success(new StepFamilyDto(
             Stepparents: Rows(asStepchild, l => l.StepparentId, marriagesById, byId),
             Stepchildren: Rows(asStepparent, l => l.StepchildId, marriagesById, byId),
+            // Candidates come from the parents' marriages alone — the extra records
+            // fetched above justify labels that already exist and are not offers.
             Candidates: Candidates(personId, parentIds, relevant, asStepchild, byId)));
     }
 
@@ -201,14 +221,13 @@ public sealed class StepparentService(
     /// </remarks>
     public async Task<Result> RemoveAsync(Guid linkId, CancellationToken ct = default)
     {
-        var all = await stepparents.GetAllAsync(ct);
-        if (all.All(l => l.Id != linkId))
-        {
-            return Result.Failure("That stepparent label is no longer recorded.");
-        }
-
-        await stepparents.DeleteAsync(linkId, ct);
-        return Result.Success();
+        // The repository answers "was it there" from the same call that removes
+        // it. Establishing that by reading every label and looking for one id was
+        // a whole-collection read on a mutation path — free here, a request of its
+        // own once this interface is backed by HTTP.
+        return await stepparents.DeleteAsync(linkId, ct)
+            ? Result.Success()
+            : Result.Failure("That stepparent label is no longer recorded.");
     }
 
     /// <summary>
@@ -241,6 +260,17 @@ public sealed class StepparentService(
             // marriage who is not the stepparent. Named in the row because
             // "stepmother" on its own does not say whose spouse she is, and with
             // two marriages in play that is the only thing distinguishing the rows.
+            //
+            // A label whose stepparent is in neither side of its marriage is
+            // dropped rather than described. LabelAsync refuses to create one and
+            // import now refuses to carry one, but picking a spouse anyway would
+            // have meant a row naming somebody at random as the parent it runs
+            // through — a wrong answer where no answer exists.
+            if (marriage.Spouse1Id != link.StepparentId && marriage.Spouse2Id != link.StepparentId)
+            {
+                continue;
+            }
+
             var viaId = marriage.Spouse1Id == link.StepparentId
                 ? marriage.Spouse2Id
                 : marriage.Spouse1Id;

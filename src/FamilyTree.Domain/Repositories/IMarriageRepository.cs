@@ -21,6 +21,20 @@ public interface IMarriageRepository
     Task<IReadOnlyList<Marriage>> GetForPeopleAsync(
         IReadOnlyCollection<Guid> personIds, CancellationToken ct = default);
 
+    /// <summary>
+    /// Marriages by id, in one read.
+    /// </summary>
+    /// <remarks>
+    /// A stepparent label names the marriage that justifies it, and that marriage
+    /// is not always reachable from the people a profile already knows about: if
+    /// the parent link the label ran through is removed, the marriage is still
+    /// there and still the label's justification, but nothing on the stepchild's
+    /// profile points at it any more. Reading them by id is what keeps the two
+    /// ends of that record agreeing about it.
+    /// </remarks>
+    Task<IReadOnlyList<Marriage>> GetByIdsAsync(
+        IReadOnlyCollection<Guid> ids, CancellationToken ct = default);
+
     Task AddAsync(Marriage marriage, CancellationToken ct = default);
     Task UpdateAsync(Marriage marriage, CancellationToken ct = default);
 
@@ -42,7 +56,8 @@ public interface IMarriageRepository
     /// to keep available.
     /// </para>
     /// </remarks>
-    Task DeleteAsync(Guid id, CancellationToken ct = default);
+    /// <returns>How many stepparent labels went with it.</returns>
+    Task<int> DeleteAsync(Guid id, CancellationToken ct = default);
 
     /// <summary>
     /// Swaps a marriage record for one naming a different spouse, as a single
@@ -64,5 +79,7 @@ public interface IMarriageRepository
     /// disappearing unannounced is the silent loss this project treats as a bug.
     /// </para>
     /// </remarks>
-    Task ReplaceSpouseAsync(Guid oldMarriageId, Marriage replacement, CancellationToken ct = default);
+    /// <returns>How many stepparent labels went with the old record.</returns>
+    Task<int> ReplaceSpouseAsync(
+        Guid oldMarriageId, Marriage replacement, CancellationToken ct = default);
 }

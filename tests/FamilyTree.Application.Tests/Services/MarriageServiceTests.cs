@@ -17,8 +17,7 @@ public class MarriageServiceTests
 
     private MarriageService CreateService() => new(
         _tree.PersonRepository,
-        _tree.MarriageRepository,
-        _tree.StepparentRepository);
+        _tree.MarriageRepository);
 
     private static Person Someone(
         string first, string last = "Whitfield", int? birthYear = null, int? deathYear = null)
@@ -215,6 +214,103 @@ public class MarriageServiceTests
         Assert.True(result.IsSuccess, result.Error);
     }
 
+    // US-021 forbids a second *active* marriage, not a second marriage. A couple
+    // married now may turn out to have married and divorced earlier, and refusing
+    // that record told them to end a marriage that is not over.
+    [Fact]
+    public async Task AllowsAnEarlierEndedMarriageForACoupleWhoAreMarriedNow()
+    {
+        var arthur = Someone("Arthur");
+        var margaret = Someone("Margaret");
+        _tree.With(arthur, margaret).With(Married(arthur, margaret, 1990));
+
+        var result = await CreateService().AddAsync(
+            arthur.Id, margaret.Id, PartialDate.FromYear(1970),
+            endDate: PartialDate.FromYear(1975), endReason: MarriageEndReason.Divorce);
+
+        Assert.True(result.IsSuccess, result.Error);
+        Assert.Equal(2, _tree.Marriages.Count);
+    }
+
+    // ---- Reopening an ended marriage (US-021 via the edit path) ----
+
+    // The hole the replace path's docstring names, in the one path that did not
+    // run the guard: clearing the end date on an old record while a current one
+    // exists left two current marriages between the same pair, two "Current"
+    // badges, and Current reporting neither.
+    [Fact]
+    public async Task RefusesToReopenAnEndedMarriageWhileAnotherIsCurrent()
+    {
+        var arthur = Someone("Arthur");
+        var margaret = Someone("Margaret");
+        var ended = Married(arthur, margaret, 1970, 1975, MarriageEndReason.Divorce);
+        _tree.With(arthur, margaret).With(ended).With(Married(arthur, margaret, 1990));
+
+        var result = await CreateService().UpdateAsync(
+            ended.Id, PartialDate.FromYear(1970), null, null, null,
+            RelationshipCertainty.Confirmed);
+
+        Assert.False(result.IsSuccess);
+        Assert.Contains("already have a current marriage", result.Error);
+        Assert.False(_tree.Marriages.Single(m => m.Id == ended.Id).IsOngoing);
+    }
+
+    [Fact]
+    public async Task AllowsReopeningAnEndedMarriageWhenNoOtherIsCurrent()
+    {
+        var arthur = Someone("Arthur");
+        var margaret = Someone("Margaret");
+        var ended = Married(arthur, margaret, 1970, 1975, MarriageEndReason.Divorce);
+        _tree.With(arthur, margaret).With(ended);
+
+        var result = await CreateService().UpdateAsync(
+            ended.Id, PartialDate.FromYear(1970), null, null, null,
+            RelationshipCertainty.Confirmed);
+
+        Assert.True(result.IsSuccess, result.Error);
+        Assert.True(_tree.Marriages.Single().IsOngoing);
+    }
+
+    // Editing an ended record's dates is not reopening it, so the duplicate rule
+    // must not fire — otherwise correcting a divorce year would be refused because
+    // the couple remarried.
+    [Fact]
+    public async Task AllowsEditingAnEndedMarriageWhileAnotherIsCurrent()
+    {
+        var arthur = Someone("Arthur");
+        var margaret = Someone("Margaret");
+        var ended = Married(arthur, margaret, 1970, 1975, MarriageEndReason.Divorce);
+        _tree.With(arthur, margaret).With(ended).With(Married(arthur, margaret, 1990));
+
+        var result = await CreateService().UpdateAsync(
+            ended.Id, PartialDate.FromYear(1970), null,
+            PartialDate.FromYear(1976), MarriageEndReason.Divorce,
+            RelationshipCertainty.Confirmed);
+
+        Assert.True(result.IsSuccess, result.Error);
+        Assert.Equal(1976, _tree.Marriages.Single(m => m.Id == ended.Id).EndDate!.Year);
+    }
+
+    // Ending a marriage must keep working when a spouse's record has since been
+    // deleted — it is part of how somebody cleans that up — so the edit path does
+    // not inherit the add path's existence checks.
+    [Fact]
+    public async Task EndsAMarriageWhoseSpouseRecordIsGone()
+    {
+        var arthur = Someone("Arthur");
+        var margaret = Someone("Margaret");
+        var marriage = Married(arthur, margaret, 1946);
+        _tree.With(arthur).With(marriage);
+
+        var result = await CreateService().UpdateAsync(
+            marriage.Id, PartialDate.FromYear(1946), null,
+            PartialDate.FromYear(1973), MarriageEndReason.DeathOfSpouse,
+            RelationshipCertainty.Confirmed);
+
+        Assert.True(result.IsSuccess, result.Error);
+        Assert.Equal(1973, _tree.Marriages.Single().EndDate!.Year);
+    }
+
     // ---- The end-after-start rule (US-021, US-023, US-025) ----
 
     [Fact]
@@ -229,8 +325,59 @@ public class MarriageServiceTests
             endDate: PartialDate.FromYear(1940), endReason: MarriageEndReason.Divorce);
 
         Assert.False(result.IsSuccess);
-        Assert.Contains("cannot end in 1940", result.Error);
+        Assert.Contains("cannot end on 1940", result.Error);
         Assert.Empty(_tree.Marriages);
+    }
+
+    // Year-only leniency is not licence to accept a January end on a June start.
+    // The year comparison alone did, against US-023 and US-025's "on or after" —
+    // and ImportService compares these in full, so the record tripped its warning
+    // on its own round trip.
+    [Fact]
+    public async Task RejectsAMarriageThatEndsEarlierInTheYearThanItStarted()
+    {
+        var arthur = Someone("Arthur");
+        var margaret = Someone("Margaret");
+        _tree.With(arthur, margaret);
+
+        var result = await CreateService().AddAsync(
+            arthur.Id, margaret.Id, PartialDate.FromYearMonthDay(1970, 6, 15),
+            endDate: PartialDate.FromYearMonthDay(1970, 1, 3),
+            endReason: MarriageEndReason.Annulment);
+
+        Assert.False(result.IsSuccess);
+        Assert.Empty(_tree.Marriages);
+    }
+
+    [Fact]
+    public async Task AcceptsAMarriageThatEndsLaterInTheYearThanItStarted()
+    {
+        var arthur = Someone("Arthur");
+        var margaret = Someone("Margaret");
+        _tree.With(arthur, margaret);
+
+        var result = await CreateService().AddAsync(
+            arthur.Id, margaret.Id, PartialDate.FromYearMonthDay(1970, 1, 3),
+            endDate: PartialDate.FromYearMonthDay(1970, 6, 15),
+            endReason: MarriageEndReason.Annulment);
+
+        Assert.True(result.IsSuccess, result.Error);
+    }
+
+    // The leniency itself: a year-only pair says nothing about the months, so
+    // same-year stays acceptable rather than being refused on a guess.
+    [Fact]
+    public async Task AcceptsASameYearPairWhenOnlyOneSideCarriesAMonth()
+    {
+        var arthur = Someone("Arthur");
+        var margaret = Someone("Margaret");
+        _tree.With(arthur, margaret);
+
+        var result = await CreateService().AddAsync(
+            arthur.Id, margaret.Id, PartialDate.FromYearMonth(1970, 6),
+            endDate: PartialDate.FromYear(1970), endReason: MarriageEndReason.Annulment);
+
+        Assert.True(result.IsSuccess, result.Error);
     }
 
     // Same-year is allowed: an annulment within months of the wedding is ordinary,

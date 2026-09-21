@@ -644,6 +644,12 @@
     {
         _person = person;
         _error = null;
+
+        // The offer belongs to whoever was chosen when the end reason was picked.
+        // Changing the spouse and stepping forward otherwise left it showing the
+        // previous person's death year under the new person's form — a date
+        // presented as theirs that was somebody else's.
+        _deathSuggestion = null;
         return Task.CompletedTask;
     }
 

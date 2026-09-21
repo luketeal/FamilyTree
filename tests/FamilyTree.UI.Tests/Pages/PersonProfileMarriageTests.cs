@@ -96,14 +96,17 @@ public class PersonProfileMarriageTests : ShellTestContext
                 It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyCollection<Guid> ids, CancellationToken _) =>
                 _marriages.Where(m => ids.Contains(m.Spouse1Id) || ids.Contains(m.Spouse2Id)).ToList());
+        Marriages.Setup(r => r.GetByIdsAsync(
+                It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyCollection<Guid> ids, CancellationToken _) =>
+                _marriages.Where(m => ids.Contains(m.Id)).ToList());
         // Writes go through the same lists, so a row removed by a click is a row
         // gone from the next render rather than one the mock still returns.
         Marriages.Setup(r => r.DeleteAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
-            .Returns((Guid id, CancellationToken _) =>
+            .ReturnsAsync((Guid id, CancellationToken _) =>
             {
                 _marriages.RemoveAll(m => m.Id == id);
-                _steps.RemoveAll(l => l.MarriageId == id);
-                return Task.CompletedTask;
+                return _steps.RemoveAll(l => l.MarriageId == id);
             });
 
         Stepparents.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync(_steps);
@@ -121,11 +124,7 @@ public class PersonProfileMarriageTests : ShellTestContext
                 return Task.CompletedTask;
             });
         Stepparents.Setup(r => r.DeleteAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
-            .Returns((Guid id, CancellationToken _) =>
-            {
-                _steps.RemoveAll(l => l.Id == id);
-                return Task.CompletedTask;
-            });
+            .ReturnsAsync((Guid id, CancellationToken _) => _steps.RemoveAll(l => l.Id == id) > 0);
 
         return Render<PersonProfilePage>(p => p.Add(c => c.Id, subject.Id));
     }
@@ -436,7 +435,7 @@ public class PersonProfileMarriageTests : ShellTestContext
         await cut.Find("[data-testid='confirm-remove-step']").ClickAsync(new());
 
         Assert.Empty(_steps);
-        Assert.Single(_marriages.Where(m => m.Id == second.Id));
+        Assert.Single(_marriages, m => m.Id == second.Id);
     }
 
     // US-038's last criterion, through the UI: removing the marriage record takes

@@ -48,5 +48,14 @@ public interface IStepparentRelationshipRepository
 
     Task AddAsync(StepparentRelationship link, CancellationToken ct = default);
 
-    Task DeleteAsync(Guid id, CancellationToken ct = default);
+    /// <summary>
+    /// Removes a label, reporting whether it was there.
+    /// </summary>
+    /// <remarks>
+    /// The answer rather than void, so that "no such label" does not cost a read
+    /// of the whole set to establish — which is what checking an id against
+    /// <see cref="GetAllAsync"/> amounts to, and one request too many once this
+    /// interface is backed by HTTP.
+    /// </remarks>
+    Task<bool> DeleteAsync(Guid id, CancellationToken ct = default);
 }

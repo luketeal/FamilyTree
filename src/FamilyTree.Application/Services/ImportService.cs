@@ -227,7 +227,8 @@ public sealed class ImportService(
         // to remove. Runs after the marriage filters above, so a label is judged
         // against the marriages actually being written rather than the ones the
         // file offered.
-        stepList = Justified(stepList, marriageList, warnings, out var stepUnjustified);
+        stepList = Justified(
+            stepList, marriageList, bioLinks, adoptiveLinks, warnings, out var stepUnjustified);
 
         // The two-parent cap, which nothing else on this path enforces. A file can
         // name three biological parents for one child, and until this ran the
@@ -481,29 +482,68 @@ public sealed class ImportService(
     /// marriage that justifies calling one the other's stepparent. Both matter, and
     /// the message has to say which is missing — "refers to a marriage that is not
     /// in the tree" is actionable in a way that "refers to person X" would not be.
+    /// <para>
+    /// It checks the same thing <see cref="StepparentService.LabelAsync"/> checks
+    /// before creating one: the marriage exists, the stepparent is in it, and the
+    /// other spouse is a parent of the child. A file is the one way into this store
+    /// that never went through that service, so without the last two a claim the app
+    /// refuses to make could be imported and then rendered — deriving "via" from
+    /// whichever spouse came first, which names a person at random.
+    /// </para>
     /// </remarks>
     private static IReadOnlyList<StepparentRelationship> Justified(
         IReadOnlyList<StepparentRelationship> labels,
         IReadOnlyList<Marriage> marriages,
+        IReadOnlyList<BiologicalParentChild> biological,
+        IReadOnlyList<AdoptiveParentChild> adoptive,
         WarningLog warnings,
         out List<StepparentRelationship> dropped)
     {
-        var marriageIds = marriages.Select(m => m.Id).ToHashSet();
+        var marriagesById = marriages.ToDictionary(m => m.Id);
+
+        // Parents of both kinds, since US-038 counts either.
+        var parentsOf = biological
+            .Select(l => (l.ChildId, l.ParentId))
+            .Concat(adoptive.Select(l => (l.ChildId, l.ParentId)))
+            .ToHashSet();
+
         var kept = new List<StepparentRelationship>(labels.Count);
         dropped = [];
 
         foreach (var label in labels)
         {
-            if (marriageIds.Contains(label.MarriageId))
+            if (!marriagesById.TryGetValue(label.MarriageId, out var marriage))
             {
-                kept.Add(label);
+                dropped.Add(label);
+                warnings.Add(
+                    $"Dropped a stepparent label: it rests on marriage {label.MarriageId}, "
+                    + "which is not in the tree.");
                 continue;
             }
 
-            dropped.Add(label);
-            warnings.Add(
-                $"Dropped a stepparent label: it rests on marriage {label.MarriageId}, "
-                + "which is not in the tree.");
+            if (marriage.Spouse1Id != label.StepparentId && marriage.Spouse2Id != label.StepparentId)
+            {
+                dropped.Add(label);
+                warnings.Add(
+                    "Dropped a stepparent label: the person it names is not in the marriage "
+                    + "it rests on.");
+                continue;
+            }
+
+            var otherSpouseId = marriage.Spouse1Id == label.StepparentId
+                ? marriage.Spouse2Id
+                : marriage.Spouse1Id;
+
+            if (!parentsOf.Contains((label.StepchildId, otherSpouseId)))
+            {
+                dropped.Add(label);
+                warnings.Add(
+                    "Dropped a stepparent label: the marriage it rests on does not involve "
+                    + "a parent of the stepchild.");
+                continue;
+            }
+
+            kept.Add(label);
         }
 
         return kept;
