@@ -258,9 +258,12 @@ asserted around rather than into:
   one.
 - **The end-after-start rule compared years alone**, so 15 June to 3 January
   passed while `ImportService` — which compares in full — warned about the same
-  record on its own round trip. Dates are now compared in full when both carry a
-  month, and by year when they do not, which keeps the leniency that exists for
-  year-only records without extending it to dated ones.
+  record on its own round trip. The pair is now compared at the coarsest
+  precision both dates actually carry, which keeps the leniency that exists for
+  vaguer records without extending it to dated ones. The first attempt at this
+  fix only moved the asymmetry down a level (see below), which is the more
+  useful lesson: the rule is not "compare in full when you can", it is "never
+  let a field one date leaves blank decide the answer".
 - **The US-026 review notice fired on every save**, opening "X is now recorded as
   dying in 1991" after an edit that touched a spelling. Whether a death date
   *changed* is the page's question rather than the service's, so `EditPersonPage`
@@ -291,6 +294,39 @@ One design-system item is now settled rather than open:
   relationship nobody had recorded. `PersonChip` gained a `Neutral` variant for
   "a person, nothing asserted", which is what an offer is.
 - **Step took the dotted stroke the design system reserved for it, which narrows the dashed overload.** The PR 8 finding below stands — adoptive dashed-teal and the phantom dashed-grey still share a stroke — but the third variant did not join them: `PersonChip`'s step variant is dotted in `--step`, with an "(S)" mark beside the adoptive "(A)" so neither depends on colour or on telling two strokes apart at 11px. Both are pinned by computed-style assertions in `ShellLayoutTests`. **PR 10 still needs the decision about dashed** before it draws adoptive and phantom edges on the same canvas; it no longer needs to find room for a third.
+
+**Two more the follow-up review caught**, both in the fixes above rather than in
+the original commit — which is the point worth keeping:
+
+- **The precision fix moved the asymmetry rather than removing it.** Comparing
+  two dates with `PartialDate.CompareTo` once both carried a month looked like
+  the general form of the year-only leniency, but `CompareTo` is a *sort order*:
+  it ranks "June 1970" before "15 June 1970", correctly for a list and wrongly
+  for a validity test, so a marriage begun on the 15th and annulled later that
+  month was refused. A sort order and a validity test are different questions,
+  and the same value object can answer one well and the other badly — so
+  `PartialDate` now answers both, and `IsKnownToPrecede` is the second: it
+  consults a field only when both dates name it, and a blank on either side
+  means "not known to be before" rather than "earlier".
+
+  Writing it out in `MarriageService` would have fixed the refusal and left the
+  original finding half-open. `ImportService` compares the same two dates, and
+  the whole point of that finding was the two paths disagreeing about one
+  record; a rule in the service would have had import warning about records the
+  form had just accepted, the same bug pointing the other way. Both call the
+  domain method now, and a test imports a record the form accepts and asserts
+  the warning stays silent.
+- **`Justified` ran before the two-parent cap.** A stepparent label is justified
+  by a parent link, so judging it against links the cap was about to drop kept a
+  label resting on a record that was never stored. Moving it last matches the
+  reasoning already written above `CapParentsPerChild`. Where one filter's input
+  is another's output, the order is part of the rule rather than a detail of the
+  method sequence.
+
+Both are narrow — one needs a month-precise pair, the other a hand-made file
+naming three biological parents — and neither was reachable from a green suite:
+the first had a test for the year/month pair and none for month/day, and the
+second needs a file no export writes.
 
 ### PR 10 — Full tree view, focus, and phantom nodes
 **Stories:** US-028 – US-031, US-054  

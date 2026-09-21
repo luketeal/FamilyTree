@@ -275,6 +275,87 @@ public sealed class PartialDateTests
         Assert.Equal(0, exact.CompareTo(approx));
     }
 
+    // ── IsKnownToPrecede ──────────────────────────────────────────────────
+
+    // The distinction from CompareTo, and the reason this method exists: a date
+    // that never named a day cannot be evidence about which day it was, so it is
+    // not "before" a dated one in the same month — however a sort has to order
+    // them. Asserted against CompareTo directly so the two cannot quietly
+    // converge.
+    [Fact]
+    public void IsKnownToPrecede_IsFalseForACoarserDateInTheSameMonth()
+    {
+        var monthOnly = PartialDate.FromYearMonth(1920, 6);
+        var dated = PartialDate.FromYearMonthDay(1920, 6, 15);
+
+        Assert.False(monthOnly.IsKnownToPrecede(dated));
+        Assert.True(monthOnly.CompareTo(dated) < 0);
+    }
+
+    [Fact]
+    public void IsKnownToPrecede_IsFalseForACoarserDateInTheSameYear()
+    {
+        var yearOnly = PartialDate.FromYear(1920);
+        var withMonth = PartialDate.FromYearMonth(1920, 6);
+
+        Assert.False(yearOnly.IsKnownToPrecede(withMonth));
+    }
+
+    [Fact]
+    public void IsKnownToPrecede_IsFalseForTheFinerDateAgainstTheCoarserOne()
+    {
+        var dated = PartialDate.FromYearMonthDay(1920, 6, 15);
+        var monthOnly = PartialDate.FromYearMonth(1920, 6);
+
+        Assert.False(dated.IsKnownToPrecede(monthOnly));
+    }
+
+    // Dropping to the shared precision must not drop the ordering itself.
+    [Fact]
+    public void IsKnownToPrecede_IsTrueForAnEarlierYear()
+    {
+        Assert.True(PartialDate.FromYear(1919).IsKnownToPrecede(PartialDate.FromYear(1920)));
+    }
+
+    [Fact]
+    public void IsKnownToPrecede_IsTrueForAnEarlierMonthWhateverTheDaysSay()
+    {
+        var january = PartialDate.FromYearMonth(1920, 1);
+        var june = PartialDate.FromYearMonthDay(1920, 6, 15);
+
+        Assert.True(january.IsKnownToPrecede(june));
+    }
+
+    [Fact]
+    public void IsKnownToPrecede_IsTrueForAnEarlierDayInTheSameMonth()
+    {
+        var third = PartialDate.FromYearMonthDay(1920, 6, 3);
+        var fifteenth = PartialDate.FromYearMonthDay(1920, 6, 15);
+
+        Assert.True(third.IsKnownToPrecede(fifteenth));
+    }
+
+    [Fact]
+    public void IsKnownToPrecede_IsFalseForTheSameDate()
+    {
+        var a = PartialDate.FromYearMonthDay(1920, 6, 15);
+        var b = PartialDate.FromYearMonthDay(1920, 6, 15);
+
+        Assert.False(a.IsKnownToPrecede(b));
+    }
+
+    // Approximation is a note about confidence, not a position on the calendar —
+    // the same stance CompareTo takes.
+    [Fact]
+    public void IsKnownToPrecede_IgnoresTheApproximateFlag()
+    {
+        var approx = PartialDate.FromYear(1920, isApproximate: true);
+        var exact = PartialDate.FromYear(1920);
+
+        Assert.False(approx.IsKnownToPrecede(exact));
+        Assert.False(exact.IsKnownToPrecede(approx));
+    }
+
     // ── Equals / GetHashCode ──────────────────────────────────────────────
 
     [Fact]

@@ -220,16 +220,6 @@ public sealed class ImportService(
         marriageList = Connected(marriageList, m => (m.Spouse1Id, m.Spouse2Id), "marriage", personIds, warnings, out var marriageOrphans);
         stepList = Connected(stepList, l => (l.StepparentId, l.StepchildId), "stepparent label", personIds, warnings, out var stepOrphans);
 
-        // A stepparent label is a claim about a marriage, so one naming a marriage
-        // the tree does not have asserts nothing. It would also be invisible:
-        // every profile row says which marriage put the stepparent there, so a
-        // label without one renders nowhere and nothing in the app could reach it
-        // to remove. Runs after the marriage filters above, so a label is judged
-        // against the marriages actually being written rather than the ones the
-        // file offered.
-        stepList = Justified(
-            stepList, marriageList, bioLinks, adoptiveLinks, warnings, out var stepUnjustified);
-
         // The two-parent cap, which nothing else on this path enforces. A file can
         // name three biological parents for one child, and until this ran the
         // import stored all three: the profile then showed three rows, no Add
@@ -245,6 +235,22 @@ public sealed class ImportService(
         // Runs after Connected so a link about to be dropped for naming nobody
         // cannot burn a slot that a valid one needed.
         bioLinks = CapParentsPerChild(bioLinks, finalPeople, warnings, out var bioOverCap);
+
+        // A stepparent label is a claim about a marriage, so one naming a marriage
+        // the tree does not have asserts nothing. It would also be invisible:
+        // every profile row says which marriage put the stepparent there, so a
+        // label without one renders nowhere and nothing in the app could reach it
+        // to remove. Runs after the marriage filters above, so a label is judged
+        // against the marriages actually being written rather than the ones the
+        // file offered.
+        //
+        // Last of the filters, and after the cap for the same reason the cap runs
+        // after Connected: a label is justified by a parent link, so judging it
+        // against links that are about to be dropped accepts a claim resting on a
+        // record the tree will not hold. A file naming three biological parents
+        // could otherwise keep a label whose via-parent was the one capped away.
+        stepList = Justified(
+            stepList, marriageList, bioLinks, adoptiveLinks, warnings, out var stepUnjustified);
 
         // One call, one transaction. Four repository writes could half-apply and
         // leave links pointing at people who were never stored — which is the
@@ -906,7 +912,9 @@ public sealed class ImportService(
                 continue;
             }
 
-            if (endDate is not null && endDate.CompareTo(startDate!) < 0)
+            // The same rule the marriage form applies, from the same method: a
+            // record this app accepts must not warn on its own round trip.
+            if (endDate is not null && endDate.IsKnownToPrecede(startDate!))
             {
                 warnings.Add($"Marriage {row.Id} ends before it starts. Imported as-is.");
             }

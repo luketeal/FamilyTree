@@ -869,6 +869,52 @@ public class ImportServiceTests
         Assert.Contains("nothing to import", result.Error);
     }
 
+    // The round trip that made the original year-only comparison a bug, now in
+    // the other direction: whatever the marriage form accepts, import must not
+    // then warn about. Both paths ask PartialDate the same question, and this is
+    // what fails if one of them stops.
+    [Fact]
+    public async Task DoesNotWarnAboutAMarriageEndingInTheMonthItStarted()
+    {
+        var result = await CreateService().ImportAsync(File($$"""
+            "people": [
+                {"id": "{{AdaId}}", "firstName": "Ada", "lastName": "Lovelace"},
+                {"id": "{{GraceId}}", "firstName": "Grace", "lastName": "Hopper"}
+            ],
+            "marriages": [
+                {"id": "{{MarriageId}}", "spouse1Id": "{{AdaId}}", "spouse2Id": "{{GraceId}}",
+                 "startDate": {"year": 1970, "month": 6, "day": 15, "isApproximate": false},
+                 "endDate": {"year": 1970, "month": 6, "isApproximate": false},
+                 "endReason": "Annulment" }
+            ]
+            """), ImportConflictResolution.Overwrite);
+
+        Assert.True(result.IsSuccess, result.Error);
+        Assert.Single(_tree.Marriages);
+        Assert.DoesNotContain(result.Value!.Warnings, w => w.Contains("ends before it starts"));
+    }
+
+    // And the warning still fires where it should.
+    [Fact]
+    public async Task WarnsAboutAMarriageThatEndsInAnEarlierMonth()
+    {
+        var result = await CreateService().ImportAsync(File($$"""
+            "people": [
+                {"id": "{{AdaId}}", "firstName": "Ada", "lastName": "Lovelace"},
+                {"id": "{{GraceId}}", "firstName": "Grace", "lastName": "Hopper"}
+            ],
+            "marriages": [
+                {"id": "{{MarriageId}}", "spouse1Id": "{{AdaId}}", "spouse2Id": "{{GraceId}}",
+                 "startDate": {"year": 1970, "month": 6, "day": 15, "isApproximate": false},
+                 "endDate": {"year": 1970, "month": 1, "isApproximate": false},
+                 "endReason": "Annulment" }
+            ]
+            """), ImportConflictResolution.Overwrite);
+
+        Assert.True(result.IsSuccess, result.Error);
+        Assert.Contains(result.Value!.Warnings, w => w.Contains("ends before it starts"));
+    }
+
     // ---- Stepparent labels (US-038), new to the file at schema version 3 ----
 
     private const string MarriageId = "66666666-6666-6666-6666-666666666666";
@@ -1064,6 +1110,86 @@ public class ImportServiceTests
 
         Assert.Empty(_tree.StepparentLinks);
         Assert.Contains(result.Value!.Warnings, w => w.Contains("not in the marriage"));
+    }
+
+    // The label's justification has to survive the same trimming its evidence
+    // does. A file may name three biological parents for one child; the third is
+    // capped away, and a label resting on the capped parent's marriage is then
+    // justified by a link that was never stored. Judging the label before the cap
+    // let it through, leaving a stepparent row whose "via" names somebody the tree
+    // does not record as a parent at all.
+    [Fact]
+    public async Task DropsALabelJustifiedOnlyByAParentLinkTheCapRemoved()
+    {
+        var result = await CreateService().ImportAsync(File($$"""
+            "people": [
+                {"id": "{{AdaId}}", "firstName": "Ada", "lastName": "Lovelace"},
+                {"id": "{{GraceId}}", "firstName": "Grace", "lastName": "Hopper"},
+                {"id": "{{ChildId}}", "firstName": "Mary", "lastName": "Lovelace"},
+                {"id": "55555555-5555-5555-5555-555555555555", "firstName": "Anne", "lastName": "Byron"},
+                {"id": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", "firstName": "Judith", "lastName": "Milbanke"}
+            ],
+            "biologicalLinks": [
+                {"id": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+                 "parentId": "55555555-5555-5555-5555-555555555555", "childId": "{{ChildId}}"},
+                {"id": "cccccccc-cccc-cccc-cccc-cccccccccccc",
+                 "parentId": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", "childId": "{{ChildId}}"},
+                {"id": "{{LinkId}}", "parentId": "{{AdaId}}", "childId": "{{ChildId}}"}
+            ],
+            "marriages": [
+                {"id": "{{MarriageId}}", "spouse1Id": "{{AdaId}}", "spouse2Id": "{{GraceId}}",
+                 "startDate": {"year": 1835, "isApproximate": false} }
+            ],
+            "stepparentLinks": [
+                {"id": "{{StepId}}", "stepparentId": "{{GraceId}}", "stepchildId": "{{ChildId}}",
+                 "marriageId": "{{MarriageId}}" }
+            ]
+            """), ImportConflictResolution.Overwrite);
+
+        Assert.True(result.IsSuccess, result.Error);
+
+        // The cap did its own job: Ada's link is the third and is not stored.
+        Assert.Equal(2, _tree.BiologicalLinks.Count(l => l.ChildId == Guid.Parse(ChildId)));
+        Assert.DoesNotContain(
+            _tree.BiologicalLinks,
+            l => l.ParentId == Guid.Parse(AdaId) && l.ChildId == Guid.Parse(ChildId));
+
+        // And the label that rested on it went with it.
+        Assert.Empty(_tree.StepparentLinks);
+        Assert.Contains(result.Value!.Warnings, w => w.Contains("does not involve"));
+    }
+
+    // The same shape inside the cap: two parents, so nothing is trimmed and the
+    // label stands. Without this the test above would pass on an implementation
+    // that simply dropped every label whose file named more than one parent.
+    [Fact]
+    public async Task KeepsALabelWhoseParentLinkSurvivesTheCap()
+    {
+        var result = await CreateService().ImportAsync(File($$"""
+            "people": [
+                {"id": "{{AdaId}}", "firstName": "Ada", "lastName": "Lovelace"},
+                {"id": "{{GraceId}}", "firstName": "Grace", "lastName": "Hopper"},
+                {"id": "{{ChildId}}", "firstName": "Mary", "lastName": "Lovelace"},
+                {"id": "55555555-5555-5555-5555-555555555555", "firstName": "Anne", "lastName": "Byron"}
+            ],
+            "biologicalLinks": [
+                {"id": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+                 "parentId": "55555555-5555-5555-5555-555555555555", "childId": "{{ChildId}}"},
+                {"id": "{{LinkId}}", "parentId": "{{AdaId}}", "childId": "{{ChildId}}"}
+            ],
+            "marriages": [
+                {"id": "{{MarriageId}}", "spouse1Id": "{{AdaId}}", "spouse2Id": "{{GraceId}}",
+                 "startDate": {"year": 1835, "isApproximate": false} }
+            ],
+            "stepparentLinks": [
+                {"id": "{{StepId}}", "stepparentId": "{{GraceId}}", "stepchildId": "{{ChildId}}",
+                 "marriageId": "{{MarriageId}}" }
+            ]
+            """), ImportConflictResolution.Overwrite);
+
+        Assert.True(result.IsSuccess, result.Error);
+        Assert.Equal(2, _tree.BiologicalLinks.Count(l => l.ChildId == Guid.Parse(ChildId)));
+        Assert.Single(_tree.StepparentLinks);
     }
 
     // A label cannot stand on its own: it names a marriage that would have to come

@@ -380,6 +380,62 @@ public class MarriageServiceTests
         Assert.True(result.IsSuccess, result.Error);
     }
 
+    // The same leniency one level down. PartialDate.CompareTo is built for
+    // sorting, where a month-only date ranking before a day-precise one in the
+    // same month is correct; as a validity test it refuses a marriage begun on
+    // 15 June and annulled later that June with the day never recorded, which is
+    // an ordinary record.
+    [Fact]
+    public async Task AcceptsASameMonthPairWhenOnlyOneSideCarriesADay()
+    {
+        var arthur = Someone("Arthur");
+        var margaret = Someone("Margaret");
+        _tree.With(arthur, margaret);
+
+        var result = await CreateService().AddAsync(
+            arthur.Id, margaret.Id, PartialDate.FromYearMonthDay(1970, 6, 15),
+            endDate: PartialDate.FromYearMonth(1970, 6),
+            endReason: MarriageEndReason.Annulment);
+
+        Assert.True(result.IsSuccess, result.Error);
+    }
+
+    // The other direction of the same pair, which the sort order happens to let
+    // through. It is accepted for the same reason, not by luck: neither date
+    // says anything about the day, so neither can contradict the other.
+    [Fact]
+    public async Task AcceptsASameMonthPairWhenOnlyTheStartLacksADay()
+    {
+        var arthur = Someone("Arthur");
+        var margaret = Someone("Margaret");
+        _tree.With(arthur, margaret);
+
+        var result = await CreateService().AddAsync(
+            arthur.Id, margaret.Id, PartialDate.FromYearMonth(1970, 6),
+            endDate: PartialDate.FromYearMonthDay(1970, 6, 15),
+            endReason: MarriageEndReason.Annulment);
+
+        Assert.True(result.IsSuccess, result.Error);
+    }
+
+    // Dropping to the shared precision must not drop the rule itself: an earlier
+    // month is still an earlier month whatever the days say.
+    [Fact]
+    public async Task StillRefusesAnEarlierMonthWhenOnlyOneSideCarriesADay()
+    {
+        var arthur = Someone("Arthur");
+        var margaret = Someone("Margaret");
+        _tree.With(arthur, margaret);
+
+        var result = await CreateService().AddAsync(
+            arthur.Id, margaret.Id, PartialDate.FromYearMonthDay(1970, 6, 15),
+            endDate: PartialDate.FromYearMonth(1970, 1),
+            endReason: MarriageEndReason.Annulment);
+
+        Assert.False(result.IsSuccess);
+        Assert.Empty(_tree.Marriages);
+    }
+
     // Same-year is allowed: an annulment within months of the wedding is ordinary,
     // and both dates may be year-only.
     [Fact]

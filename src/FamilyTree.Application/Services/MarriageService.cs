@@ -560,15 +560,24 @@ public sealed class MarriageService(
     /// Unlike a questionable birth year, this is not a fact about a family that
     /// might be true — a marriage that ends before it begins is not a record of
     /// anything, and three stories ask for it to be prevented rather than flagged.
-    /// Compared in full when both dates carry at least a month, and by year alone
-    /// otherwise. The year-only leniency exists because a marriage that starts and
-    /// ends in the same recorded year is ordinary — an annulment within months, or
-    /// two dates nobody pinned down further — and refusing it would block a record
-    /// that is probably right. It is not a reason to accept 3 January ending a
-    /// marriage that began on 15 June, which the year comparison alone let through:
-    /// US-023 and US-025 both say "on or after", and
-    /// <see cref="Services.ImportService"/> already compares these dates in full,
+    /// Compared at the coarsest precision the two dates share: by year when either
+    /// is year-only, by year and month when either stops at a month, in full when
+    /// both name a day. The leniency exists because a marriage that starts and ends
+    /// within the same recorded year — or the same recorded month — is ordinary, an
+    /// annulment within months of the wedding, and the coarser date says nothing
+    /// that could contradict the finer one. It is not a reason to accept 3 January
+    /// ending a marriage that began on 15 June: US-023 and US-025 both say "on or
+    /// after", and <see cref="Services.ImportService"/> compares these dates too,
     /// so a record written here would trip its warning on its own round trip.
+    /// <para>
+    /// The comparison itself is <see cref="PartialDate.IsKnownToPrecede"/>, which
+    /// is where the precision rule lives so that this guard and the one in
+    /// <see cref="Services.ImportService"/> cannot come to disagree about the same
+    /// record — the disagreement being what made the year-only comparison a bug.
+    /// Notably it is not <see cref="PartialDate.CompareTo"/>: that is a sort
+    /// order, and sorting a month-only date before a day-precise one in the same
+    /// month is right for a list and wrong here.
+    /// </para>
     /// </remarks>
     private static string? EndsBeforeItStarts(PartialDate startDate, PartialDate? endDate)
     {
@@ -577,12 +586,7 @@ public sealed class MarriageService(
             return null;
         }
 
-        var bothDated = startDate.Month is not null && endDate.Month is not null;
-        var backwards = bothDated
-            ? endDate.CompareTo(startDate) < 0
-            : endDate.Year < startDate.Year;
-
-        return backwards
+        return endDate.IsKnownToPrecede(startDate)
             ? $"A marriage cannot end on {endDate}, before it started on {startDate}."
             : null;
     }
