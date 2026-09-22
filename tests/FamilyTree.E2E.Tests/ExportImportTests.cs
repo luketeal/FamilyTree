@@ -17,12 +17,13 @@ namespace FamilyTree.E2E.Tests;
 public class ExportImportTests(StaticSiteFixture fixture) : BrowserTest(fixture)
 {
     // The sample family holds 11 people, one of whom is an unidentified
-    // ancestor, and 14 relationships, one of which is a link to her. The
+    // ancestor, and 15 relationships, one of which is a link to her and one a
+    // stepparent label (PR 9 added both the label and the count). The
     // placeholder rides in its own section of the file and the link with it, so
     // a restored tree is the same size as the one exported. It used to come back
     // with 13 — that gap is ADR-007's, closed in PR 7, and this is where a
     // regression would show up first.
-    private const string SampleStats = "10 people · 14 relationships";
+    private const string SampleStats = "10 people · 15 relationships";
     private const string RestoredStats = SampleStats;
 
     private async Task<IPage> OpenAsync(string path = "settings")
@@ -101,7 +102,11 @@ public class ExportImportTests(StaticSiteFixture fixture) : BrowserTest(fixture)
         var (_, json) = await DownloadAsync(page);
 
         using var document = JsonDocument.Parse(json);
-        Assert.Equal(2, document.RootElement.GetProperty("schemaVersion").GetInt32());
+        // 3 since PR 9, when stepparent labels became a persisted shape the file
+        // has to carry. Written out rather than read from TreeSchema.Version,
+        // because this project tests the published site rather than the code
+        // that produced it.
+        Assert.Equal(3, document.RootElement.GetProperty("schemaVersion").GetInt32());
         Assert.Equal("FamilyTree", document.RootElement.GetProperty("application").GetString());
     }
 
@@ -483,7 +488,7 @@ public class ExportImportTests(StaticSiteFixture fixture) : BrowserTest(fixture)
 
         await Assertions.Expect(page.GetByTestId("import-confirm")).ToBeVisibleAsync();
         await Assertions.Expect(page.GetByTestId("import-confirm-text"))
-            .ToContainTextAsync("10 people and 14 relationships");
+            .ToContainTextAsync("10 people and 15 relationships");
         await Assertions.Expect(page.GetByTestId("tree-stats")).ToHaveTextAsync(SampleStats);
     }
 

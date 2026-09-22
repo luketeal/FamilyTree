@@ -89,6 +89,51 @@ public sealed class PartialDate : IComparable<PartialDate>, IEquatable<PartialDa
         return Day.Value.CompareTo(other.Day.Value);
     }
 
+    /// <summary>
+    /// Whether this date is <em>known</em> to fall before <paramref name="other"/>,
+    /// judged only at the precision both dates actually carry.
+    /// </summary>
+    /// <remarks>
+    /// This is the question to ask of two partial dates when the answer decides
+    /// whether a record is contradictory — "did this end before it began?" — and
+    /// <see cref="CompareTo"/> is not it. <see cref="CompareTo"/> is a total sort
+    /// order, so it has to put "June 1920" somewhere relative to "15 June 1920"
+    /// and puts it first; correct for a list, and wrong as evidence, because a
+    /// date that never named a day says nothing about which day it was.
+    /// <para>
+    /// So a field is consulted only when both dates name it, and a blank on
+    /// either side ends the comparison as "not known to be before". Same-year and
+    /// same-month pairs at differing precision are therefore ordinary rather than
+    /// backwards, which is what the records people actually hold look like.
+    /// </para>
+    /// </remarks>
+    public bool IsKnownToPrecede(PartialDate other)
+    {
+        ArgumentNullException.ThrowIfNull(other);
+
+        if (Year != other.Year)
+        {
+            return Year < other.Year;
+        }
+
+        if (Month is not int month || other.Month is not int otherMonth)
+        {
+            return false;
+        }
+
+        if (month != otherMonth)
+        {
+            return month < otherMonth;
+        }
+
+        if (Day is not int day || other.Day is not int otherDay)
+        {
+            return false;
+        }
+
+        return day < otherDay;
+    }
+
     public bool Equals(PartialDate? other)
     {
         if (other is null) return false;

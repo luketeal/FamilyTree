@@ -16,11 +16,10 @@ public sealed class BrowserTreeDataAdministration(IndexedDbStore store) : ITreeD
     /// them in one transaction.
     /// </summary>
     /// <remarks>
-    /// Stepparent links are written as empty because nothing produces them yet
-    /// (PR 9 adds the repository). The store clears every object store as part
-    /// of the same transaction, so once stepparent links can exist, omitting
-    /// them here would make every import delete them. They have to be added to
-    /// <see cref="TreeSnapshot"/> and to this call in that same PR.
+    /// Every store the snapshot carries, including stepparent links since PR 9.
+    /// The store clears every object store as part of the same transaction, so a
+    /// section left out here would not merely be skipped — it would be deleted on
+    /// every import.
     /// </remarks>
     public Task ReplaceAllAsync(TreeSnapshot snapshot, CancellationToken ct = default) =>
         store.ReplaceAllAsync(
@@ -29,7 +28,7 @@ public sealed class BrowserTreeDataAdministration(IndexedDbStore store) : ITreeD
                 snapshot.BiologicalLinks.Select(BiologicalLinkRecord.From).ToList(),
                 snapshot.AdoptiveLinks.Select(AdoptiveLinkRecord.From).ToList(),
                 snapshot.Marriages.Select(MarriageRecord.From).ToList(),
-                []),
+                snapshot.StepparentLinks.Select(StepparentLinkRecord.From).ToList()),
             ct);
 
     public Task ClearAsync(CancellationToken ct = default) =>

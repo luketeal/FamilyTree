@@ -7,24 +7,27 @@ namespace FamilyTree.Application.Common;
 /// </summary>
 /// <remarks>
 /// Exists so a multi-record mutation is a single call. Import rewrites people,
-/// biological links, adoptive links and marriages together, and a sequence of
-/// four repository writes can half-apply — leaving links pointing at people who
-/// were never written. Against an HTTP-backed implementation of the same
-/// interfaces that also becomes four requests where one belongs.
+/// biological links, adoptive links, marriages and stepparent labels together,
+/// and a sequence of five repository writes can half-apply — leaving links
+/// pointing at people who were never written. Against an HTTP-backed
+/// implementation of the same interfaces that also becomes five requests where
+/// one belongs.
 ///
-/// Stepparent links are absent because no repository writes them yet (PR 9 adds
-/// the interface). They must be added here in the same PR that adds that
-/// repository, or import will silently discard them.
+/// Stepparent labels joined the rest in PR 9, alongside the repository that can
+/// write them. The store clears every object store in the same transaction, so
+/// omitting them here would have made every import delete them.
 /// </remarks>
 public sealed record TreeSnapshot(
     IReadOnlyList<Person> People,
     IReadOnlyList<BiologicalParentChild> BiologicalLinks,
     IReadOnlyList<AdoptiveParentChild> AdoptiveLinks,
-    IReadOnlyList<Marriage> Marriages)
+    IReadOnlyList<Marriage> Marriages,
+    IReadOnlyList<StepparentRelationship> StepparentLinks)
 {
-    public static TreeSnapshot Empty { get; } = new([], [], [], []);
+    public static TreeSnapshot Empty { get; } = new([], [], [], [], []);
 
-    public int RelationshipCount => BiologicalLinks.Count + AdoptiveLinks.Count + Marriages.Count;
+    public int RelationshipCount =>
+        BiologicalLinks.Count + AdoptiveLinks.Count + Marriages.Count + StepparentLinks.Count;
 
     public int RecordCount => People.Count + RelationshipCount;
 }

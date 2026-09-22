@@ -126,3 +126,164 @@ public sealed record AdoptiveRelationshipsDto(
 
     public bool IsEmpty => Parents.Count == 0 && Children.Count == 0;
 }
+
+/// <summary>
+/// A marriage or partnership as a profile row needs it (US-022).
+/// </summary>
+/// <remarks>
+/// Named for the row rather than the record: it holds the <em>other</em> spouse,
+/// because one marriage appears on two profiles and each shows the person the
+/// reader is not currently looking at. The record's own pair of ids would make
+/// every component work out which end it was standing on.
+/// <para>
+/// Gender-neutral throughout, in the type as well as in the wording: there is no
+/// husband or wife field to fill in, so US-044 cannot be violated by a component
+/// picking the wrong one.
+/// </para>
+/// </remarks>
+public sealed record MarriageDto(
+    Guid MarriageId,
+    PersonSummaryDto Spouse,
+    PartialDate StartDate,
+    string? StartPlace,
+    PartialDate? EndDate,
+    MarriageEndReason? EndReason,
+    RelationshipCertainty Certainty)
+{
+    /// <summary>
+    /// Whether this is a current marriage. US-022 asks for the ongoing one to be
+    /// distinguished, and the domain's own definition is used rather than a
+    /// second one here: a marriage is ongoing until something says how it ended.
+    /// </summary>
+    public bool IsOngoing => EndDate is null && EndReason is null;
+
+    /// <summary>
+    /// "1946 – 1973 (Widowed)", or "1946 – Ongoing". US-022, US-025, US-027.
+    /// </summary>
+    /// <remarks>
+    /// Worded here rather than in the component so the profile, the toast and any
+    /// later tree label cannot describe the same marriage differently, and so the
+    /// ended and ongoing cases are covered by a unit test rather than by looking
+    /// at the page. An en dash separates the years because this is a date range
+    /// and not a subtraction.
+    /// </remarks>
+    public string DatesLabel
+    {
+        get
+        {
+            var ending = EndDate?.ToString() ?? (IsOngoing ? "Ongoing" : "date unknown");
+            var reason = EndReasonLabel;
+            return reason is null
+                ? $"{StartDate} – {ending}"
+                : $"{StartDate} – {ending} ({reason})";
+        }
+    }
+
+    /// <summary>
+    /// How it ended, in the words the stories ask for, or null while it has not.
+    /// </summary>
+    /// <remarks>
+    /// "Widowed" rather than "Death of spouse" (US-026) and "Divorced" rather
+    /// than "Divorce" (US-025), because the row reads as a state of the marriage
+    /// rather than as an event type from a dropdown. <see cref="Separation"/> is
+    /// included for completeness even though no story names its wording, and
+    /// <see cref="MarriageEndReason.Unknown"/> deliberately reads as "Ended": the
+    /// marriage is over and nobody recorded why, which is a fact about the
+    /// research rather than an empty field.
+    /// </remarks>
+    public string? EndReasonLabel => EndReason switch
+    {
+        MarriageEndReason.Divorce => "Divorced",
+        MarriageEndReason.DeathOfSpouse => "Widowed",
+        MarriageEndReason.Annulment => "Annulled",
+        MarriageEndReason.Separation => "Separated",
+        MarriageEndReason.Unknown => "Ended",
+        _ => null,
+    };
+}
+
+/// <summary>
+/// Every marriage on one profile, chronologically. US-022, US-042.
+/// </summary>
+public sealed record MarriagesDto(IReadOnlyList<MarriageDto> Marriages)
+{
+    public static MarriagesDto Empty { get; } = new([]);
+
+    public bool IsEmpty => Marriages.Count == 0;
+
+    /// <summary>
+    /// The current marriage, when there is exactly one.
+    /// </summary>
+    /// <remarks>
+    /// Null when two are somehow ongoing at once rather than picking one: that
+    /// state is reachable (US-042 warns about overlaps and saves anyway), and a
+    /// profile silently nominating one of them as <em>the</em> current marriage
+    /// would be asserting something nobody recorded.
+    /// </remarks>
+    public MarriageDto? Current =>
+        Marriages.Count(m => m.IsOngoing) == 1 ? Marriages.First(m => m.IsOngoing) : null;
+}
+
+/// <summary>
+/// An end date offered from a spouse's recorded death. US-026.
+/// </summary>
+/// <remarks>
+/// Carries whose death it came from, because the offer is only trustworthy if it
+/// says so — "we filled in 1973 for you" is a guess the user has to be able to
+/// check, and either spouse may be the one who died.
+/// </remarks>
+public sealed record EndDateSuggestion(PartialDate Date, string PersonName);
+
+/// <summary>
+/// A step relationship as a profile row needs it. US-038.
+/// </summary>
+/// <remarks>
+/// Carries the marriage it rests on, and the parent it runs through, because a
+/// step relationship is not a fact about two people on its own: it says "the
+/// person my parent married". A row that only named the stepparent would leave
+/// the reader unable to tell which of two marriages put them there, and unable
+/// to understand why removing a marriage record removed this.
+/// </remarks>
+public sealed record StepRelativeDto(
+    Guid LinkId,
+    PersonSummaryDto Person,
+    Guid MarriageId,
+    string ViaName,
+    bool ViaIsOngoing);
+
+/// <summary>
+/// Somebody who could be labelled a stepparent, and the marriage that would
+/// justify it. US-038.
+/// </summary>
+/// <remarks>
+/// Offered as a derived list rather than through the person search, because
+/// US-038 asks for the action to sit next to a parent's current spouses. That is
+/// the whole rule: a stepparent is somebody a parent married, so searching the
+/// whole tree for one would invite recording a step relationship that nothing in
+/// the record supports.
+/// </remarks>
+public sealed record StepparentCandidateDto(
+    PersonSummaryDto Person,
+    Guid MarriageId,
+    string ViaName);
+
+/// <summary>
+/// Both step sections of a profile plus the candidates for a new label, from one
+/// service call.
+/// </summary>
+/// <remarks>
+/// One DTO because the three overlap heavily in their reads: the candidate list
+/// needs the subject's parents and their marriages, the stepparent list needs the
+/// same marriages to say what each label rests on, and all three resolve people
+/// from one batch.
+/// </remarks>
+public sealed record StepFamilyDto(
+    IReadOnlyList<StepRelativeDto> Stepparents,
+    IReadOnlyList<StepRelativeDto> Stepchildren,
+    IReadOnlyList<StepparentCandidateDto> Candidates)
+{
+    public static StepFamilyDto Empty { get; } = new([], [], []);
+
+    public bool IsEmpty =>
+        Stepparents.Count == 0 && Stepchildren.Count == 0 && Candidates.Count == 0;
+}

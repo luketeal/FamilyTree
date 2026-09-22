@@ -117,6 +117,58 @@ export async function replaceOne(store, deleteId, record) {
     await done(transaction);
 }
 
+/**
+ * Deletes one record, every dependent record pointing at it, and optionally
+ * writes a replacement — all in ONE transaction.
+ *
+ * Removing a marriage has to remove the stepparent labels justified by it
+ * (US-038), and replacing a spouse has to do the same while writing the new
+ * record. As separate calls either can half-apply, and the wreckage is a label
+ * naming a marriage that no longer exists: a step relationship the app cannot
+ * explain and offers no way to remove.
+ *
+ * Dependents are found by scanning rather than through an index. The dependent
+ * stores are small, this runs on a deliberate user action, and an index would
+ * have to be declared in onupgradeneeded — a schema migration for every browser
+ * already holding data, to save a scan nobody can perceive.
+ *
+ * Returns how many dependents were removed. The caller has to tell the user what
+ * went with the record, and counting them here is the only way to learn it
+ * without a second read of the whole store — one that would become a request of
+ * its own once these interfaces are backed by HTTP.
+ */
+export async function removeWithDependents(store, id, dependentStore, dependentKey, replacement) {
+    const db = await open();
+    const transaction = tx(db, [store, dependentStore], 'readwrite');
+    const os = transaction.objectStore(store);
+
+    os.delete(id);
+    if (replacement) os.put(replacement);
+
+    const dependents = transaction.objectStore(dependentStore);
+    let removed = 0;
+    for (const record of await request(dependents.getAll())) {
+        if (record?.[dependentKey] === id) {
+            dependents.delete(record.id);
+            removed++;
+        }
+    }
+
+    await done(transaction);
+    return removed;
+}
+
+/** Deletes one record, reporting whether it was there to delete. */
+export async function removeIfPresent(store, id) {
+    const db = await open();
+    const transaction = tx(db, [store], 'readwrite');
+    const os = transaction.objectStore(store);
+    const existed = (await request(os.get(id))) !== undefined;
+    if (existed) os.delete(id);
+    await done(transaction);
+    return existed;
+}
+
 /** Replaces the entire dataset atomically — used by import and sample data. */
 export async function replaceAll(payload) {
     const db = await open();

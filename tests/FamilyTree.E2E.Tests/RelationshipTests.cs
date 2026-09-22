@@ -33,7 +33,7 @@ public class RelationshipTests(StaticSiteFixture fixture) : BrowserTest(fixture)
     {
         await page.GetByTestId("load-sample").ClickAsync();
         await Assertions.Expect(page.GetByTestId("settings-stats"))
-            .ToHaveTextAsync("10 people · 14 relationships");
+            .ToHaveTextAsync("10 people · 15 relationships");
     }
 
     /// <summary>Opens somebody's profile from the people list, by the name shown there.</summary>

@@ -158,12 +158,104 @@ public sealed class BrowserMarriageRepository(IndexedDbStore store) : IMarriageR
         .Select(m => m.ToDomain())
         .ToList();
 
+    public async Task<IReadOnlyList<Marriage>> GetForPeopleAsync(
+        IReadOnlyCollection<Guid> personIds, CancellationToken ct = default)
+    {
+        if (personIds.Count == 0)
+        {
+            return [];
+        }
+
+        var wanted = personIds.ToHashSet();
+        return (await AllAsync(ct))
+            .Where(m => wanted.Contains(m.Spouse1Id) || wanted.Contains(m.Spouse2Id))
+            .Select(m => m.ToDomain())
+            .ToList();
+    }
+
+    public async Task<IReadOnlyList<Marriage>> GetByIdsAsync(
+        IReadOnlyCollection<Guid> ids, CancellationToken ct = default) =>
+        (await store.GetManyAsync<MarriageRecord>(IndexedDbStore.Marriages, ids, ct))
+        .Select(m => m.ToDomain())
+        .ToList();
+
     public Task AddAsync(Marriage marriage, CancellationToken ct = default) =>
         store.PutAsync(IndexedDbStore.Marriages, MarriageRecord.From(marriage), ct);
 
     public Task UpdateAsync(Marriage marriage, CancellationToken ct = default) =>
         store.PutAsync(IndexedDbStore.Marriages, MarriageRecord.From(marriage), ct);
 
-    public Task DeleteAsync(Guid id, CancellationToken ct = default) =>
-        store.DeleteAsync(IndexedDbStore.Marriages, id, ct);
+    /// <summary>
+    /// One transaction over both stores, so a removed marriage cannot leave a
+    /// stepparent label behind pointing at it.
+    /// </summary>
+    public Task<int> DeleteAsync(Guid id, CancellationToken ct = default) =>
+        store.DeleteWithDependentsAsync<MarriageRecord>(
+            IndexedDbStore.Marriages, id, IndexedDbStore.StepparentLinks, MarriageIdKey, ct: ct);
+
+    /// <summary>
+    /// The old record out, the new one in, and the old record's stepparent labels
+    /// with it — all in one transaction.
+    /// </summary>
+    public Task<int> ReplaceSpouseAsync(
+        Guid oldMarriageId, Marriage replacement, CancellationToken ct = default) =>
+        store.DeleteWithDependentsAsync(
+            IndexedDbStore.Marriages,
+            oldMarriageId,
+            IndexedDbStore.StepparentLinks,
+            MarriageIdKey,
+            MarriageRecord.From(replacement),
+            ct);
+
+    /// <summary>
+    /// The stepparent record's field naming its marriage, as it is spelt in the
+    /// database.
+    /// </summary>
+    /// <remarks>
+    /// Records are serialised with the web JSON defaults, which camel-case
+    /// property names, so the stored key is <c>marriageId</c> rather than
+    /// <c>MarriageId</c>. Named here rather than inline because getting it wrong
+    /// fails silently: the scan simply matches nothing and the labels survive a
+    /// deletion that was supposed to take them.
+    /// </remarks>
+    private const string MarriageIdKey = "marriageId";
+}
+
+public sealed class BrowserStepparentRelationshipRepository(IndexedDbStore store)
+    : IStepparentRelationshipRepository
+{
+    private Task<IReadOnlyList<StepparentLinkRecord>> AllAsync(CancellationToken ct) =>
+        store.GetAllAsync<StepparentLinkRecord>(IndexedDbStore.StepparentLinks, ct);
+
+    public async Task<IReadOnlyList<StepparentRelationship>> GetAllAsync(CancellationToken ct = default) =>
+        (await AllAsync(ct)).Select(l => l.ToDomain()).ToList();
+
+    public async Task<IReadOnlyList<StepparentRelationship>> GetForStepchildAsync(
+        Guid stepchildId, CancellationToken ct = default) =>
+        (await AllAsync(ct)).Where(l => l.StepchildId == stepchildId).Select(l => l.ToDomain()).ToList();
+
+    public async Task<IReadOnlyList<StepparentRelationship>> GetForStepparentAsync(
+        Guid stepparentId, CancellationToken ct = default) =>
+        (await AllAsync(ct)).Where(l => l.StepparentId == stepparentId).Select(l => l.ToDomain()).ToList();
+
+    public async Task<IReadOnlyList<StepparentRelationship>> GetForStepchildrenAsync(
+        IReadOnlyCollection<Guid> stepchildIds, CancellationToken ct = default)
+    {
+        if (stepchildIds.Count == 0)
+        {
+            return [];
+        }
+
+        var wanted = stepchildIds.ToHashSet();
+        return (await AllAsync(ct))
+            .Where(l => wanted.Contains(l.StepchildId))
+            .Select(l => l.ToDomain())
+            .ToList();
+    }
+
+    public Task AddAsync(StepparentRelationship link, CancellationToken ct = default) =>
+        store.PutAsync(IndexedDbStore.StepparentLinks, StepparentLinkRecord.From(link), ct);
+
+    public Task<bool> DeleteAsync(Guid id, CancellationToken ct = default) =>
+        store.DeleteIfPresentAsync(IndexedDbStore.StepparentLinks, id, ct);
 }

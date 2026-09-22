@@ -87,6 +87,46 @@ public sealed class IndexedDbStore(IJSRuntime js) : IAsyncDisposable
         await module.InvokeVoidAsync("replaceOne", ct, store, deleteId, record);
     }
 
+    /// <summary>
+    /// Removes a record together with the dependents pointing at it, optionally
+    /// writing a replacement, in one transaction.
+    /// </summary>
+    /// <remarks>
+    /// Deleting a marriage has to take its stepparent labels with it (US-038),
+    /// and replacing a spouse has to do the same while writing the new record.
+    /// Either as two calls can half-apply and leave a label naming a marriage
+    /// that is gone.
+    /// </remarks>
+    /// <returns>How many dependent records went with it.</returns>
+    public async Task<int> DeleteWithDependentsAsync<T>(
+        string store,
+        Guid id,
+        string dependentStore,
+        string dependentKey,
+        T? replacement = null,
+        CancellationToken ct = default)
+        where T : class
+    {
+        var module = await ModuleAsync();
+        return await module.InvokeAsync<int>(
+            "removeWithDependents", ct, store, id, dependentStore, dependentKey, replacement);
+    }
+
+    /// <summary>
+    /// Removes one record, reporting whether it existed.
+    /// </summary>
+    /// <remarks>
+    /// The answer comes from the same transaction as the delete, so a caller can
+    /// tell "removed" from "was not there" without a read of its own — which for
+    /// the stepparent labels meant reading the entire store to check one id.
+    /// </remarks>
+    public async Task<bool> DeleteIfPresentAsync(
+        string store, Guid id, CancellationToken ct = default)
+    {
+        var module = await ModuleAsync();
+        return await module.InvokeAsync<bool>("removeIfPresent", ct, store, id);
+    }
+
     /// <summary>Replaces every store in one transaction, so it cannot half-apply.</summary>
     public async Task ReplaceAllAsync(DatasetRecord dataset, CancellationToken ct = default)
     {

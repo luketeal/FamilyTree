@@ -238,6 +238,96 @@ Two things worth knowing before extending the profile:
 - Extend `TreeStatsService` to count stepparent links — the relationship total omits them by design until this PR, and starts silently under-reporting the moment they are written
 - Extend export coverage
 
+**Done.** Four things from this PR change what the later ones have to do:
+
+- **`schemaVersion` is 3, and the whole durability path moved with it.** The stepparent store and record have existed since PR 2 and were exported as nothing, which was true while nothing could write one. This PR makes them writable, so `TreeSnapshot`, `ExportDocument`, `ExportService`, `ImportService` and `BrowserTreeDataAdministration` all gained the section in the same commit — `ReplaceAllAsync` clears every object store in one transaction, so a section the snapshot did not carry would have been *deleted* by every import rather than merely skipped. Version 2 files import unchanged, because no version that wrote one could contain a label. The round trip is pinned by an E2E test that records a label in the browser and finds it in the downloaded file.
+- **The replace went on the marriage repository and deliberately not on the stepparent one.** `IMarriageRepository.ReplaceSpouseAsync` exists for the reason PRs 7 and 8 gave, and it takes the new details rather than copying the old ones, because the one form that reaches it can change the spouse and the dates together (US-023). There is no stepparent equivalent: that record is three ids and no fields, so changing any of them makes it a different claim rather than a corrected one, which the UI expresses as removing one label and applying another. A replace there would have been delete-plus-add under a better name with no atomicity to buy.
+- **Deleting a marriage cascades, and the cascade is the delete rather than a second call.** US-038's last criterion spans two record types, so as two calls it can half-apply and leave a label pointing at a marriage that no longer exists — a step relationship nothing in the app can explain or reach to remove. `IMarriageRepository.DeleteAsync` therefore always cascades, in one IndexedDB transaction, and `ReplaceSpouseAsync` does the same: **PR 13's undo has to treat "remove a marriage" as a multi-record operation**, because restoring the marriage alone brings back a record whose labels are gone. `MarriageService` reports how many went, since the label may be on a third person's profile and nothing else would connect its disappearance to the marriage just removed.
+- **Stepparent labels are not recorded through `AddRelationshipDialog`, and that is the one place this PR departed from the wizard.** Every other kind answers "who?" with a search of the whole tree. A stepparent is the person a parent married, so US-038 asks for the action next to those specific spouses — and a free search would have invited recording a step relationship nothing in the tree supports. The flow is a derived candidate list on the profile instead, with the service refusing any label whose marriage does not involve a parent of the child. **PR 10 gets its step edges from records that are guaranteed to have a marriage behind them**; the wizard gained only the spouse kind, at the same price as PR 8's adoptive kinds.
+
+**Five things review caught that the suite did not**, all of them states the tests
+asserted around rather than into:
+
+- **An edit could create the duplicate an add refuses.** `UpdateAsync` was the one
+  write path that never ran the guard, so clearing the end date on an old record
+  while a current one existed left two current marriages between the same pair.
+  The duplicate rule now lives in its own method that all three paths share — and
+  it applies in one direction only, to an *active* record against other active
+  ones, which also unblocked recording an earlier ended marriage for a couple who
+  are married now. US-021 always said "active" on both sides; the code read it on
+  one.
+- **The end-after-start rule compared years alone**, so 15 June to 3 January
+  passed while `ImportService` — which compares in full — warned about the same
+  record on its own round trip. The pair is now compared at the coarsest
+  precision both dates actually carry, which keeps the leniency that exists for
+  vaguer records without extending it to dated ones. The first attempt at this
+  fix only moved the asymmetry down a level (see below), which is the more
+  useful lesson: the rule is not "compare in full when you can", it is "never
+  let a field one date leaves blank decide the answer".
+- **The US-026 review notice fired on every save**, opening "X is now recorded as
+  dying in 1991" after an edit that touched a spelling. Whether a death date
+  *changed* is the page's question rather than the service's, so `EditPersonPage`
+  compares it across the save. Four people in the sample family were in the state
+  that triggered it.
+- **A stepparent row vanished when the parent link it ran through was removed.**
+  The label, its marriage and the stepparent's own profile were all intact; only
+  the stepchild's profile could not reach the marriage to describe it.
+  `IMarriageRepository.GetByIdsAsync` closes it — the labels name their own
+  marriages, so those are read directly rather than inferred from the parents.
+- **Import accepted a label the app refuses to create**, whose marriage involved
+  no parent of the child. A file is the one way into this store that never went
+  through `StepparentService`, so `Justified` now applies the same rule the
+  service does rather than only checking the marriage exists.
+
+Two of the minors changed the seam rather than the surface: the cascading delete
+and the spouse replace now **return how many labels went**, and the stepparent
+delete returns whether it removed anything, which took three whole-collection
+reads off the mutation paths — free against IndexedDB, three requests once the
+seam is swapped. `MarriageService` no longer depends on the stepparent repository
+at all as a result.
+
+One design-system item is now settled rather than open:
+
+- **A candidate chip states no relationship.** Review found the stepparent
+  candidate rendered in the marriage coral, which on a child's profile read as
+  the child's own spouse — the one chip in the app whose colour named a
+  relationship nobody had recorded. `PersonChip` gained a `Neutral` variant for
+  "a person, nothing asserted", which is what an offer is.
+- **Step took the dotted stroke the design system reserved for it, which narrows the dashed overload.** The PR 8 finding below stands — adoptive dashed-teal and the phantom dashed-grey still share a stroke — but the third variant did not join them: `PersonChip`'s step variant is dotted in `--step`, with an "(S)" mark beside the adoptive "(A)" so neither depends on colour or on telling two strokes apart at 11px. Both are pinned by computed-style assertions in `ShellLayoutTests`. **PR 10 still needs the decision about dashed** before it draws adoptive and phantom edges on the same canvas; it no longer needs to find room for a third.
+
+**Two more the follow-up review caught**, both in the fixes above rather than in
+the original commit — which is the point worth keeping:
+
+- **The precision fix moved the asymmetry rather than removing it.** Comparing
+  two dates with `PartialDate.CompareTo` once both carried a month looked like
+  the general form of the year-only leniency, but `CompareTo` is a *sort order*:
+  it ranks "June 1970" before "15 June 1970", correctly for a list and wrongly
+  for a validity test, so a marriage begun on the 15th and annulled later that
+  month was refused. A sort order and a validity test are different questions,
+  and the same value object can answer one well and the other badly — so
+  `PartialDate` now answers both, and `IsKnownToPrecede` is the second: it
+  consults a field only when both dates name it, and a blank on either side
+  means "not known to be before" rather than "earlier".
+
+  Writing it out in `MarriageService` would have fixed the refusal and left the
+  original finding half-open. `ImportService` compares the same two dates, and
+  the whole point of that finding was the two paths disagreeing about one
+  record; a rule in the service would have had import warning about records the
+  form had just accepted, the same bug pointing the other way. Both call the
+  domain method now, and a test imports a record the form accepts and asserts
+  the warning stays silent.
+- **`Justified` ran before the two-parent cap.** A stepparent label is justified
+  by a parent link, so judging it against links the cap was about to drop kept a
+  label resting on a record that was never stored. Moving it last matches the
+  reasoning already written above `CapParentsPerChild`. Where one filter's input
+  is another's output, the order is part of the rule rather than a detail of the
+  method sequence.
+
+Both are narrow — one needs a month-precise pair, the other a hand-made file
+naming three biological parents — and neither was reachable from a green suite:
+the first had a test for the year/month pair and none for month/day, and the
+second needs a file no export writes.
+
 ### PR 10 — Full tree view, focus, and phantom nodes
 **Stories:** US-028 – US-031, US-054  
 **Depends on:** PR 3 and PRs 7–9
@@ -285,6 +375,9 @@ Deliberately reserved and unplanned. The point of shipping early is to learn thi
 
 - **The desktop toast stack covers the "Add adoptive child" button while visible** (PR 8). The stack predates PR 8; the collision does not, because PR 8 put a button where the stack lands. Transient and self-dismissing, so not a blocker — but a toast covering an interactive control is a defect rather than a cosmetic complaint, and it will recur wherever a later PR adds an action in that corner. The fix is positional, not per-page: give the stack somewhere to sit that no page's controls occupy, or make it dodge them.
 - **Dashed strokes now carry two meanings** (PR 8). An adoptive chip is dashed teal; the "Unknown" biological parent slot is dashed grey. They are separated by colour and by section heading, and each row also says which it is in words, so nothing is ambiguous in place — but the design system's vocabulary is now overloaded, and the phantom variant (PR 4, extended in PR 7) is the older claim on it. This wants a decision about the chip vocabulary rather than a patch, and it should be taken before PR 10 draws both kinds of edge in the same canvas.
+- **Relationship row actions are a 20×16px tap target** (measured during PR 9, predates it). `.relations__action` is a link-styled button, so "Edit", "Remove", "Replace" and now "Label as stepparent" are as tall as their text — around 16px, against the 44px the platform guidelines ask for. Every relationship row in the app has been like this since PR 7; PR 9 only made it measurable, because pinning that the new actions are hit-testable meant reading their boxes. Not caused by this change and not fixable in it without restyling every relationship section at once, which is a design-system decision rather than a patch. The E2E assertion that exists now checks reachability — that a tap at the centre of each control lands on it rather than on something overlapping — which is the part a layout regression would break; it deliberately does not assert a size the design does not currently meet.
+- **Death-before-birth is compared as a sort order rather than at shared precision** (found in PR 9 review, predates it). `PersonService` refuses a person born 15 June 1920 who died in 1920 with the exact date unrecorded, because `PartialDate.CompareTo` ranks a year-only date before a dated one in the same year — correct as a sort, wrong as evidence. An infant death with a known birth date and a year-only death date is an ordinary genealogy record and currently cannot be saved at all. The comment directly above that check already describes the behaviour it does not have: *"Only compares what both dates actually record."* `ImportService` compares the same two fields the same way, as a warning rather than a refusal, so a file carrying such a record imports with a warning that is not true of it.
+  <br>PR 9 did not cause this and deliberately did not fix it, but it did build the method that closes it: `PartialDate.IsKnownToPrecede` has exactly the semantics that comment claims, so each site is a one-line change. Whoever takes it should also check the birth/death comparisons for the same shape elsewhere rather than fixing only the two sites named here, and should expect the existing refusal to have tests asserting the current behaviour.
 - **The mobile heading sits behind the fixed backup banner** (observed during PR 8, predates it). May be an artifact of full-page capture with fixed elements rather than a real overlap — diagnose with `getBoundingClientRect` before changing any CSS, per the Playwright rules in CLAUDE.md.
 
 **What the automated suites do not cover.** Worth knowing before this PR is planned, because it bounds what "green" has ever meant here: everything runs headless Chromium on Linux. Real-device font rendering, Safari and Firefox, a genuine browser restart or storage eviction, and screen-reader announcement of the `aria-live` toast region are human checks and have never been anything else.

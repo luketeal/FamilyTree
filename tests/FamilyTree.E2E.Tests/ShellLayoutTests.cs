@@ -515,7 +515,7 @@ public class ShellLayoutTests(StaticSiteFixture fixture) : BrowserTest(fixture)
         var page = await OpenAsync(390, 420, "settings");
         await page.GetByTestId("load-sample").ClickAsync();
         await Assertions.Expect(page.GetByTestId("settings-stats"))
-            .ToHaveTextAsync("10 people · 14 relationships");
+            .ToHaveTextAsync("10 people · 15 relationships");
         await Assertions.Expect(page.GetByTestId("backup-reminder")).ToBeVisibleAsync();
 
         if (!reminderShowing)
@@ -715,7 +715,7 @@ public class ShellLayoutTests(StaticSiteFixture fixture) : BrowserTest(fixture)
         var page = await OpenAsync(width, height, "settings");
         await page.GetByTestId("load-sample").ClickAsync();
         await Assertions.Expect(page.GetByTestId("settings-stats"))
-            .ToHaveTextAsync("10 people · 14 relationships");
+            .ToHaveTextAsync("10 people · 15 relationships");
 
         await page.GotoAsync(Fixture.BaseUrl + "people", new PageGotoOptions
         {
@@ -846,7 +846,7 @@ public class ShellLayoutTests(StaticSiteFixture fixture) : BrowserTest(fixture)
         var page = await OpenAsync(width, 844, "settings");
         await page.GetByTestId("load-sample").ClickAsync();
         await Assertions.Expect(page.GetByTestId("settings-stats"))
-            .ToHaveTextAsync("10 people · 14 relationships");
+            .ToHaveTextAsync("10 people · 15 relationships");
 
         await page.GotoAsync(Fixture.BaseUrl + "people", new PageGotoOptions
         {
@@ -895,7 +895,7 @@ public class ShellLayoutTests(StaticSiteFixture fixture) : BrowserTest(fixture)
         var page = await OpenAsync(width, 844, "settings");
         await page.GetByTestId("load-sample").ClickAsync();
         await Assertions.Expect(page.GetByTestId("settings-stats"))
-            .ToHaveTextAsync("10 people · 14 relationships");
+            .ToHaveTextAsync("10 people · 15 relationships");
 
         await page.GotoAsync(Fixture.BaseUrl + "people", new PageGotoOptions
         {
@@ -922,7 +922,7 @@ public class ShellLayoutTests(StaticSiteFixture fixture) : BrowserTest(fixture)
         var page = await OpenAsync(width, 844, "settings");
         await page.GetByTestId("load-sample").ClickAsync();
         await Assertions.Expect(page.GetByTestId("settings-stats"))
-            .ToHaveTextAsync("10 people · 14 relationships");
+            .ToHaveTextAsync("10 people · 15 relationships");
 
         await page.GotoAsync(Fixture.BaseUrl + "people", new PageGotoOptions
         {
@@ -986,7 +986,7 @@ public class ShellLayoutTests(StaticSiteFixture fixture) : BrowserTest(fixture)
         var page = await OpenAsync(1440, 900, "settings");
         await page.GetByTestId("load-sample").ClickAsync();
         await Assertions.Expect(page.GetByTestId("settings-stats"))
-            .ToHaveTextAsync("10 people · 14 relationships");
+            .ToHaveTextAsync("10 people · 15 relationships");
 
         await page.GotoAsync(Fixture.BaseUrl + "people", new PageGotoOptions
         {
@@ -1023,7 +1023,7 @@ public class ShellLayoutTests(StaticSiteFixture fixture) : BrowserTest(fixture)
         var page = await OpenAsync(1440, 900, "settings");
         await page.GetByTestId("load-sample").ClickAsync();
         await Assertions.Expect(page.GetByTestId("settings-stats"))
-            .ToHaveTextAsync("10 people · 14 relationships");
+            .ToHaveTextAsync("10 people · 15 relationships");
 
         await page.GotoAsync(Fixture.BaseUrl + "people", new PageGotoOptions
         {
@@ -1061,7 +1061,7 @@ public class ShellLayoutTests(StaticSiteFixture fixture) : BrowserTest(fixture)
         var page = await OpenAsync(1440, 900, "settings");
         await page.GetByTestId("load-sample").ClickAsync();
         await Assertions.Expect(page.GetByTestId("settings-stats"))
-            .ToHaveTextAsync("10 people · 14 relationships");
+            .ToHaveTextAsync("10 people · 15 relationships");
 
         await page.GotoAsync(Fixture.BaseUrl + "people", new PageGotoOptions
         {
@@ -1085,7 +1085,7 @@ public class ShellLayoutTests(StaticSiteFixture fixture) : BrowserTest(fixture)
         var page = await OpenAsync(1440, 900, "settings");
         await page.GetByTestId("load-sample").ClickAsync();
         await Assertions.Expect(page.GetByTestId("settings-stats"))
-            .ToHaveTextAsync("10 people · 14 relationships");
+            .ToHaveTextAsync("10 people · 15 relationships");
 
         await page.GotoAsync(Fixture.BaseUrl + "people", new PageGotoOptions
         {
@@ -1098,5 +1098,204 @@ public class ShellLayoutTests(StaticSiteFixture fixture) : BrowserTest(fixture)
             .EvaluateAsync<string>("el => getComputedStyle(el).fontFamily");
 
         Assert.Contains("JetBrains Mono", family);
+    }
+
+    // Arthur's profile is the widest relationship page the app has: two marriage
+    // rows, each with a chip, a badge, a date range and a place, plus two actions.
+    // The date range is the longest single string any row carries — "1946 – 1973
+    // (Widowed)" — and 390px is where that runs out of width.
+    [Theory]
+    [InlineData(390)]
+    [InlineData(768)]
+    [InlineData(1440)]
+    public async Task AProfileWithMarriages_DoesNotScrollSideways(int width)
+    {
+        var page = await OpenSampleProfileAsync("Arthur Whitfield", width);
+        await Assertions.Expect(page.GetByTestId("marriages-list")).ToBeVisibleAsync();
+
+        var (overflowBy, offender) = await WidestOverflowAsync(page);
+
+        Assert.True(overflowBy <= 0,
+            $"A profile with marriages scrolls sideways by {overflowBy}px at {width}px. "
+            + $"Widest offender: {offender}");
+    }
+
+    // Daniel's profile carries a labelled stepparent, a candidate row with its own
+    // action, and the note above them. The candidate row is the only one in the app
+    // whose action is a sentence rather than a word ("Label as stepparent"), which
+    // makes it the widest action column on any profile.
+    [Theory]
+    [InlineData(390)]
+    [InlineData(768)]
+    [InlineData(1440)]
+    public async Task AProfileWithStepRelationships_DoesNotScrollSideways(int width)
+    {
+        var page = await OpenSampleProfileAsync("Daniel Whitfield", width);
+        await Assertions.Expect(page.GetByTestId("stepparents-list")).ToBeVisibleAsync();
+
+        var (overflowBy, offender) = await WidestOverflowAsync(page);
+
+        Assert.True(overflowBy <= 0,
+            $"A profile with step relationships scrolls sideways by {overflowBy}px "
+            + $"at {width}px. Widest offender: {offender}");
+    }
+
+    // The marriage form is the longest the wizard has: two full date rows, a place
+    // box and a select, inside the narrowest column on the page. The end-date row
+    // sits below an offer button whose label is a whole sentence.
+    [Theory]
+    [InlineData(390)]
+    [InlineData(1440)]
+    public async Task TheMarriageFormDoesNotScrollSideways(int width)
+    {
+        var page = await OpenSampleProfileAsync("Susan Hartley", width);
+        await page.GetByTestId("add-marriage").ClickAsync();
+        await page.GetByTestId("relationship-dialog-search-query").FillAsync("Vera");
+        await page.GetByTestId("relationship-dialog-search-results")
+            .GetByText("Vera Whitfield").First.ClickAsync();
+        await page.GetByTestId("relationship-dialog-next").ClickAsync();
+        await Assertions.Expect(page.GetByTestId("relationship-dialog-end-reason"))
+            .ToBeVisibleAsync();
+
+        var (overflowBy, offender) = await WidestOverflowAsync(page);
+
+        Assert.True(overflowBy <= 0,
+            $"The wizard's marriage form scrolls sideways by {overflowBy}px at {width}px. "
+            + $"Widest offender: {offender}");
+    }
+
+    // The third dashed-or-dotted chip variant, and the one the design system
+    // reserved a stroke for. Dotted rather than dashed on purpose: adoptive owns
+    // the dash in teal and the phantom slot owns it in grey, so a third dashed
+    // variant would have made one stroke carry three meanings.
+    [Fact]
+    public async Task StepChips_AreDottedAndNeutral()
+    {
+        var page = await OpenSampleProfileAsync("Daniel Whitfield");
+        await Assertions.Expect(page.GetByTestId("stepparents-list")).ToBeVisibleAsync();
+
+        var style = await page.Locator("[data-testid^='stepparent-chip-']").First
+            .EvaluateAsync<string>(@"el => {
+                const s = getComputedStyle(el);
+                return JSON.stringify({
+                    borderStyle: s.borderTopStyle,
+                    borderColor: s.borderTopColor,
+                });
+            }");
+
+        using var result = JsonDocument.Parse(style);
+        Assert.Equal("dotted", result.RootElement.GetProperty("borderStyle").GetString());
+
+        // --step #8a8377 as computed rgb. Asserted as the value rather than as
+        // "not teal": the point is that the token the design system set aside for
+        // step relationships is the one in force.
+        Assert.Equal("rgb(138, 131, 119)", result.RootElement.GetProperty("borderColor").GetString());
+    }
+
+    // A candidate is not a relationship the subject has, and the chip must not say
+    // one. Rendered in the marriage coral it read as the child's own spouse on
+    // their own profile — the one chip in the app whose colour named a relationship
+    // nobody had recorded.
+    [Fact]
+    public async Task StepparentCandidateChips_AreNotTheMarriageColour()
+    {
+        var page = await OpenSampleProfileAsync("Susan Hartley");
+        await Assertions.Expect(page.GetByTestId("stepparent-candidates")).ToBeVisibleAsync();
+
+        var candidate = await page.Locator("[data-testid^='candidate-chip-']").First
+            .EvaluateAsync<string>("el => getComputedStyle(el).backgroundColor");
+        var marriage = await page.Locator("[data-testid^='marriage-chip-']").First
+            .EvaluateAsync<string>("el => getComputedStyle(el).backgroundColor");
+
+        // --coral-bg #fbeee7 is the marriage chip's; the candidate takes --paper
+        // #fbfaf7. Asserted as values as well as as a difference, so that the two
+        // converging on some third colour would still fail.
+        Assert.Equal("rgb(251, 238, 231)", marriage);
+        Assert.Equal("rgb(251, 250, 247)", candidate);
+    }
+
+    // The date range is set in the mono face the rest of the app's dates use. One
+    // of the few places a token can be dropped with nothing looking broken — it
+    // just quietly stops matching.
+    [Fact]
+    public async Task TheMarriageDateRange_IsSetInTheMonoFace()
+    {
+        var page = await OpenSampleProfileAsync("Arthur Whitfield");
+        await Assertions.Expect(page.GetByTestId("marriages-list")).ToBeVisibleAsync();
+
+        var family = await page.Locator("[data-testid^='marriage-dates-']").First
+            .EvaluateAsync<string>("el => getComputedStyle(el).fontFamily");
+
+        Assert.Contains("JetBrains Mono", family);
+    }
+
+    // The toast stack has covered a button in the bottom corner before (recorded
+    // against PR 8), and this PR puts three more actions on the same page. The
+    // stack is transient, so this asserts on the controls rather than on it: every
+    // action in the new sections has to be the thing a tap at its centre actually
+    // reaches, which is what an overlapping banner or a clipped row would fail.
+    //
+    // Each control is scrolled to the middle of the viewport first, and that is
+    // not incidental. elementFromPoint answers about the viewport only, so
+    // without it this reported every action below the fold as "covered by
+    // nothing" — a test failing on the marriage section being far down a phone
+    // screen, which is not a defect.
+    [Fact]
+    public async Task EveryActionOnAMarriageRowIsHitTestable()
+    {
+        var page = await OpenSampleProfileAsync("Arthur Whitfield", 390, 844);
+        await Assertions.Expect(page.GetByTestId("marriages-list")).ToBeVisibleAsync();
+
+        var unreachable = await page.EvaluateAsync<string>(@"() => {
+            const describe = el => el
+                ? el.tagName.toLowerCase() + '.' + String(el.className).trim().split(/\s+/).join('.')
+                : 'nothing (off-screen)';
+
+            const bad = [];
+            for (const action of document.querySelectorAll(
+                '[data-testid=""marriages-list""] button, ' +
+                '[data-testid=""stepparents-list""] button, ' +
+                '[data-testid=""stepparent-candidates""] button')) {
+                action.scrollIntoView({ block: 'center', behavior: 'instant' });
+                const box = action.getBoundingClientRect();
+                const hit = document.elementFromPoint(
+                    box.left + box.width / 2, box.top + box.height / 2);
+
+                if (box.width < 1 || box.height < 1 || !action.contains(hit)) {
+                    bad.push((action.dataset.testid ?? action.textContent.trim())
+                        + ' hit ' + describe(hit)
+                        + ' box=' + Math.round(box.width) + 'x' + Math.round(box.height));
+                }
+            }
+            return JSON.stringify(bad);
+        }");
+
+        Assert.True(unreachable == "[]", $"Unreachable actions: {unreachable}");
+    }
+
+    /// <summary>
+    /// Loads the sample family and opens one person's profile.
+    /// </summary>
+    /// <remarks>
+    /// The new sections need a blended family to have anything in them, and the
+    /// sample tree is where that family lives — Arthur was widowed and remarried,
+    /// and Vera is Daniel's recorded stepmother. Building an equivalent family
+    /// through the UI in each test would be four wizard runs per assertion.
+    /// </remarks>
+    private async Task<IPage> OpenSampleProfileAsync(
+        string displayName, int width = 1440, int height = 900)
+    {
+        var page = await OpenAsync(width, height, "settings");
+        await page.GetByTestId("load-sample").ClickAsync();
+        await Assertions.Expect(page.GetByTestId("settings-stats"))
+            .ToHaveTextAsync("10 people · 15 relationships");
+
+        await page.GotoAsync(Fixture.BaseUrl + "people", new PageGotoOptions
+        {
+            WaitUntil = WaitUntilState.NetworkIdle,
+        });
+        await page.GetByText(displayName).First.ClickAsync();
+        await Assertions.Expect(page.GetByTestId("profile-name")).ToBeVisibleAsync();
+        return page;
     }
 }

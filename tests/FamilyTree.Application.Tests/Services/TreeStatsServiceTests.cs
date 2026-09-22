@@ -12,6 +12,7 @@ public class TreeStatsServiceTests
     private readonly Mock<IBiologicalRelationshipRepository> _biological = new();
     private readonly Mock<IAdoptiveRelationshipRepository> _adoptive = new();
     private readonly Mock<IMarriageRepository> _marriages = new();
+    private readonly Mock<IStepparentRelationshipRepository> _stepparents = new();
     private readonly TreeDataNotifier _notifier = new();
 
     private TreeStatsService CreateService(params Person[] people)
@@ -20,9 +21,11 @@ public class TreeStatsServiceTests
         _biological.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync([]);
         _adoptive.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync([]);
         _marriages.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync([]);
+        _stepparents.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync([]);
 
         return new TreeStatsService(
-            _people.Object, _biological.Object, _adoptive.Object, _marriages.Object, _notifier);
+            _people.Object, _biological.Object, _adoptive.Object, _marriages.Object,
+            _stepparents.Object, _notifier);
     }
 
     [Fact]
@@ -51,6 +54,22 @@ public class TreeStatsServiceTests
         var stats = await CreateService(Person.CreatePhantom()).GetAsync();
 
         Assert.False(stats.Value!.IsEmpty);
+    }
+
+    // The total under-reported by design until PR 9, because nothing could write a
+    // stepparent label. It counts from the moment one can, or the top bar starts
+    // quietly disagreeing with the tree.
+    [Fact]
+    public async Task CountsStepparentLabelsAsRelationships()
+    {
+        var service = CreateService(new Person("Ada", "Lovelace", Gender.Female));
+        _stepparents.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync([new StepparentRelationship(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid())]);
+
+        var stats = await service.ReadFreshAsync();
+
+        Assert.Equal(1, stats.Value!.Relationships);
+        Assert.Equal(2, stats.Value!.StoredRecords);
     }
 
     [Fact]

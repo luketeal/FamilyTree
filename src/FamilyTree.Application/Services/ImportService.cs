@@ -109,6 +109,7 @@ public sealed class ImportService(
     IBiologicalRelationshipRepository biological,
     IAdoptiveRelationshipRepository adoptive,
     IMarriageRepository marriages,
+    IStepparentRelationshipRepository stepparents,
     ITreeDataAdministration administration)
 {
     /// <summary>
@@ -132,7 +133,8 @@ public sealed class ImportService(
             file.SchemaVersion,
             file.ExportedAt,
             file.People.Count,
-            file.BiologicalLinks.Count + file.AdoptiveLinks.Count + file.Marriages.Count,
+            file.BiologicalLinks.Count + file.AdoptiveLinks.Count + file.Marriages.Count
+                + file.StepparentLinks.Count,
             file.Rejected,
             file.Warnings.Messages)
         {
@@ -162,6 +164,7 @@ public sealed class ImportService(
         var existingBio = await biological.GetAllAsync(ct);
         var existingAdoptive = await adoptive.GetAllAsync(ct);
         var existingMarriages = await marriages.GetAllAsync(ct);
+        var existingSteps = await stepparents.GetAllAsync(ct);
 
         // Phantoms are combined alongside the named people rather than after
         // them. Under Overwrite the final set is the file's set, so leaving them
@@ -173,6 +176,7 @@ public sealed class ImportService(
         var bioCombined = Combine(existingBio, file.BiologicalLinks, l => l.Id, resolution);
         var adoptiveCombined = Combine(existingAdoptive, file.AdoptiveLinks, l => l.Id, resolution);
         var marriagesCombined = Combine(existingMarriages, file.Marriages, m => m.Id, resolution);
+        var stepsCombined = Combine(existingSteps, file.StepparentLinks, l => l.Id, resolution);
 
         // A record that arrives with a fresh id but the same meaning as one
         // already present is still a duplicate. The domain forbids naming the
@@ -196,6 +200,16 @@ public sealed class ImportService(
             "the same two spouses and start date",
             warnings,
             out _);
+        // Keyed on the pair alone, matching StepparentService: a second label
+        // between the same two people through a different marriage is the same
+        // claim recorded twice, and a profile showing one stepparent on two rows
+        // is a duplicate however the records differ.
+        var stepList = Deduplicate(
+            stepsCombined,
+            l => (l.StepparentId, l.StepchildId),
+            "the same stepparent and stepchild",
+            warnings,
+            out _);
 
         // A link to somebody who is not in the tree is a link to nobody. Under
         // Skip and Merge the referent may come from what is already stored, so
@@ -204,6 +218,7 @@ public sealed class ImportService(
         bioLinks = Connected(bioLinks, l => (l.ParentId, l.ChildId), "biological link", personIds, warnings, out var bioOrphans);
         adoptiveLinks = Connected(adoptiveLinks, l => (l.ParentId, l.ChildId), "adoptive link", personIds, warnings, out var adoptiveOrphans);
         marriageList = Connected(marriageList, m => (m.Spouse1Id, m.Spouse2Id), "marriage", personIds, warnings, out var marriageOrphans);
+        stepList = Connected(stepList, l => (l.StepparentId, l.StepchildId), "stepparent label", personIds, warnings, out var stepOrphans);
 
         // The two-parent cap, which nothing else on this path enforces. A file can
         // name three biological parents for one child, and until this ran the
@@ -221,11 +236,27 @@ public sealed class ImportService(
         // cannot burn a slot that a valid one needed.
         bioLinks = CapParentsPerChild(bioLinks, finalPeople, warnings, out var bioOverCap);
 
+        // A stepparent label is a claim about a marriage, so one naming a marriage
+        // the tree does not have asserts nothing. It would also be invisible:
+        // every profile row says which marriage put the stepparent there, so a
+        // label without one renders nowhere and nothing in the app could reach it
+        // to remove. Runs after the marriage filters above, so a label is judged
+        // against the marriages actually being written rather than the ones the
+        // file offered.
+        //
+        // Last of the filters, and after the cap for the same reason the cap runs
+        // after Connected: a label is justified by a parent link, so judging it
+        // against links that are about to be dropped accepts a claim resting on a
+        // record the tree will not hold. A file naming three biological parents
+        // could otherwise keep a label whose via-parent was the one capped away.
+        stepList = Justified(
+            stepList, marriageList, bioLinks, adoptiveLinks, warnings, out var stepUnjustified);
+
         // One call, one transaction. Four repository writes could half-apply and
         // leave links pointing at people who were never stored — which is the
         // failure mode this whole PR exists to prevent.
         await administration.ReplaceAllAsync(
-            new TreeSnapshot(finalPeople, bioLinks, adoptiveLinks, marriageList),
+            new TreeSnapshot(finalPeople, bioLinks, adoptiveLinks, marriageList, stepList),
             ct);
 
         // Counted from what was written, not from what was intended. The filters
@@ -236,7 +267,8 @@ public sealed class ImportService(
         var peopleTally = Count(existingPeople, importedPeople, finalPeople, p => p.Id);
         var relationshipTally = Count(existingBio, file.BiologicalLinks, bioLinks, l => l.Id)
             .Plus(Count(existingAdoptive, file.AdoptiveLinks, adoptiveLinks, l => l.Id))
-            .Plus(Count(existingMarriages, file.Marriages, marriageList, m => m.Id));
+            .Plus(Count(existingMarriages, file.Marriages, marriageList, m => m.Id))
+            .Plus(Count(existingSteps, file.StepparentLinks, stepList, l => l.Id));
 
         // Only the file's own records count as rejected here. An existing record
         // dropped by the same filter was removed rather than refused, which the
@@ -244,7 +276,9 @@ public sealed class ImportService(
         var refused = FromFile(bioOrphans, file.BiologicalLinks)
             + FromFile(bioOverCap, file.BiologicalLinks)
             + FromFile(adoptiveOrphans, file.AdoptiveLinks)
-            + FromFile(marriageOrphans, file.Marriages);
+            + FromFile(marriageOrphans, file.Marriages)
+            + FromFile(stepOrphans, file.StepparentLinks)
+            + FromFile(stepUnjustified, file.StepparentLinks);
         rejected += refused;
 
         return Result<ImportResultDto>.Success(new ImportResultDto(
@@ -444,6 +478,83 @@ public sealed class ImportService(
         return kept;
     }
 
+    /// <summary>
+    /// Keeps only the stepparent labels whose marriage is among the ones being
+    /// written.
+    /// </summary>
+    /// <remarks>
+    /// The step analogue of <see cref="Connected"/>, and separate from it because
+    /// what it checks is not an endpoint: a label names two people <em>and</em> the
+    /// marriage that justifies calling one the other's stepparent. Both matter, and
+    /// the message has to say which is missing — "refers to a marriage that is not
+    /// in the tree" is actionable in a way that "refers to person X" would not be.
+    /// <para>
+    /// It checks the same thing <see cref="StepparentService.LabelAsync"/> checks
+    /// before creating one: the marriage exists, the stepparent is in it, and the
+    /// other spouse is a parent of the child. A file is the one way into this store
+    /// that never went through that service, so without the last two a claim the app
+    /// refuses to make could be imported and then rendered — deriving "via" from
+    /// whichever spouse came first, which names a person at random.
+    /// </para>
+    /// </remarks>
+    private static IReadOnlyList<StepparentRelationship> Justified(
+        IReadOnlyList<StepparentRelationship> labels,
+        IReadOnlyList<Marriage> marriages,
+        IReadOnlyList<BiologicalParentChild> biological,
+        IReadOnlyList<AdoptiveParentChild> adoptive,
+        WarningLog warnings,
+        out List<StepparentRelationship> dropped)
+    {
+        var marriagesById = marriages.ToDictionary(m => m.Id);
+
+        // Parents of both kinds, since US-038 counts either.
+        var parentsOf = biological
+            .Select(l => (l.ChildId, l.ParentId))
+            .Concat(adoptive.Select(l => (l.ChildId, l.ParentId)))
+            .ToHashSet();
+
+        var kept = new List<StepparentRelationship>(labels.Count);
+        dropped = [];
+
+        foreach (var label in labels)
+        {
+            if (!marriagesById.TryGetValue(label.MarriageId, out var marriage))
+            {
+                dropped.Add(label);
+                warnings.Add(
+                    $"Dropped a stepparent label: it rests on marriage {label.MarriageId}, "
+                    + "which is not in the tree.");
+                continue;
+            }
+
+            if (marriage.Spouse1Id != label.StepparentId && marriage.Spouse2Id != label.StepparentId)
+            {
+                dropped.Add(label);
+                warnings.Add(
+                    "Dropped a stepparent label: the person it names is not in the marriage "
+                    + "it rests on.");
+                continue;
+            }
+
+            var otherSpouseId = marriage.Spouse1Id == label.StepparentId
+                ? marriage.Spouse2Id
+                : marriage.Spouse1Id;
+
+            if (!parentsOf.Contains((label.StepchildId, otherSpouseId)))
+            {
+                dropped.Add(label);
+                warnings.Add(
+                    "Dropped a stepparent label: the marriage it rests on does not involve "
+                    + "a parent of the stepchild.");
+                continue;
+            }
+
+            kept.Add(label);
+        }
+
+        return kept;
+    }
+
     private static IReadOnlyList<T> Connected<T>(
         IReadOnlyList<T> records,
         Func<T, (Guid, Guid)> endpoints,
@@ -480,6 +591,7 @@ public sealed class ImportService(
         IReadOnlyList<BiologicalParentChild> BiologicalLinks,
         IReadOnlyList<AdoptiveParentChild> AdoptiveLinks,
         IReadOnlyList<Marriage> Marriages,
+        IReadOnlyList<StepparentRelationship> StepparentLinks,
         WarningLog Warnings,
         int Rejected)
     {
@@ -544,7 +656,8 @@ public sealed class ImportService(
             && document.Phantoms is null
             && document.BiologicalLinks is null
             && document.AdoptiveLinks is null
-            && document.Marriages is null)
+            && document.Marriages is null
+            && document.StepparentLinks is null)
         {
             return Result<ParsedFile>.Failure(
                 "That file has no people or relationships in it, so there is nothing to import.");
@@ -558,11 +671,18 @@ public sealed class ImportService(
         var parsedBio = ReadBiologicalLinks(document.BiologicalLinks, warnings, ref rejected);
         var parsedAdoptive = ReadAdoptiveLinks(document.AdoptiveLinks, warnings, ref rejected);
         var parsedMarriages = ReadMarriages(document.Marriages, warnings, ref rejected);
+        var parsedSteps = ReadStepparentLinks(document.StepparentLinks, warnings, ref rejected);
 
         // Phantoms deliberately do not count towards "there is something here".
         // A file of nothing but unnamed placeholders restores nothing anybody
         // can read, and treating it as importable would let it overwrite a real
         // tree with a set of empty slots.
+        // Stepparent labels are deliberately not counted here, for the reason
+        // phantoms are not: a label cannot stand on its own. It names a marriage
+        // and two people, so a file carrying labels and nothing else restores
+        // nothing — every one of them would be dropped as unjustified moments
+        // later — and treating it as importable would let it overwrite a real tree
+        // with nothing.
         if (parsedPeople.Count == 0
             && parsedBio.Count == 0
             && parsedAdoptive.Count == 0
@@ -581,6 +701,7 @@ public sealed class ImportService(
             parsedBio,
             parsedAdoptive,
             parsedMarriages,
+            parsedSteps,
             warnings,
             rejected));
     }
@@ -791,7 +912,9 @@ public sealed class ImportService(
                 continue;
             }
 
-            if (endDate is not null && endDate.CompareTo(startDate!) < 0)
+            // The same rule the marriage form applies, from the same method: a
+            // record this app accepts must not warn on its own round trip.
+            if (endDate is not null && endDate.IsKnownToPrecede(startDate!))
             {
                 warnings.Add($"Marriage {row.Id} ends before it starts. Imported as-is.");
             }
@@ -799,6 +922,39 @@ public sealed class ImportService(
             result.Add(Marriage.Rehydrate(
                 row.Id, row.Spouse1Id, row.Spouse2Id, startDate!, row.StartPlace?.Trim(),
                 endDate, row.EndReason, row.Certainty ?? RelationshipCertainty.Confirmed));
+        }
+
+        return result;
+    }
+
+    private static List<StepparentRelationship> ReadStepparentLinks(
+        IReadOnlyList<ExportedStepparentLink>? source, WarningLog warnings, ref int rejected)
+    {
+        var result = new List<StepparentRelationship>();
+        var seen = new HashSet<Guid>();
+
+        foreach (var row in source ?? [])
+        {
+            if (!ValidLink(
+                row.Id, row.StepparentId, row.StepchildId, "stepparent label",
+                seen, warnings, ref rejected))
+            {
+                continue;
+            }
+
+            // Checked here rather than left to Justified below, because these are
+            // two different faults: a label with no marriage id at all is a
+            // malformed record, while one naming a marriage this tree does not
+            // have is a record that simply arrived without its context.
+            if (row.MarriageId == Guid.Empty)
+            {
+                Reject(warnings, ref rejected,
+                    $"Skipped stepparent label {row.Id}: it does not name a marriage.");
+                continue;
+            }
+
+            result.Add(StepparentRelationship.Rehydrate(
+                row.Id, row.StepparentId, row.StepchildId, row.MarriageId));
         }
 
         return result;

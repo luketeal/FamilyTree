@@ -29,6 +29,7 @@ public class AddRelationshipDialogTests : ShellTestContext
         Guid? replacing = null,
         string? replacingName = null,
         AddRelationshipDialog.AdoptiveEdit? editing = null,
+        MarriageDto? editingMarriage = null,
         Action? onSaved = null) =>
         Render<AddRelationshipDialog>(p =>
         {
@@ -39,6 +40,7 @@ public class AddRelationshipDialogTests : ShellTestContext
             p.Add(c => c.ReplacingParentId, replacing);
             p.Add(c => c.ReplacingParentName, replacingName);
             p.Add(c => c.Editing, editing);
+            p.Add(c => c.EditingMarriage, editingMarriage);
             if (onSaved is not null)
             {
                 p.Add(c => c.Saved, onSaved);
@@ -712,5 +714,458 @@ public class AddRelationshipDialogTests : ShellTestContext
 
         Assert.Empty(cut.FindAll("[data-testid='relationship-dialog-adoption-date']"));
         Assert.False(cut.Find("[data-testid='relationship-dialog-save']").HasAttribute("disabled"));
+    }
+
+    // ---- The spouse kind (US-021, US-023, US-025 to US-027, US-044) ----
+
+    private static MarriageDto MarriageOf(
+        Person spouse, Guid marriageId, int startYear = 1946, string? place = null,
+        int? endYear = null, MarriageEndReason? reason = null) =>
+        new(marriageId,
+            PersonSummaryDto.From(spouse),
+            PartialDate.FromYear(startYear),
+            place,
+            endYear is int year ? PartialDate.FromYear(year) : null,
+            reason,
+            RelationshipCertainty.Confirmed);
+
+    [Fact]
+    public void OffersTheSpouseKind()
+    {
+        GivenRoster();
+
+        var cut = RenderDialog(kinds: [Kind.BiologicalParent, Kind.Spouse]);
+
+        Assert.NotNull(cut.Find("[data-testid='relationship-dialog-kind-spouse']"));
+    }
+
+    // US-044: the question asks for a spouse or partner rather than a husband or a
+    // wife, so nothing in the flow depends on either person's gender.
+    [Fact]
+    public void AsksWhoTheSpouseOrPartnerIs()
+    {
+        GivenRoster();
+
+        var cut = RenderDialog(kinds: [Kind.Spouse]);
+
+        Assert.Contains("spouse or partner", cut.Markup);
+    }
+
+    [Fact]
+    public void OffersTheMarriageFieldsOnTheSpouseKind()
+    {
+        GivenRoster();
+
+        var cut = RenderDialog(kinds: [Kind.Spouse]);
+        ChooseCandidate(cut);
+
+        Assert.NotNull(cut.Find("[data-testid='relationship-dialog-start-date-field']"));
+        Assert.NotNull(cut.Find("[data-testid='relationship-dialog-place']"));
+        Assert.NotNull(cut.Find("[data-testid='relationship-dialog-end-reason']"));
+        Assert.NotNull(cut.Find("[data-testid='relationship-dialog-end-date-field']"));
+    }
+
+    [Fact]
+    public void DoesNotOfferTheMarriageFieldsOnTheBiologicalKinds()
+    {
+        GivenRoster();
+
+        var cut = RenderDialog(kinds: [Kind.BiologicalParent]);
+        ChooseCandidate(cut);
+
+        Assert.Empty(cut.FindAll("[data-testid='relationship-dialog-start-date-field']"));
+        Assert.Empty(cut.FindAll("[data-testid='relationship-dialog-end-reason']"));
+    }
+
+    [Fact]
+    public void SavesAMarriageWithItsDateAndPlace()
+    {
+        GivenRoster();
+        Marriage? saved = null;
+        Marriages.Setup(r => r.AddAsync(It.IsAny<Marriage>(), It.IsAny<CancellationToken>()))
+            .Callback((Marriage m, CancellationToken _) => saved = m)
+            .Returns(Task.CompletedTask);
+
+        var cut = RenderDialog(kinds: [Kind.Spouse]);
+        ChooseCandidate(cut);
+        cut.Find("[data-testid='relationship-dialog-start-date']").Input("1946");
+        cut.Find("[data-testid='relationship-dialog-place']").Input("Leeds");
+        cut.Find("[data-testid='relationship-dialog-save']").Click();
+
+        Assert.NotNull(saved);
+        Assert.Equal(1946, saved!.StartDate.Year);
+        Assert.Equal("Leeds", saved.StartPlace);
+        Assert.Equal(_candidate.Id, saved.Spouse2Id);
+    }
+
+    // US-021 makes the start date required, which is the one required date in the
+    // app. Save stays disabled rather than failing on submit.
+    [Fact]
+    public void RefusesToSaveAMarriageWithNoStartDate()
+    {
+        GivenRoster();
+
+        var cut = RenderDialog(kinds: [Kind.Spouse]);
+        ChooseCandidate(cut);
+
+        Assert.True(cut.Find("[data-testid='relationship-dialog-save']").HasAttribute("disabled"));
+    }
+
+    [Fact]
+    public void AllowsSavingOnceTheStartDateIsTyped()
+    {
+        GivenRoster();
+
+        var cut = RenderDialog(kinds: [Kind.Spouse]);
+        ChooseCandidate(cut);
+        cut.Find("[data-testid='relationship-dialog-start-date']").Input("1946");
+
+        Assert.False(cut.Find("[data-testid='relationship-dialog-save']").HasAttribute("disabled"));
+    }
+
+    [Fact]
+    public void RefusesToSaveWhileTheEndDateIsUnparseable()
+    {
+        GivenRoster();
+
+        var cut = RenderDialog(kinds: [Kind.Spouse]);
+        ChooseCandidate(cut);
+        cut.Find("[data-testid='relationship-dialog-start-date']").Input("1946");
+        cut.Find("[data-testid='relationship-dialog-end-date']").Input("not a year");
+
+        Assert.True(cut.Find("[data-testid='relationship-dialog-save']").HasAttribute("disabled"));
+    }
+
+    // A marriage start date left invalid must not disable Save on a biological
+    // link, whose form shows no date field to correct it in.
+    [Fact]
+    public void AMissingMarriageDateDoesNotBlockSavingABiologicalLink()
+    {
+        GivenRoster();
+
+        var cut = RenderDialog(kinds: [Kind.Spouse, Kind.BiologicalParent]);
+        cut.Find("[data-testid='relationship-dialog-kind-biologicalparent']").Click();
+        ChooseCandidate(cut);
+
+        Assert.False(cut.Find("[data-testid='relationship-dialog-save']").HasAttribute("disabled"));
+    }
+
+    // US-025: recording a divorce is recording an end reason and a date.
+    [Fact]
+    public void RecordsADivorceWithItsDate()
+    {
+        GivenRoster();
+        Marriage? saved = null;
+        Marriages.Setup(r => r.AddAsync(It.IsAny<Marriage>(), It.IsAny<CancellationToken>()))
+            .Callback((Marriage m, CancellationToken _) => saved = m)
+            .Returns(Task.CompletedTask);
+
+        var cut = RenderDialog(kinds: [Kind.Spouse]);
+        ChooseCandidate(cut);
+        cut.Find("[data-testid='relationship-dialog-start-date']").Input("1946");
+        cut.Find("[data-testid='relationship-dialog-end-reason']").Change("Divorce");
+        cut.Find("[data-testid='relationship-dialog-end-date']").Input("1960");
+        cut.Find("[data-testid='relationship-dialog-save']").Click();
+
+        Assert.Equal(MarriageEndReason.Divorce, saved!.EndReason);
+        Assert.Equal(1960, saved.EndDate!.Year);
+    }
+
+    // US-027: annulment is a selectable reason, distinct from divorce.
+    [Fact]
+    public void RecordsAnAnnulment()
+    {
+        GivenRoster();
+        Marriage? saved = null;
+        Marriages.Setup(r => r.AddAsync(It.IsAny<Marriage>(), It.IsAny<CancellationToken>()))
+            .Callback((Marriage m, CancellationToken _) => saved = m)
+            .Returns(Task.CompletedTask);
+
+        var cut = RenderDialog(kinds: [Kind.Spouse]);
+        ChooseCandidate(cut);
+        cut.Find("[data-testid='relationship-dialog-start-date']").Input("1946");
+        cut.Find("[data-testid='relationship-dialog-end-reason']").Change("Annulment");
+        cut.Find("[data-testid='relationship-dialog-save']").Click();
+
+        Assert.Equal(MarriageEndReason.Annulment, saved!.EndReason);
+    }
+
+    // The default is a current marriage, so recording one needs nothing said about
+    // how it ended.
+    [Fact]
+    public void RecordsAnOngoingMarriageByDefault()
+    {
+        GivenRoster();
+        Marriage? saved = null;
+        Marriages.Setup(r => r.AddAsync(It.IsAny<Marriage>(), It.IsAny<CancellationToken>()))
+            .Callback((Marriage m, CancellationToken _) => saved = m)
+            .Returns(Task.CompletedTask);
+
+        var cut = RenderDialog(kinds: [Kind.Spouse]);
+        ChooseCandidate(cut);
+        cut.Find("[data-testid='relationship-dialog-start-date']").Input("1976");
+        cut.Find("[data-testid='relationship-dialog-save']").Click();
+
+        Assert.True(saved!.IsOngoing);
+    }
+
+    // ---- The end-date offer (US-026) ----
+
+    [Fact]
+    public void OffersTheEndDateFromASpousesDeathWhenWidowhoodIsChosen()
+    {
+        var deceased = new Person("Margaret", "Whitfield", Gender.Female);
+        deceased.UpdateDates(PartialDate.FromYear(1921), null, PartialDate.FromYear(1973), null);
+        People.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync([_subject, deceased]);
+
+        var cut = RenderDialog(kinds: [Kind.Spouse]);
+        cut.Find($"[data-testid='relationship-dialog-search-option-{deceased.Id}']").Click();
+        cut.Find("[data-testid='relationship-dialog-next']").Click();
+        cut.Find("[data-testid='relationship-dialog-start-date']").Input("1946");
+        cut.Find("[data-testid='relationship-dialog-end-reason']").Change("DeathOfSpouse");
+
+        var offer = cut.Find("[data-testid='relationship-dialog-use-death-date']");
+        Assert.Contains("1973", offer.TextContent);
+        Assert.Contains("Margaret Whitfield", offer.TextContent);
+    }
+
+    // An offer rather than an auto-fill: nothing is filled in until it is taken.
+    [Fact]
+    public void DoesNotFillTheEndDateUntilTheOfferIsTaken()
+    {
+        var deceased = new Person("Margaret", "Whitfield", Gender.Female);
+        deceased.UpdateDates(PartialDate.FromYear(1921), null, PartialDate.FromYear(1973), null);
+        People.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync([_subject, deceased]);
+        Marriage? saved = null;
+        Marriages.Setup(r => r.AddAsync(It.IsAny<Marriage>(), It.IsAny<CancellationToken>()))
+            .Callback((Marriage m, CancellationToken _) => saved = m)
+            .Returns(Task.CompletedTask);
+
+        var cut = RenderDialog(kinds: [Kind.Spouse]);
+        cut.Find($"[data-testid='relationship-dialog-search-option-{deceased.Id}']").Click();
+        cut.Find("[data-testid='relationship-dialog-next']").Click();
+        cut.Find("[data-testid='relationship-dialog-start-date']").Input("1946");
+        cut.Find("[data-testid='relationship-dialog-end-reason']").Change("DeathOfSpouse");
+        cut.Find("[data-testid='relationship-dialog-save']").Click();
+
+        Assert.Null(saved!.EndDate);
+    }
+
+    // The assertion that was missing when this shipped broken: the offer set the
+    // dialog's own value and the box stayed empty, so the year was saved without
+    // ever being displayed. PartialDateInput reads its seed once and then owns its
+    // contents, which is right for a control that must not have half-typed input
+    // yanked out from under it — and means a programmatic fill has to rebuild it.
+    [Fact]
+    public void TakingTheOfferShowsTheDateInTheBox()
+    {
+        var deceased = new Person("Margaret", "Whitfield", Gender.Female);
+        deceased.UpdateDates(PartialDate.FromYear(1921), null, PartialDate.FromYear(1973), null);
+        People.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync([_subject, deceased]);
+
+        var cut = RenderDialog(kinds: [Kind.Spouse]);
+        cut.Find($"[data-testid='relationship-dialog-search-option-{deceased.Id}']").Click();
+        cut.Find("[data-testid='relationship-dialog-next']").Click();
+        cut.Find("[data-testid='relationship-dialog-start-date']").Input("1946");
+        cut.Find("[data-testid='relationship-dialog-end-reason']").Change("DeathOfSpouse");
+        cut.Find("[data-testid='relationship-dialog-use-death-date']").Click();
+
+        Assert.Equal(
+            "1973",
+            cut.Find("[data-testid='relationship-dialog-end-date']").GetAttribute("value"));
+    }
+
+    // Once taken, the offer stops being offered: it exists to fill an empty box,
+    // and re-offering over a value it just wrote would invite overwriting a date
+    // the user then corrected.
+    [Fact]
+    public void TheOfferDisappearsOnceTaken()
+    {
+        var deceased = new Person("Margaret", "Whitfield", Gender.Female);
+        deceased.UpdateDates(PartialDate.FromYear(1921), null, PartialDate.FromYear(1973), null);
+        People.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync([_subject, deceased]);
+
+        var cut = RenderDialog(kinds: [Kind.Spouse]);
+        cut.Find($"[data-testid='relationship-dialog-search-option-{deceased.Id}']").Click();
+        cut.Find("[data-testid='relationship-dialog-next']").Click();
+        cut.Find("[data-testid='relationship-dialog-start-date']").Input("1946");
+        cut.Find("[data-testid='relationship-dialog-end-reason']").Change("DeathOfSpouse");
+        cut.Find("[data-testid='relationship-dialog-use-death-date']").Click();
+
+        Assert.Empty(cut.FindAll("[data-testid='relationship-dialog-use-death-date']"));
+    }
+
+    [Fact]
+    public void TakingTheOfferFillsTheEndDate()
+    {
+        var deceased = new Person("Margaret", "Whitfield", Gender.Female);
+        deceased.UpdateDates(PartialDate.FromYear(1921), null, PartialDate.FromYear(1973), null);
+        People.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync([_subject, deceased]);
+        Marriage? saved = null;
+        Marriages.Setup(r => r.AddAsync(It.IsAny<Marriage>(), It.IsAny<CancellationToken>()))
+            .Callback((Marriage m, CancellationToken _) => saved = m)
+            .Returns(Task.CompletedTask);
+
+        var cut = RenderDialog(kinds: [Kind.Spouse]);
+        cut.Find($"[data-testid='relationship-dialog-search-option-{deceased.Id}']").Click();
+        cut.Find("[data-testid='relationship-dialog-next']").Click();
+        cut.Find("[data-testid='relationship-dialog-start-date']").Input("1946");
+        cut.Find("[data-testid='relationship-dialog-end-reason']").Change("DeathOfSpouse");
+        cut.Find("[data-testid='relationship-dialog-use-death-date']").Click();
+        cut.Find("[data-testid='relationship-dialog-save']").Click();
+
+        Assert.Equal(1973, saved!.EndDate!.Year);
+    }
+
+    // The offer belongs to whoever was chosen when the reason was picked. Stepping
+    // back and changing the spouse left it on screen showing the previous person's
+    // death year under the new person's form — a date presented as theirs that was
+    // somebody else's.
+    [Fact]
+    public void TheOfferDoesNotSurviveAChangeOfSpouse()
+    {
+        var deceased = new Person("Margaret", "Whitfield", Gender.Female);
+        deceased.UpdateDates(PartialDate.FromYear(1921), null, PartialDate.FromYear(1973), null);
+        var living = new Person("Vera", "Nash", Gender.Female);
+        People.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync([_subject, deceased, living]);
+
+        var cut = RenderDialog(kinds: [Kind.Spouse]);
+        cut.Find($"[data-testid='relationship-dialog-search-option-{deceased.Id}']").Click();
+        cut.Find("[data-testid='relationship-dialog-next']").Click();
+        cut.Find("[data-testid='relationship-dialog-start-date']").Input("1946");
+        cut.Find("[data-testid='relationship-dialog-end-reason']").Change("DeathOfSpouse");
+        Assert.NotNull(cut.Find("[data-testid='relationship-dialog-use-death-date']"));
+
+        cut.Find("[data-testid='relationship-dialog-back']").Click();
+        cut.Find($"[data-testid='relationship-dialog-search-option-{living.Id}']").Click();
+        cut.Find("[data-testid='relationship-dialog-next']").Click();
+
+        Assert.Empty(cut.FindAll("[data-testid='relationship-dialog-use-death-date']"));
+    }
+
+    // Nothing to offer when nobody has a death date recorded, and an offer that
+    // proposed nothing would be worse than none.
+    [Fact]
+    public void MakesNoOfferWhenNeitherSpouseHasADeathDate()
+    {
+        GivenRoster();
+
+        var cut = RenderDialog(kinds: [Kind.Spouse]);
+        ChooseCandidate(cut);
+        cut.Find("[data-testid='relationship-dialog-start-date']").Input("1946");
+        cut.Find("[data-testid='relationship-dialog-end-reason']").Change("DeathOfSpouse");
+
+        Assert.Empty(cut.FindAll("[data-testid='relationship-dialog-use-death-date']"));
+    }
+
+    // ---- Editing a marriage (US-023, US-025) ----
+
+    [Fact]
+    public void OpensAnEditOnTheRecordedMarriage()
+    {
+        GivenRoster();
+        var marriageId = Guid.NewGuid();
+
+        var cut = RenderDialog(
+            kinds: [Kind.Spouse],
+            editingMarriage: MarriageOf(_candidate, marriageId, 1946, "Leeds"));
+        cut.Find("[data-testid='relationship-dialog-next']").Click();
+
+        Assert.Equal("1946", cut.Find("[data-testid='relationship-dialog-start-date']").GetAttribute("value"));
+        Assert.Equal("Leeds", cut.Find("[data-testid='relationship-dialog-place']").GetAttribute("value"));
+        Assert.Contains("Save changes", cut.Find("[data-testid='relationship-dialog-save']").TextContent);
+    }
+
+    // The ordinary case, and the one that matters most: ending a marriage keeps the
+    // record's identity, so the stepparent labels resting on it survive.
+    [Fact]
+    public void EndingAMarriageUpdatesTheRecordInPlace()
+    {
+        GivenRoster();
+        var marriageId = Guid.NewGuid();
+        var marriage = new Marriage(_subject.Id, _candidate.Id, PartialDate.FromYear(1946));
+        Marriages.Setup(r => r.GetByIdAsync(marriageId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(marriage);
+
+        var cut = RenderDialog(
+            kinds: [Kind.Spouse],
+            editingMarriage: MarriageOf(_candidate, marriageId));
+        cut.Find("[data-testid='relationship-dialog-next']").Click();
+        cut.Find("[data-testid='relationship-dialog-end-reason']").Change("Divorce");
+        cut.Find("[data-testid='relationship-dialog-end-date']").Input("1960");
+        cut.Find("[data-testid='relationship-dialog-save']").Click();
+
+        Marriages.Verify(
+            r => r.UpdateAsync(It.IsAny<Marriage>(), It.IsAny<CancellationToken>()), Times.Once);
+        Marriages.Verify(
+            r => r.ReplaceSpouseAsync(
+                It.IsAny<Guid>(), It.IsAny<Marriage>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    // US-023's third criterion: changing the spouse goes through the atomic path,
+    // because the alternative can leave the marriage gone from both profiles with
+    // nothing in its place.
+    [Fact]
+    public void ChangingTheSpouseGoesThroughTheAtomicReplace()
+    {
+        var other = new Person("Vera", "Nash", Gender.Female);
+        GivenRoster(other);
+        var marriageId = Guid.NewGuid();
+        var marriage = new Marriage(_subject.Id, _candidate.Id, PartialDate.FromYear(1946));
+        Marriages.Setup(r => r.GetByIdAsync(marriageId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(marriage);
+
+        var cut = RenderDialog(
+            kinds: [Kind.Spouse],
+            editingMarriage: MarriageOf(_candidate, marriageId));
+        cut.Find($"[data-testid='relationship-dialog-search-option-{other.Id}']").Click();
+        cut.Find("[data-testid='relationship-dialog-next']").Click();
+        cut.Find("[data-testid='relationship-dialog-save']").Click();
+
+        Marriages.Verify(
+            r => r.ReplaceSpouseAsync(
+                marriageId, It.IsAny<Marriage>(), It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public void SaysNothingIsBeingReplacedWhenTheSpouseIsUnchanged()
+    {
+        GivenRoster();
+
+        var cut = RenderDialog(
+            kinds: [Kind.Spouse],
+            editingMarriage: MarriageOf(_candidate, Guid.NewGuid()));
+        cut.Find("[data-testid='relationship-dialog-next']").Click();
+
+        Assert.Contains(
+            "stays married to",
+            cut.Find("[data-testid='relationship-dialog-summary']").TextContent);
+    }
+
+    // The same seed discipline the adoption date needed: the control is destroyed
+    // when the wizard leaves the Details step, so what the dialog remembers and
+    // what the boxes show have to be the same thing.
+    [Fact]
+    public void KeepsTheTypedMarriageDatesAcrossAStepChange()
+    {
+        GivenRoster();
+
+        var cut = RenderDialog(kinds: [Kind.Spouse]);
+        ChooseCandidate(cut);
+        cut.Find("[data-testid='relationship-dialog-start-date']").Input("1946");
+        cut.Find("[data-testid='relationship-dialog-place']").Input("Leeds");
+        cut.Find("[data-testid='relationship-dialog-back']").Click();
+        cut.Find("[data-testid='relationship-dialog-next']").Click();
+
+        Assert.Equal("1946", cut.Find("[data-testid='relationship-dialog-start-date']").GetAttribute("value"));
+        Assert.Equal("Leeds", cut.Find("[data-testid='relationship-dialog-place']").GetAttribute("value"));
     }
 }

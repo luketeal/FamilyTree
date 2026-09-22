@@ -12,8 +12,9 @@ namespace FamilyTree.Storage.Browser;
 /// Testers given an empty tree report nothing useful, and a tidy nuclear family
 /// would exercise none of the hard parts. This one deliberately contains
 /// half-siblings through a shared parent, an adoption, a remarriage after
-/// widowhood, an unidentified ancestor, and a relationship nobody is sure
-/// about — the situations that make a family tree difficult.
+/// widowhood, a stepparent from that remarriage, an unidentified ancestor, and a
+/// relationship nobody is sure about — the situations that make a family tree
+/// difficult.
 /// </remarks>
 public static class SampleFamily
 {
@@ -83,12 +84,23 @@ public static class SampleFamily
             Adoptive(raymond, priya, 1977),
         };
 
+        // Vera married Arthur in 1976, when Daniel was thirteen, and the family
+        // counts her as his stepmother (US-038). Susan and Thomas were adults by
+        // then and are deliberately left unlabelled: the label is applied by hand
+        // precisely because a parent's spouse is not automatically a stepparent,
+        // and a sample tree that labelled all three would demonstrate the
+        // inference the app refuses to make. Both appear as candidates instead.
+        var stepparents = new[]
+        {
+            new StepparentRelationship(vera.Id, daniel.Id, marriages[1].Id),
+        };
+
         return new DatasetRecord(
             people.Select(PersonRecord.From).ToList(),
             biological.Select(BiologicalLinkRecord.From).ToList(),
             adoptive.Select(AdoptiveLinkRecord.From).ToList(),
             marriages.Select(MarriageRecord.From).ToList(),
-            []);
+            stepparents.Select(StepparentLinkRecord.From).ToList());
     }
 
     private static Person Person(
